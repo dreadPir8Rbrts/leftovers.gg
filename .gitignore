@@ -1,0 +1,45 @@
+# Environment
+backend/.env
+.env
+
+# MCP config (contains access tokens)
+.mcp.json
+
+# Python
+backend/.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Alembic
+backend/app/db/versions/__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
+Icon
+Icon?
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code session data
+.claude/
+
+# Node (frontend)
+node_modules/
+.next/
+frontend/.env
+frontend/.env.local
+backend/dump.rdb
+
+# Markdown docs — tracked exceptions below
+*.md
+!CLAUDE.md
+!**/CLAUDE.md
+!README.md

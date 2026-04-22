@@ -1,0 +1,31 @@
+# Environment — never commit real secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.pytest_cache/
+
+# Alembic / DB
+*.rdb
+
+# Logs and local output
+*.log
+seed_output.log
+
+# Data / scratch files
+*.csv
+
+# macOS
+.DS_Store
+
+# Claude session data
+.claude/
+
+# Accidental files
+from

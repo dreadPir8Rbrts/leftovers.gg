@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 8%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 340 85% 43%;         /* #c9104f */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 259 46% 15%;       /* #1F1436 */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 18%;             /* dark gray — sidebar selected bg */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 340 85% 43%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 340 85% 43%;          /* #c9104f — container borders */
+    --input: 340 85% 43%;
+    --ring: 340 85% 43%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Crimson glow on focused inputs — reinforces the dark/moody aesthetic */
+  .glow-primary {
+    box-shadow: 0 0 12px hsl(340 85% 43% / 0.4);
+  }
+}
+
+/* Subtle crimson glow on input focus */
+@layer components {
+  input:focus-visible,
+  textarea:focus-visible {
+    box-shadow: 0 0 0 1px hsl(340 85% 43%), 0 0 10px hsl(340 85% 43% / 0.25);
+  }
+}
