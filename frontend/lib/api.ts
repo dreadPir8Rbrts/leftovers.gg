@@ -233,6 +233,53 @@ export async function addInventoryItem(item: InventoryItemCreate): Promise<void>
   if (!res.ok) throw new Error(`Failed to add inventory: ${res.status}`);
 }
 
+// ---------------------------------------------------------------------------
+// Wishlist
+// ---------------------------------------------------------------------------
+
+export interface WishlistItem {
+  id: string;
+  card_id: string;
+  max_price: number | null;
+  desired_condition: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface WishlistItemCreate {
+  card_id: string;
+  max_price?: number;
+  desired_condition?: string;
+  notes?: string;
+}
+
+export async function addToWishlist(item: WishlistItemCreate): Promise<WishlistItem> {
+  const res = await fetch(`${API_URL}/api/v1/wishlist`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: JSON.stringify(item),
+  });
+  if (res.status === 409) throw new Error("Already in wishlist");
+  if (!res.ok) throw new Error(`Failed to add to wishlist: ${res.status}`);
+  return res.json();
+}
+
+export async function getWishlist(): Promise<WishlistItem[]> {
+  const res = await fetch(`${API_URL}/api/v1/wishlist`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wishlist: ${res.status}`);
+  return res.json();
+}
+
+export async function removeFromWishlist(id: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1/wishlist/${id}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to remove from wishlist: ${res.status}`);
+}
+
 // Update mutable fields on an existing inventory item
 export async function patchInventoryItem(itemId: string, patch: InventoryItemPatch): Promise<void> {
   const res = await fetch(`${API_URL}/api/v1/inventory/${itemId}`, {

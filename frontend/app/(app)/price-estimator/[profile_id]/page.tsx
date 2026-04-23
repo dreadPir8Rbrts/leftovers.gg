@@ -21,6 +21,8 @@ import {
   excludeSoldComp,
   unexcludeSoldComp,
   getMyPricingPreferences,
+  addInventoryItem,
+  addToWishlist,
   type Card,
   type InventoryItemWithCard,
   type SoldCompsParams,
@@ -166,6 +168,18 @@ function PriceEstimatorContent() {
   const [gradingCompany, setGradingCompany]         = useState("psa");
   const [grade, setGrade]                           = useState("");
 
+  // Action panel (add to inventory / add to wishlist)
+  const [activeAction, setActiveAction]         = useState<null | "inventory" | "wishlist">(null);
+  const [invConditionType, setInvConditionType] = useState<"ungraded" | "graded">("ungraded");
+  const [invConditionUngraded, setInvConditionUngraded] = useState("nm");
+  const [invGradingCompany, setInvGradingCompany] = useState("psa");
+  const [invGrade, setInvGrade]                 = useState("");
+  const [invAskingPrice, setInvAskingPrice]     = useState("");
+  const [wlMaxPrice, setWlMaxPrice]             = useState("");
+  const [wlNotes, setWlNotes]                   = useState("");
+  const [actionStatus, setActionStatus]         = useState<null | "loading" | "success" | "error">(null);
+  const [actionError, setActionError]           = useState<string | null>(null);
+
   // Inventory sidebar
   const [inventory, setInventory]           = useState<InventoryItemWithCard[]>([]);
   const [inventoryLoading, setInventoryLoading] = useState(true);
@@ -231,12 +245,26 @@ function PriceEstimatorContent() {
   // Handlers
   // ---------------------------------------------------------------------------
 
+  function resetActionPanel() {
+    setActiveAction(null);
+    setInvConditionType("ungraded");
+    setInvConditionUngraded("nm");
+    setInvGradingCompany("psa");
+    setInvGrade("");
+    setInvAskingPrice("");
+    setWlMaxPrice("");
+    setWlNotes("");
+    setActionStatus(null);
+    setActionError(null);
+  }
+
   function handleSelectCard(card: Card) {
     setSelectedCard(card);
     loadedCardIdRef.current = card.id;
     setQuery("");
     setSearchResults(null);
     setSearchError(null);
+    resetActionPanel();
     setCompsResult(null);
     setCompsError(null);
     setConditionType("ungraded");
@@ -280,6 +308,46 @@ function PriceEstimatorContent() {
       setGrade(item.grade ?? "");
     }
     setCompsResult(null);
+  }
+
+  async function handleAddToInventory() {
+    if (!selectedCard) return;
+    setActionStatus("loading");
+    setActionError(null);
+    try {
+      await addInventoryItem({
+        card_id: selectedCard.id,
+        condition_type: invConditionType,
+        condition_ungraded: invConditionType === "ungraded" ? invConditionUngraded : undefined,
+        grading_company: invConditionType === "graded" ? invGradingCompany : undefined,
+        grade: invConditionType === "graded" ? invGrade : undefined,
+        asking_price: invAskingPrice ? invAskingPrice : undefined,
+        is_for_sale: true,
+        is_for_trade: false,
+        quantity: 1,
+      });
+      setActionStatus("success");
+    } catch (e) {
+      setActionStatus("error");
+      setActionError(e instanceof Error ? e.message : "Failed to add to inventory");
+    }
+  }
+
+  async function handleAddToWishlist() {
+    if (!selectedCard) return;
+    setActionStatus("loading");
+    setActionError(null);
+    try {
+      await addToWishlist({
+        card_id: selectedCard.id,
+        max_price: wlMaxPrice ? parseFloat(wlMaxPrice) : undefined,
+        notes: wlNotes || undefined,
+      });
+      setActionStatus("success");
+    } catch (e) {
+      setActionStatus("error");
+      setActionError(e instanceof Error ? e.message : "Failed to add to wishlist");
+    }
   }
 
   async function handleAdvancedSearch() {
@@ -518,8 +586,118 @@ function PriceEstimatorContent() {
                 {[selectedCard.rarity, selectedCard.language_code === "JA" ? "Japanese" : "English"].filter(Boolean).join(" · ")}
               </p>
             </div>
-            <button onClick={() => { setSelectedCard(null); setCompsResult(null); router.replace(`/price-estimator/${params.profile_id}`); }} className="text-xs text-muted-foreground hover:text-foreground self-start" title="Clear">✕</button>
+            <button onClick={() => { setSelectedCard(null); setCompsResult(null); resetActionPanel(); router.replace(`/price-estimator/${params.profile_id}`); }} className="text-xs text-muted-foreground hover:text-foreground self-start" title="Clear">✕</button>
           </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={activeAction === "inventory" ? "default" : "outline"}
+              onClick={() => { setActiveAction(activeAction === "inventory" ? null : "inventory"); setActionStatus(null); setActionError(null); }}
+            >
+              Add to Inventory
+            </Button>
+            <Button
+              size="sm"
+              variant={activeAction === "wishlist" ? "default" : "outline"}
+              onClick={() => { setActiveAction(activeAction === "wishlist" ? null : "wishlist"); setActionStatus(null); setActionError(null); }}
+            >
+              Add to Wishlist
+            </Button>
+          </div>
+
+          {/* Add to Inventory form */}
+          {activeAction === "inventory" && (
+            <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add to Inventory</p>
+              <div className="flex gap-1">
+                {(["ungraded", "graded"] as const).map((t) => (
+                  <button key={t} onClick={() => { setInvConditionType(t); setInvGrade(""); }} className={`px-3 py-1 text-xs rounded-md border transition-colors capitalize ${invConditionType === t ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              {invConditionType === "ungraded" && (
+                <div className="flex flex-wrap gap-1.5">
+                  {UNGRADED_CONDITIONS.map((c) => (
+                    <button key={c.value} onClick={() => setInvConditionUngraded(c.value)} className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${invConditionUngraded === c.value ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}>
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {invConditionType === "graded" && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {GRADING_COMPANIES.filter((co) => co.value !== "other").map((co) => (
+                      <button key={co.value} onClick={() => { setInvGradingCompany(co.value); setInvGrade(""); }} className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${invGradingCompany === co.value ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}>
+                        {co.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {gradeOptionsForCompany(invGradingCompany).map((g) => (
+                      <button key={g.value} onClick={() => setInvGrade(g.value)} className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${invGrade === g.value ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}>
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Asking price (optional)</label>
+                <input
+                  type="number"
+                  value={invAskingPrice}
+                  onChange={(e) => setInvAskingPrice(e.target.value)}
+                  placeholder="e.g. 12.50"
+                  min="0"
+                  step="0.01"
+                  className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+                />
+              </div>
+              {actionStatus === "success" && <p className="text-xs text-green-600">Added to inventory!</p>}
+              {actionStatus === "error" && <p className="text-xs text-destructive">{actionError}</p>}
+              <Button size="sm" onClick={handleAddToInventory} disabled={actionStatus === "loading" || (invConditionType === "graded" && !invGrade)}>
+                {actionStatus === "loading" ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Adding…</> : "Confirm"}
+              </Button>
+            </div>
+          )}
+
+          {/* Add to Wishlist form */}
+          {activeAction === "wishlist" && (
+            <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add to Wishlist</p>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Max price (optional)</label>
+                <input
+                  type="number"
+                  value={wlMaxPrice}
+                  onChange={(e) => setWlMaxPrice(e.target.value)}
+                  placeholder="e.g. 25.00"
+                  min="0"
+                  step="0.01"
+                  className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={wlNotes}
+                  onChange={(e) => setWlNotes(e.target.value)}
+                  placeholder="e.g. prefer PSA 9+"
+                  className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+                />
+              </div>
+              {actionStatus === "success" && <p className="text-xs text-green-600">Added to wishlist!</p>}
+              {actionStatus === "error" && <p className="text-xs text-destructive">{actionError}</p>}
+              <Button size="sm" onClick={handleAddToWishlist} disabled={actionStatus === "loading"}>
+                {actionStatus === "loading" ? <><Loader2 className="h-3 w-3 animate-spin mr-1" />Adding…</> : "Confirm"}
+              </Button>
+            </div>
+          )}
 
           {/* Condition picker */}
           <div className="space-y-2">
