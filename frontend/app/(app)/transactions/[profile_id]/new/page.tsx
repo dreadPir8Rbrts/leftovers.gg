@@ -14,6 +14,7 @@
  */
 
 import { useState, useCallback, useRef } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useParams } from "next/navigation";
 import Link from "next/link";
@@ -85,7 +86,9 @@ function CardDraftRow({
     <div className="border rounded-lg p-3 flex flex-col gap-2">
       <div className="flex items-start gap-2">
         {draft.card.image_url && (
-          <img src={draft.card.image_url} alt={draft.card.name} className="w-10 aspect-[3/4] object-contain rounded border flex-shrink-0" />
+          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="40px" className="object-contain" />
+          </div>
         )}
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{draft.card.name}</p>
@@ -370,7 +373,9 @@ function CardPickerModal({
                   className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted text-left"
                 >
                   {card.image_url && (
-                    <img src={card.image_url} alt={card.name} className="w-8 aspect-[3/4] object-contain rounded border flex-shrink-0" />
+                    <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                      <Image src={card.image_url} alt={card.name} fill sizes="32px" className="object-contain" />
+                    </div>
                   )}
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate">{card.name}</p>

@@ -509,8 +509,8 @@ export default function ProfilePage() {
                   <div key={item.id} className="border rounded-lg overflow-hidden">
                     <div className="flex items-center gap-3 px-3 py-2">
                       {item.image_url ? (
-                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-                          <img src={item.image_url} alt={item.card_name} className="w-full h-full object-contain" />
+                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                          <Image src={item.image_url} alt={item.card_name} fill sizes="40px" className="object-contain" />
                         </div>
                       ) : (
                         <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
@@ -588,8 +588,8 @@ export default function ProfilePage() {
                         className="flex items-center gap-3 border rounded-lg px-3 py-2 hover:bg-muted transition-colors"
                       >
                         {show.poster_url ? (
-                          <div className="w-12 aspect-square flex-shrink-0 rounded overflow-hidden border bg-muted">
-                            <img src={show.poster_url} alt={show.name} className="w-full h-full object-cover" />
+                          <div className="w-12 aspect-square flex-shrink-0 rounded overflow-hidden border bg-muted relative">
+                            <Image src={show.poster_url} alt={show.name} fill sizes="48px" className="object-cover" />
                           </div>
                         ) : (
                           <div className="w-12 aspect-square flex-shrink-0 rounded border bg-muted" />

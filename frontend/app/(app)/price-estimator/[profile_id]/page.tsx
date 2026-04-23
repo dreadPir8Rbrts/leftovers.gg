@@ -10,6 +10,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, Suspense } from "react";
+import Image from "next/image";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   searchCardsSmart,
@@ -100,8 +101,8 @@ function CardRow({ card, onSelect }: { card: Card; onSelect: (c: Card) => void }
       className="w-full flex items-center gap-3 border rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors text-left"
     >
       {card.image_url ? (
-        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-          <img src={card.image_url} alt={card.name} className="w-full h-full object-contain" />
+        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+          <Image src={card.image_url} alt={card.name} fill sizes="40px" className="object-contain" />
         </div>
       ) : (
         <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
@@ -500,8 +501,8 @@ function PriceEstimatorContent() {
           {/* Card preview */}
           <div className="flex items-center gap-3">
             {selectedCard.image_url ? (
-              <div className="w-14 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-                <img src={selectedCard.image_url} alt={selectedCard.name} className="w-full h-full object-contain" />
+              <div className="w-14 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                <Image src={selectedCard.image_url} alt={selectedCard.name} fill sizes="56px" className="object-contain" />
               </div>
             ) : (
               <div className="w-14 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
@@ -740,8 +741,8 @@ function PriceEstimatorContent() {
                       className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 ${isActive ? "bg-muted" : ""}`}
                     >
                       {item.image_url ? (
-                        <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-                          <img src={item.image_url} alt={item.card_name} className="w-full h-full object-contain" />
+                        <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                          <Image src={item.image_url} alt={item.card_name} fill sizes="32px" className="object-contain" />
                         </div>
                       ) : (
                         <div className="w-8 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />

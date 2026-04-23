@@ -8,6 +8,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   getShow,
   getMyShowRegistrations,
@@ -42,9 +43,11 @@ function AttendeeList({ attendees, emptyLabel }: { attendees: ShowAttendee[]; em
       {attendees.map((a) => (
         <li key={a.profile_id} className="flex items-center gap-3 px-4 py-3">
           {a.avatar_url ? (
-            <img
+            <Image
               src={a.avatar_url}
               alt={a.display_name ?? "Attendee"}
+              width={32}
+              height={32}
               className="w-8 h-8 rounded-full object-cover border flex-shrink-0"
             />
           ) : (
@@ -147,8 +150,8 @@ export default function ShowDetailPage() {
       </Link>
 
       {show.poster_url && (
-        <div className="mt-4 rounded-lg overflow-hidden max-h-80 flex items-center justify-center bg-muted">
-          <img src={show.poster_url} alt={show.name} className="w-full object-contain max-h-80" />
+        <div className="mt-4 rounded-lg overflow-hidden max-h-80 flex items-center justify-center bg-muted relative">
+          <Image src={show.poster_url} alt={show.name} fill sizes="100vw" className="object-contain" />
         </div>
       )}
 

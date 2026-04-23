@@ -13,6 +13,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import Image from "next/image";
 import {
   searchCards,
   searchCardsSmart,
@@ -112,8 +113,8 @@ function CardRow({ card, onSelect }: { card: Card; onSelect: (c: Card) => void }
       className="w-full flex items-center gap-3 border rounded-lg px-3 py-2 hover:bg-muted/50 transition-colors text-left"
     >
       {card.image_url ? (
-        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-          <img src={card.image_url} alt={card.name} className="w-full h-full object-contain" />
+        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+          <Image src={card.image_url} alt={card.name} fill sizes="40px" className="object-contain" />
         </div>
       ) : (
         <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
@@ -148,8 +149,8 @@ function InventoryRow({
     <div className="border rounded-lg overflow-hidden">
       <div className="flex items-center gap-3 px-3 py-2">
         {item.image_url ? (
-          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-            <img src={item.image_url} alt={item.card_name} className="w-full h-full object-contain" />
+          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+            <Image src={item.image_url} alt={item.card_name} fill sizes="40px" className="object-contain" />
           </div>
         ) : (
           <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
@@ -844,8 +845,8 @@ export default function InventoryPage() {
             {/* Card preview */}
             <div className="flex items-center gap-3">
               {confirm.card.image_url ? (
-                <div className="w-14 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border">
-                  <img src={confirm.card.image_url} alt={confirm.card.name} className="w-full h-full object-contain" />
+                <div className="w-14 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                  <Image src={confirm.card.image_url} alt={confirm.card.name} fill sizes="56px" className="object-contain" />
                 </div>
               ) : (
                 <div className="w-14 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
