@@ -439,7 +439,7 @@ export default function ApiTesterPage() {
               <Button onClick={handleRun} disabled={loading} size="sm">
                 {loading ? "Running…" : "Run"}
               </Button>
-              {result && (
+              {result !== null && (
                 <Button
                   variant="ghost"
                   size="sm"
@@ -457,7 +457,7 @@ export default function ApiTesterPage() {
             </div>
           )}
 
-          {result && (
+          {result !== null && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-3 justify-between">
                 <div className="text-sm text-muted-foreground">

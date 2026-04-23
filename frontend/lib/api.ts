@@ -32,13 +32,18 @@ export interface Card {
   set_name_en?: string;
   release_date?: string;
   series_name?: string;   // null for One Piece
-  game: string;
-  language_code: string;
+  series_logo_url?: string;
+  game?: string;
+  language_code?: string;
+  category?: string;
+  illustrator?: string;
+  variants?: string[];
 }
 
 export interface InventoryItemCreate {
   card_id: string;
-  condition_type: "ungraded" | "graded";
+  condition?: string;
+  condition_type?: "ungraded" | "graded";
   condition_ungraded?: string;
   grading_company?: string;
   grade?: string;
@@ -119,6 +124,7 @@ export interface CardSearchParams {
   game?: string;
   language_code?: string;
   set_name?: string;
+  series_name?: string;
   limit?: number;
 }
 
@@ -272,8 +278,12 @@ export interface QuickScanResult {
   set_name?: string;
   release_date?: string;
   series_name?: string;
+  series_logo_url?: string;
   game?: string;
   language_code?: string;
+  category?: string;
+  illustrator?: string;
+  variants?: string[];
 }
 
 // ---------------------------------------------------------------------------
