@@ -20,7 +20,7 @@
  * before redirecting.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { updateProfile, uploadAvatar } from "@/lib/api/profiles";
@@ -88,6 +88,14 @@ function setOnboardingCookie() {
 // ---------------------------------------------------------------------------
 
 export default function OnboardingPage() {
+  return (
+    <Suspense>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { setActiveRole } = useActiveRoleStore();
