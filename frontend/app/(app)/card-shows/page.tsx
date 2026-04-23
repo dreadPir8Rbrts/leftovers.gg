@@ -40,19 +40,17 @@ function ShowCard({
   onRegister: (showId: string, role: "vendor" | "collector") => void;
   onUnregister: (showId: string) => void;
 }) {
+  const [imgError, setImgError] = useState(false);
+
   return (
     <div className="bg-card border rounded-lg overflow-hidden flex flex-col hover:shadow-md transition-shadow">
       <Link href={`/card-shows/${show.id}`} className="block">
         <div className="relative w-full aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
-          {show.poster_url ? (
-            <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" />
+          {show.poster_url && !imgError ? (
+            <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" onError={() => setImgError(true)} />
           ) : (
-            <div className="flex flex-col items-center gap-2 text-muted-foreground p-4 text-center">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-              </svg>
-              <span className="text-xs">No image</span>
+            <div className="flex items-center justify-center p-4 text-center">
+              <span className="text-sm font-medium text-muted-foreground leading-snug">{show.name}</span>
             </div>
           )}
         </div>
