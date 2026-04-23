@@ -589,7 +589,7 @@ export default function ProfilePage() {
                       >
                         {show.poster_url ? (
                           <div className="w-12 aspect-square flex-shrink-0 rounded overflow-hidden border bg-muted relative">
-                            <Image src={show.poster_url} alt={show.name} fill sizes="48px" className="object-cover" />
+                            <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="48px" className="object-cover" />
                           </div>
                         ) : (
                           <div className="w-12 aspect-square flex-shrink-0 rounded border bg-muted" />

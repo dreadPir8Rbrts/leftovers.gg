@@ -31,6 +31,7 @@ export function middleware(request: NextRequest): NextResponse {
   if (!onboardingComplete) {
     const url = request.nextUrl.clone();
     url.pathname = "/onboarding";
+    url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 

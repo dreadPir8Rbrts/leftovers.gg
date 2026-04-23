@@ -21,7 +21,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { updateProfile, uploadAvatar } from "@/lib/api/profiles";
 import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
@@ -89,6 +89,7 @@ function setOnboardingCookie() {
 
 export default function OnboardingPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setActiveRole } = useActiveRoleStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,7 +125,8 @@ export default function OnboardingPage() {
           const profile = await res.json();
           if (profile.onboarding_complete) {
             setOnboardingCookie();
-            router.replace(`/dashboard/${profile.id}`);
+            const redirect = searchParams.get("redirect");
+            router.replace(redirect ?? `/dashboard/${profile.id}`);
           }
         }
       } catch {

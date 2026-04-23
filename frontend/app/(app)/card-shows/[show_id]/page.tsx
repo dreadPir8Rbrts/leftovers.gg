@@ -151,7 +151,7 @@ export default function ShowDetailPage() {
 
       {show.poster_url && (
         <div className="mt-4 rounded-lg overflow-hidden max-h-80 flex items-center justify-center bg-muted relative">
-          <Image src={show.poster_url} alt={show.name} fill sizes="100vw" className="object-contain" />
+          <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="100vw" className="object-contain" />
         </div>
       )}
 

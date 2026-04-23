@@ -45,7 +45,7 @@ function ShowCard({
       <Link href={`/card-shows/${show.id}`} className="block">
         <div className="relative w-full aspect-[4/3] bg-muted flex items-center justify-center overflow-hidden">
           {show.poster_url ? (
-            <Image src={show.poster_url} alt={show.name} fill sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" />
+            <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="(max-width: 640px) 100vw, 50vw" className="object-cover" />
           ) : (
             <div className="flex flex-col items-center gap-2 text-muted-foreground p-4 text-center">
               <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
