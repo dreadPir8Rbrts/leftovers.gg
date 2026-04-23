@@ -23,7 +23,6 @@ import {
   type Card,
   type InventoryItemWithCard,
   type SoldCompsParams,
-  type SoldComp,
   type SoldCompsResponse,
   type PricingPreferences,
   type GradedAggregation,
@@ -31,7 +30,6 @@ import {
 } from "@/lib/api";
 import { SoldCompsChart } from "@/components/pricing/SoldCompsChart";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 
 // ---------------------------------------------------------------------------

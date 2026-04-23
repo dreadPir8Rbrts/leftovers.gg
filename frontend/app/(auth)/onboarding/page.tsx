@@ -22,7 +22,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase, getAccessToken } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase";
 import { updateProfile, uploadAvatar } from "@/lib/api/profiles";
 import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
 import { Button } from "@/components/ui/button";

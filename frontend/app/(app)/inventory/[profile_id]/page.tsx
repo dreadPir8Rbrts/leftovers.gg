@@ -28,13 +28,11 @@ import {
   type Card,
   type InventoryItemWithCard,
   type SoldCompsParams,
-  type SoldComp,
   type SoldCompsResponse,
   type PricingPreferences,
   type GradedAggregation,
   type CompWindowDays,
 } from "@/lib/api";
-import { patchInventoryItem } from "@/lib/api";
 import { InventoryEditPanel } from "@/components/inventory/InventoryEditPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";

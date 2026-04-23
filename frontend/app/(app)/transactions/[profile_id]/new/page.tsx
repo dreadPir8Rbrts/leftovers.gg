@@ -531,7 +531,6 @@ export default function NewTransactionPage() {
   // sell:  give cards, receive cash
   // trade: give cards+cash, receive cards+cash
   const showLostCards   = txType === "sell" || txType === "trade";
-  const showGainedCards = txType === "buy"  || txType === "trade";
   const showLostCash    = txType === "buy"  || txType === "trade";
   const showGainedCash  = txType === "sell" || txType === "trade";
 

@@ -209,7 +209,7 @@ export default function CardShowsPage() {
     } catch {
       setRegistrationMap((m) => {
         const next = new Map(m);
-        prev === null ? next.delete(showId) : next.set(showId, prev);
+        if (prev === null) { next.delete(showId); } else { next.set(showId, prev); }
         return next;
       });
     }

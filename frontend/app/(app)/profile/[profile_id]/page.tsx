@@ -50,9 +50,6 @@ function formatCondition(item: InventoryItemWithCard): string {
   return `${company} ${item.grade ?? ""}`.trim();
 }
 
-function isFullProfile(p: AnyProfile): p is ProfileData {
-  return "onboarding_complete" in p;
-}
 
 export default function ProfilePage() {
   const params = useParams<{ profile_id: string }>();

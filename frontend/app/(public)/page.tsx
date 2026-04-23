@@ -97,7 +97,7 @@ export default function HomePage() {
             Everything you need to run your hobby like a business
           </h2>
           <p className="text-center text-gray-400 mb-14 max-w-xl mx-auto">
-            Generic inventory software wasn't built for card shows. leftovers.gg was.
+            Generic inventory software wasn&apos;t built for card shows. leftovers.gg was.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-8">
             {FEATURES.map(({ icon: Icon, title, body }) => (
