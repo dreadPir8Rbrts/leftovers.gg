@@ -475,6 +475,119 @@ export interface CardShow {
   source_url: string;
 }
 
+// ---------------------------------------------------------------------------
+// Discover
+// ---------------------------------------------------------------------------
+
+export interface DiscoverSeller {
+  profile_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  buying_rate: number | null;
+  trade_rate: number | null;
+  inventory_id: string;
+  condition_type: "ungraded" | "graded";
+  condition_ungraded: string | null;
+  grading_company: string | null;
+  grade: string | null;
+  grading_company_other: string | null;
+  asking_price: number | null;
+  is_for_sale: boolean;
+  is_for_trade: boolean;
+  quantity: number;
+  notes: string | null;
+  photo_url: string | null;
+}
+
+export interface DiscoverWanted {
+  profile_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  buying_rate: number | null;
+  trade_rate: number | null;
+  wishlist_item_id: string;
+  conditions: WishlistCondition[];
+  max_price: number | null;
+  notes: string | null;
+}
+
+export interface DiscoverUser {
+  id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  role: string;
+  bio: string | null;
+  tcg_interests: string[] | null;
+  buying_rate: number | null;
+  trade_rate: number | null;
+}
+
+export interface ShowInventoryItem {
+  profile_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  inventory_id: string;
+  card_v2_id: string | null;
+  card_name: string | null;
+  card_name_en: string | null;
+  set_name: string | null;
+  set_name_en: string | null;
+  series_name: string | null;
+  card_num: string | null;
+  rarity: string | null;
+  image_url: string | null;
+  language_code: string | null;
+  condition_type: "ungraded" | "graded";
+  condition_ungraded: string | null;
+  grading_company: string | null;
+  grade: string | null;
+  grading_company_other: string | null;
+  asking_price: number | null;
+  is_for_sale: boolean;
+  is_for_trade: boolean;
+  quantity: number;
+  notes: string | null;
+}
+
+export interface ShowWishlistItem {
+  profile_id: string;
+  display_name: string | null;
+  avatar_url: string | null;
+  wishlist_item_id: string;
+  card_id: string;
+  card_name: string | null;
+  card_name_en: string | null;
+  set_name: string | null;
+  set_name_en: string | null;
+  card_num: string | null;
+  rarity: string | null;
+  image_url: string | null;
+  language_code: string | null;
+  conditions: WishlistCondition[];
+  max_price: number | null;
+  notes: string | null;
+}
+
+export async function discoverCardSellers(cardId: string): Promise<DiscoverSeller[]> {
+  const res = await fetch(`${API_URL}/api/v1/discover/card/${cardId}/sellers`);
+  if (!res.ok) throw new Error(`Failed to load sellers: ${res.status}`);
+  return res.json();
+}
+
+export async function discoverCardWanted(cardId: string): Promise<DiscoverWanted[]> {
+  const res = await fetch(`${API_URL}/api/v1/discover/card/${cardId}/wanted`);
+  if (!res.ok) throw new Error(`Failed to load wanted: ${res.status}`);
+  return res.json();
+}
+
+export async function discoverUsers(q: string): Promise<DiscoverUser[]> {
+  const res = await fetch(
+    `${API_URL}/api/v1/discover/users?q=${encodeURIComponent(q)}`
+  );
+  if (!res.ok) throw new Error(`Failed to search users: ${res.status}`);
+  return res.json();
+}
+
 export interface GetShowsParams {
   state?: string;
   from_date?: string;
@@ -531,7 +644,7 @@ export async function getCollectorRegisteredShows(): Promise<CardShow[]> {
   return res.json();
 }
 
-export async function getMyShowRegistrations(): Promise<{ show_id: string; attending_as: "vendor" | "collector" }[]> {
+export async function getMyShowRegistrations(): Promise<{ show_id: string; attending_as: "vendor" | "collector"; show_discovery: boolean }[]> {
   const res = await fetch(`${API_URL}/api/v1/profile/shows/registrations`, {
     headers: await authHeaders(),
   });
@@ -539,11 +652,15 @@ export async function getMyShowRegistrations(): Promise<{ show_id: string; atten
   return res.json();
 }
 
-export async function registerForShow(showId: string, attendingAs: "vendor" | "collector"): Promise<void> {
+export async function registerForShow(
+  showId: string,
+  attendingAs: "vendor" | "collector",
+  showDiscovery = true,
+): Promise<void> {
   const res = await fetch(`${API_URL}/api/v1/shows/${showId}/register`, {
     method: "POST",
     headers: await authHeaders(),
-    body: JSON.stringify({ attending_as: attendingAs }),
+    body: JSON.stringify({ attending_as: attendingAs, show_discovery: showDiscovery }),
   });
   if (!res.ok) throw new Error(`Failed to register: ${res.status}`);
 }
@@ -554,6 +671,18 @@ export async function unregisterFromShow(showId: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to unregister: ${res.status}`);
+}
+
+export async function getShowInventory(showId: string): Promise<ShowInventoryItem[]> {
+  const res = await fetch(`${API_URL}/api/v1/shows/${showId}/inventory`);
+  if (!res.ok) throw new Error(`Failed to load show inventory: ${res.status}`);
+  return res.json();
+}
+
+export async function getShowWishlist(showId: string): Promise<ShowWishlistItem[]> {
+  const res = await fetch(`${API_URL}/api/v1/shows/${showId}/wishlist`);
+  if (!res.ok) throw new Error(`Failed to load show wishlist: ${res.status}`);
+  return res.json();
 }
 
 export async function getShows(params: GetShowsParams = {}): Promise<CardShow[]> {

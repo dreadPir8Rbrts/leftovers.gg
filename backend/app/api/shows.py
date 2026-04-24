@@ -2,9 +2,11 @@
 Shows endpoints — public + authenticated.
 
 Routes (public):
-  GET  /shows                      — list upcoming active shows with optional filters
-  GET  /shows/{show_id}            — single show by UUID or ontreasure_id slug
-  GET  /shows/{show_id}/attendees  — all profiles registered for a show, grouped by role
+  GET  /shows                          — list upcoming active shows with optional filters
+  GET  /shows/{show_id}                — single show by UUID or ontreasure_id slug
+  GET  /shows/{show_id}/attendees      — all profiles registered for a show, grouped by role
+  GET  /shows/{show_id}/inventory      — all for-sale/trade inventory from show_discovery registrants
+  GET  /shows/{show_id}/wishlist       — all wishlist items from show_discovery registrants
 
 Routes (authenticated — any profile):
   POST   /shows/{show_id}/register   — register the current user for a show
@@ -20,17 +22,27 @@ Routes (authenticated collector):
 
 import uuid
 from datetime import date
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import and_, text
+from sqlalchemy import and_, cast, text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.dependencies import get_current_profile
+from app.models.catalog_v2 import CardV2, ExpansionV2
+from app.models.collector import Wishlist
+from app.models.inventory import Inventory
 from app.models.profiles import Profile
 from app.models.shows import CardShow, ProfileShowRegistration
+
+
+def _image_url(images: Any) -> Optional[str]:
+    if not images or not isinstance(images, list):
+        return None
+    return images[0].get("small") or images[0].get("large")
 
 # ---------------------------------------------------------------------------
 # Zip code → lat/lon resolution (module-level cache, lives for process lifetime)
@@ -239,12 +251,146 @@ def list_show_attendees(show_id: str, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/shows/{show_id}/inventory")
+def get_show_inventory(
+    show_id: str,
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """
+    Return all active for-sale/trade inventory items from attendees who opted
+    into show-scoped discovery (show_discovery=true) for this show.
+    """
+    show = (
+        db.query(CardShow)
+        .filter((CardShow.id == show_id) | (CardShow.ontreasure_id == show_id))
+        .first()
+    )
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    rows = (
+        db.query(Inventory, CardV2, ExpansionV2, Profile)
+        .join(Profile, Inventory.profile_id == Profile.id)
+        .join(
+            ProfileShowRegistration,
+            (ProfileShowRegistration.profile_id == Inventory.profile_id)
+            & (ProfileShowRegistration.show_id == str(show.id)),
+        )
+        .outerjoin(CardV2, Inventory.card_v2_id == CardV2.id)
+        .outerjoin(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        .filter(
+            ProfileShowRegistration.show_discovery.is_(True),
+            Inventory.status == "active",
+            Inventory.deleted_at.is_(None),
+            (Inventory.is_for_sale.is_(True)) | (Inventory.is_for_trade.is_(True)),
+        )
+        .order_by(CardV2.name.asc().nulls_last())
+        .limit(500)
+        .all()
+    )
+    return [
+        {
+            "profile_id": profile.id,
+            "display_name": profile.display_name,
+            "avatar_url": profile.avatar_url,
+            "inventory_id": inv.id,
+            "card_v2_id": inv.card_v2_id,
+            "card_name": card.name if card else None,
+            "card_name_en": card.en_name if card else None,
+            "set_name": expansion.name if expansion else None,
+            "set_name_en": expansion.name_en if expansion else None,
+            "series_name": expansion.series if expansion else None,
+            "card_num": card.number if card else None,
+            "rarity": card.rarity if card else None,
+            "image_url": _image_url(card.images) if card else None,
+            "language_code": card.language_code if card else None,
+            "condition_type": inv.condition_type,
+            "condition_ungraded": inv.condition_ungraded,
+            "grading_company": inv.grading_company,
+            "grade": inv.grade,
+            "grading_company_other": inv.grading_company_other,
+            "asking_price": float(inv.asking_price) if inv.asking_price is not None else None,
+            "is_for_sale": inv.is_for_sale,
+            "is_for_trade": inv.is_for_trade,
+            "quantity": inv.quantity,
+            "notes": inv.notes,
+        }
+        for inv, card, expansion, profile in rows
+    ]
+
+
+@router.get("/shows/{show_id}/wishlist")
+def get_show_wishlist(
+    show_id: str,
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """
+    Return all wishlist items from attendees who opted into show-scoped
+    discovery (show_discovery=true) for this show.
+    """
+    show = (
+        db.query(CardShow)
+        .filter((CardShow.id == show_id) | (CardShow.ontreasure_id == show_id))
+        .first()
+    )
+    if show is None:
+        raise HTTPException(status_code=404, detail="Show not found")
+
+    rows = (
+        db.query(Wishlist, CardV2, ExpansionV2, Profile)
+        .join(Profile, Wishlist.profile_id == Profile.id)
+        .join(
+            ProfileShowRegistration,
+            (ProfileShowRegistration.profile_id == Wishlist.profile_id)
+            & (ProfileShowRegistration.show_id == str(show.id)),
+        )
+        .outerjoin(CardV2, CardV2.id == cast(Wishlist.card_id, PGUUID(as_uuid=True)))
+        .outerjoin(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        .filter(ProfileShowRegistration.show_discovery.is_(True))
+        .order_by(CardV2.name.asc().nulls_last())
+        .limit(500)
+        .all()
+    )
+    return [
+        {
+            "profile_id": profile.id,
+            "display_name": profile.display_name,
+            "avatar_url": profile.avatar_url,
+            "wishlist_item_id": item.id,
+            "card_id": item.card_id,
+            "card_name": card.name if card else None,
+            "card_name_en": card.en_name if card else None,
+            "set_name": expansion.name if expansion else None,
+            "set_name_en": expansion.name_en if expansion else None,
+            "card_num": card.printed_number if card else None,
+            "rarity": card.rarity if card else None,
+            "image_url": _image_url(card.images) if card else None,
+            "language_code": card.language_code if card else None,
+            "conditions": [
+                {
+                    "id": c.id,
+                    "condition_type": c.condition_type,
+                    "condition_ungraded": c.condition_ungraded,
+                    "grading_company": c.grading_company,
+                    "grading_company_other": c.grading_company_other,
+                    "grade": c.grade,
+                }
+                for c in item.conditions
+            ],
+            "max_price": float(item.max_price) if item.max_price is not None else None,
+            "notes": item.notes,
+        }
+        for item, card, expansion, profile in rows
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Authenticated routes — any profile (vendor or collector)
 # ---------------------------------------------------------------------------
 
 class RegisterForShowRequest(BaseModel):
     attending_as: Optional[str] = None  # 'vendor' | 'collector' — defaults to profile.role
+    show_discovery: bool = True
 
 
 @router.post("/shows/{show_id}/register", status_code=status.HTTP_201_CREATED)
@@ -275,22 +421,40 @@ def register_for_show(
         .first()
     )
     if existing:
-        # Update attending_as if it changed (e.g. user switches vendor ↔ collector)
+        changed = False
         if existing.attending_as != attending_as:
             existing.attending_as = attending_as
+            changed = True
+        if existing.show_discovery != body.show_discovery:
+            existing.show_discovery = body.show_discovery
+            changed = True
+        if changed:
             db.add(existing)
             db.commit()
-        return {"id": str(existing.id), "show_id": show_id, "profile_id": profile.id, "attending_as": attending_as}
+        return {
+            "id": str(existing.id),
+            "show_id": show_id,
+            "profile_id": profile.id,
+            "attending_as": existing.attending_as,
+            "show_discovery": existing.show_discovery,
+        }
 
     reg = ProfileShowRegistration(
         id=str(uuid.uuid4()),
         profile_id=profile.id,
         show_id=show_id,
         attending_as=attending_as,
+        show_discovery=body.show_discovery,
     )
     db.add(reg)
     db.commit()
-    return {"id": str(reg.id), "show_id": show_id, "profile_id": profile.id, "attending_as": attending_as}
+    return {
+        "id": str(reg.id),
+        "show_id": show_id,
+        "profile_id": profile.id,
+        "attending_as": attending_as,
+        "show_discovery": reg.show_discovery,
+    }
 
 
 @router.delete("/shows/{show_id}/register", status_code=status.HTTP_204_NO_CONTENT)
@@ -334,7 +498,11 @@ def list_my_show_registrations(
         .all()
     )
     return [
-        {"show_id": str(r.show_id), "attending_as": r.attending_as or profile.role}
+        {
+            "show_id": str(r.show_id),
+            "attending_as": r.attending_as or profile.role,
+            "show_discovery": r.show_discovery,
+        }
         for r in regs
     ]
 
