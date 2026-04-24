@@ -50,12 +50,12 @@ interface VendorSidebarProps {
 export function VendorSidebar({ profileId }: VendorSidebarProps) {
   const p = profileId ?? "";
   const mainItems = [
-    { href: p ? `/dashboard/${p}`        : "/dashboard",       label: "Dashboard",       icon: LayoutDashboard },
-    { href: p ? `/price-estimator/${p}`  : "/price-estimator", label: "Price Estimator", icon: TrendingUp },
-    { href: p ? `/inventory/${p}`        : "/inventory",        label: "Inventory",       icon: Package },
-    { href: p ? `/transactions/${p}`     : "/transactions",     label: "Transactions",    icon: ArrowLeftRight },
-    { href: "/card-shows",                                       label: "Card Shows",      icon: CalendarDays },
-    { href: p ? `/wishlist/${p}`           : "/wishlist",         label: "Wishlist",        icon: Heart },
+    { href: p ? `/dashboard/${p}`       : "#", label: "Dashboard",       icon: LayoutDashboard },
+    { href: p ? `/price-estimator/${p}` : "#", label: "Price Estimator", icon: TrendingUp },
+    { href: p ? `/inventory/${p}`       : "#", label: "Inventory",       icon: Package },
+    { href: p ? `/transactions/${p}`    : "#", label: "Transactions",    icon: ArrowLeftRight },
+    { href: "/card-shows",                     label: "Card Shows",      icon: CalendarDays },
+    { href: p ? `/wishlist/${p}`        : "#", label: "Wishlist",        icon: Heart },
   ];
 
   return (
@@ -66,7 +66,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
         ))}
       </div>
       <div className="my-3 border-t border-white/10" />
-      <NavLink href={p ? `/profile/${p}` : "/profile"} label="Profile" icon={UserCircle} />
+      <NavLink href={p ? `/profile/${p}` : "#"} label="Profile" icon={UserCircle} />
     </aside>
   );
 }
