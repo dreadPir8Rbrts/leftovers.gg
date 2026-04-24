@@ -49,24 +49,33 @@ interface VendorSidebarProps {
 
 export function VendorSidebar({ profileId }: VendorSidebarProps) {
   const p = profileId ?? "";
-  const mainItems = [
+
+  const topItems = [
     { href: p ? `/dashboard/${p}`       : "#", label: "Dashboard",       icon: LayoutDashboard },
     { href: p ? `/price-estimator/${p}` : "#", label: "Price Estimator", icon: TrendingUp },
-    { href: p ? `/inventory/${p}`       : "#", label: "Inventory",       icon: Package },
-    { href: p ? `/transactions/${p}`    : "#", label: "Transactions",    icon: ArrowLeftRight },
     { href: "/card-shows",                     label: "Card Shows",      icon: CalendarDays },
-    { href: p ? `/wishlist/${p}`        : "#", label: "Wishlist",        icon: Heart },
+  ];
+
+  const bottomItems = [
+    { href: p ? `/profile/${p}`      : "#", label: "Profile",      icon: UserCircle },
+    { href: p ? `/wishlist/${p}`     : "#", label: "Wishlist",     icon: Heart },
+    { href: p ? `/inventory/${p}`    : "#", label: "Inventory",    icon: Package },
+    { href: p ? `/transactions/${p}` : "#", label: "Transactions", icon: ArrowLeftRight },
   ];
 
   return (
     <aside className="w-56 border-r border-r-white/10 bg-black shrink-0 flex flex-col py-4 px-2 overflow-y-auto">
       <div className="flex flex-col gap-1">
-        {mainItems.map((item) => (
+        {topItems.map((item) => (
           <NavLink key={item.label} {...item} />
         ))}
       </div>
-      <div className="my-3 border-t border-white/10" />
-      <NavLink href={p ? `/profile/${p}` : "#"} label="Profile" icon={UserCircle} />
+      <div className="my-4 border-t border-white/10" />
+      <div className="flex flex-col gap-1">
+        {bottomItems.map((item) => (
+          <NavLink key={item.label} {...item} />
+        ))}
+      </div>
     </aside>
   );
 }
