@@ -297,6 +297,23 @@ export async function removeFromWishlist(id: string): Promise<void> {
   if (!res.ok) throw new Error(`Failed to remove from wishlist: ${res.status}`);
 }
 
+export interface WishlistItemWithCard extends WishlistItem {
+  card_name: string | null;
+  card_name_en: string | null;
+  set_name: string | null;
+  set_name_en: string | null;
+  card_num: string | null;
+  rarity: string | null;
+  image_url: string | null;
+  language_code: string | null;
+}
+
+export async function getPublicWishlist(profileId: string): Promise<WishlistItemWithCard[]> {
+  const res = await fetch(`${API_URL}/api/v1/profiles/${profileId}/wishlist`);
+  if (!res.ok) throw new Error(`Failed to fetch wishlist: ${res.status}`);
+  return res.json();
+}
+
 export async function updateWishlistConditions(
   itemId: string,
   conditions: WishlistConditionInput[],

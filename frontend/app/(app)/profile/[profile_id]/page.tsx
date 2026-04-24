@@ -20,8 +20,11 @@ import { RoleToggle } from "@/components/shared/RoleToggle";
 import Image from "next/image";
 import {
   getRegisteredShows,
+  getPublicWishlist,
+  removeFromWishlist,
   type InventoryItemWithCard,
   type CardShow,
+  type WishlistItemWithCard,
 } from "@/lib/api";
 import { InventoryEditPanel } from "@/components/inventory/InventoryEditPanel";
 import { PricingPreferencesForm } from "@/components/pricing/PricingPreferencesForm";
@@ -61,6 +64,7 @@ export default function ProfilePage() {
 
   const [profile, setProfile] = useState<AnyProfile | null>(null);
   const [inventory, setInventory] = useState<InventoryItemWithCard[]>([]);
+  const [wishlist, setWishlist] = useState<WishlistItemWithCard[]>([]);
   const [registeredShows, setRegisteredShows] = useState<CardShow[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -111,18 +115,18 @@ export default function ProfilePage() {
     if (!profile) return;
 
     if (isOwner) {
-      // Owner: load full inventory + registered shows
       import("@/lib/api").then(({ getInventory }) => {
         getInventory().then(setInventory).catch(() => {});
       });
       getRegisteredShows().then(setRegisteredShows).catch(() => {});
     } else {
-      // Visitor: load public inventory
       fetch(`${API}/api/v1/profiles/${params.profile_id}/inventory`)
         .then((r) => r.ok ? r.json() : Promise.reject())
         .then(setInventory)
         .catch(() => {});
     }
+    // Both owner and visitor use the public wishlist endpoint (returns card details)
+    getPublicWishlist(params.profile_id).then(setWishlist).catch(() => {});
   }, [profile, isOwner, params.profile_id, API]);
 
   async function handleImageUpload(file: File, imageType: "background" | "avatar") {
@@ -493,7 +497,7 @@ export default function ProfilePage() {
                 ? `Inventory${inventory.length > 0 ? ` (${inventory.length})` : ""}`
                 : tab === "shows"
                 ? "Shows"
-                : "Wishlist"}
+                : `Wishlist${wishlist.length > 0 ? ` (${wishlist.length})` : ""}`}
             </button>
           ))}
         </div>
@@ -579,7 +583,70 @@ export default function ProfilePage() {
           )}
 
           {activeTab === "wishlist" && (
-            <p className="text-sm text-muted-foreground">Wishlist coming soon.</p>
+            <>
+              {wishlist.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {isOwner ? "No cards in your wishlist yet." : "No wishlist items."}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {wishlist.map((item) => (
+                    <div key={item.id} className="border rounded-lg px-3 py-2.5 flex items-start gap-3">
+                      {item.image_url ? (
+                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative mt-0.5">
+                          <Image src={item.image_url} alt={item.card_name ?? "Card"} fill sizes="40px" className="object-contain" />
+                        </div>
+                      ) : (
+                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted mt-0.5" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {item.card_name ?? item.card_id}
+                          {item.language_code === "JA" && item.card_name_en ? ` (${item.card_name_en})` : ""}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {item.set_name ?? ""}
+                          {item.language_code === "JA" && item.set_name_en ? ` (${item.set_name_en})` : ""}
+                          {item.card_num ? ` · #${item.card_num}` : ""}
+                        </p>
+                        {item.conditions.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {item.conditions.map((c) => {
+                              const label = c.condition_type === "ungraded"
+                                ? (c.condition_ungraded ?? "").toUpperCase()
+                                : `${(c.grading_company === "other" ? (c.grading_company_other ?? "Other") : (c.grading_company ?? "")).toUpperCase()} ${c.grade ?? ""}`.trim();
+                              return (
+                                <span key={c.id} className="px-1.5 py-0.5 text-xs rounded-full border bg-muted">
+                                  {label}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {(item.max_price != null || item.notes) && (
+                          <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground">
+                            {item.max_price != null && <span>Max ${item.max_price.toFixed(2)}</span>}
+                            {item.notes && <span>{item.notes}</span>}
+                          </div>
+                        )}
+                      </div>
+                      {isOwner && (
+                        <button
+                          type="button"
+                          onClick={() => removeFromWishlist(item.id).then(() =>
+                            setWishlist((prev) => prev.filter((w) => w.id !== item.id))
+                          ).catch(() => {})}
+                          className="text-xs text-muted-foreground hover:text-destructive transition-colors flex-shrink-0 mt-0.5"
+                          title="Remove"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           {activeTab === "shows" && isOwner && (

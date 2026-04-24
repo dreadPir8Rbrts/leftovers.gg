@@ -17,11 +17,14 @@ from typing import Optional, List, Dict, Any
 import boto3
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from pydantic import BaseModel, Field
+from sqlalchemy import cast
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, settings
 from app.dependencies import get_current_profile
 from app.models.catalog_v2 import CardV2, ExpansionV2
+from app.models.collector import Wishlist
 from app.models.inventory import Inventory
 from app.models.profiles import Profile
 
@@ -260,3 +263,58 @@ def get_public_profile_inventory(
     )
 
     return [_inventory_item_response(inv, card, expansion) for inv, card, expansion in rows]
+
+
+@router.get("/profiles/{profile_id}/wishlist")
+def get_public_profile_wishlist(
+    profile_id: str,
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Return wishlist for a public profile, including card details and conditions."""
+    profile = db.get(Profile, profile_id)
+    if profile is None or not profile.is_public:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+
+    rows = (
+        db.query(Wishlist, CardV2, ExpansionV2)
+        .outerjoin(CardV2, CardV2.id == cast(Wishlist.card_id, PGUUID(as_uuid=True)))
+        .outerjoin(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        .filter(Wishlist.profile_id == profile_id)
+        .order_by(Wishlist.created_at.desc())
+        .all()
+    )
+
+    return [_wishlist_item_response(item, card, expansion) for item, card, expansion in rows]
+
+
+def _wishlist_item_response(
+    item: Wishlist,
+    card: Optional[CardV2],
+    expansion: Optional[ExpansionV2],
+) -> Dict[str, Any]:
+    return {
+        "id": item.id,
+        "card_id": item.card_id,
+        "card_name": card.name if card else None,
+        "card_name_en": card.en_name if card else None,
+        "set_name": expansion.name if expansion else None,
+        "set_name_en": expansion.name_en if expansion else None,
+        "card_num": card.printed_number if card else None,
+        "rarity": card.rarity if card else None,
+        "image_url": card.image_url if card else None,
+        "language_code": card.language_code if card else None,
+        "max_price": float(item.max_price) if item.max_price is not None else None,
+        "notes": item.notes,
+        "conditions": [
+            {
+                "id": c.id,
+                "condition_type": c.condition_type,
+                "condition_ungraded": c.condition_ungraded,
+                "grading_company": c.grading_company,
+                "grading_company_other": c.grading_company_other,
+                "grade": c.grade,
+            }
+            for c in item.conditions
+        ],
+        "created_at": item.created_at.isoformat(),
+    }
