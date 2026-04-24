@@ -318,7 +318,7 @@ def _wishlist_item_response(
         "set_name_en": expansion.name_en if expansion else None,
         "card_num": card.printed_number if card else None,
         "rarity": card.rarity if card else None,
-        "image_url": card.image_url if card else None,
+        "image_url": _image_url(card.images) if card else None,
         "language_code": card.language_code if card else None,
         "max_price": float(item.max_price) if item.max_price is not None else None,
         "notes": item.notes,
