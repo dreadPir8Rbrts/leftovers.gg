@@ -15,6 +15,7 @@ import {
   ArrowLeftRight,
   UserCircle,
   TrendingUp,
+  Heart,
 } from "lucide-react";
 
 interface NavLinkProps {
@@ -54,6 +55,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
     { href: p ? `/inventory/${p}`        : "/inventory",        label: "Inventory",       icon: Package },
     { href: p ? `/transactions/${p}`     : "/transactions",     label: "Transactions",    icon: ArrowLeftRight },
     { href: "/card-shows",                                       label: "Card Shows",      icon: CalendarDays },
+    { href: p ? `/wishlist/${p}`           : "/wishlist",         label: "Wishlist",        icon: Heart },
   ];
 
   return (

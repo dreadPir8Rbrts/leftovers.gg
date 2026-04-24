@@ -15,6 +15,8 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
+import { RoleToggle } from "@/components/shared/RoleToggle";
 import Image from "next/image";
 import {
   getRegisteredShows,
@@ -54,6 +56,7 @@ function formatCondition(item: InventoryItemWithCard): string {
 export default function ProfilePage() {
   const params = useParams<{ profile_id: string }>();
   const { data: currentUserProfile } = useProfile();
+  const { activeRole } = useActiveRoleStore();
   const isOwner = currentUserProfile?.id === params.profile_id;
 
   const [profile, setProfile] = useState<AnyProfile | null>(null);
@@ -285,9 +288,16 @@ export default function ProfilePage() {
       </div>
 
       {/* Display name + role badge */}
-      <div className="mt-16 text-center px-6">
+      <div className="mt-16 text-center px-6 relative">
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
-        <span className="inline-block mt-1 text-xs text-muted-foreground capitalize">{profile.role}</span>
+        <span className="inline-block mt-1 text-xs text-muted-foreground capitalize">
+          {isOwner ? activeRole : profile.role}
+        </span>
+        {isOwner && (
+          <div className="mt-3 flex justify-center">
+            <RoleToggle />
+          </div>
+        )}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
       </div>
 
@@ -299,7 +309,8 @@ export default function ProfilePage() {
               <p className="text-sm text-muted-foreground text-center">{profile.bio}</p>
             )}
 
-            {(profile.buying_rate != null || profile.trade_rate != null) && (
+            {(isOwner ? activeRole === "vendor" : profile.role === "vendor") &&
+              (profile.buying_rate != null || profile.trade_rate != null) && (
               <div className="grid grid-cols-2 gap-3">
                 {profile.buying_rate != null && (
                   <div className="border rounded-lg p-3 text-center">

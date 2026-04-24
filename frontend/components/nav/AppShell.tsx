@@ -26,11 +26,10 @@ import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { TopNav } from "./TopNav";
 import { VendorSidebar } from "./VendorSidebar";
-import { CollectorSidebar } from "./CollectorSidebar";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { activeRole, setActiveRole } = useActiveRoleStore();
+  const { setActiveRole } = useActiveRoleStore();
   const [sessionChecked, setSessionChecked] = useState(false);
 
   useEffect(() => {
@@ -78,9 +77,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col bg-background">
       <TopNav profile={profile ?? null} />
       <div className="flex flex-1 overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
-        {activeRole === "collector"
-          ? <CollectorSidebar profileId={profile?.id} />
-          : <VendorSidebar profileId={profile?.id} />}
+        <VendorSidebar profileId={profile?.id} />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>

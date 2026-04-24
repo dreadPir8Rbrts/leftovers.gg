@@ -6,7 +6,6 @@
  */
 
 import Link from "next/link";
-import { RoleToggle } from "@/components/shared/RoleToggle";
 import { AvatarDropdown } from "./AvatarDropdown";
 import type { ProfileData } from "@/lib/api/profiles";
 
@@ -21,7 +20,6 @@ export function TopNav({ profile }: TopNavProps) {
         leftovers<span className="text-primary">.gg</span>
       </Link>
       <div className="flex-1" />
-      {profile && <RoleToggle />}
       <AvatarDropdown profile={profile ?? null} />
     </header>
   );
