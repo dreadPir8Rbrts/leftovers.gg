@@ -5,6 +5,7 @@ Routes:
   POST   /wishlist                    — add card to wishlist (authenticated)
   GET    /wishlist                    — list own wishlist (authenticated)
   DELETE /wishlist/{id}               — remove wishlist item (authenticated)
+  PATCH  /wishlist/{id}               — update notes, max_price, and/or conditions
   PUT    /wishlist/{id}/conditions    — replace all conditions on a wishlist item
 """
 
@@ -54,6 +55,12 @@ class WishlistItemCreate(BaseModel):
     max_price: Optional[float] = Field(None, ge=0)
     notes: Optional[str] = None
     conditions: List[WishlistConditionIn] = Field(default_factory=list)
+
+
+class WishlistItemPatch(BaseModel):
+    max_price: Optional[float] = Field(None, ge=0)
+    notes: Optional[str] = None
+    conditions: Optional[List[WishlistConditionIn]] = None
 
 
 class WishlistItemResponse(BaseModel):
@@ -148,6 +155,38 @@ def remove_from_wishlist(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wishlist item not found")
     db.delete(item)
     db.commit()
+
+
+@router.patch("/wishlist/{item_id}", response_model=WishlistItemResponse)
+def patch_wishlist_item(
+    item_id: str,
+    body: WishlistItemPatch,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> Wishlist:
+    item = (
+        db.query(Wishlist)
+        .filter(Wishlist.id == item_id, Wishlist.profile_id == profile.id)
+        .first()
+    )
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Wishlist item not found")
+
+    update = body.model_dump(exclude_unset=True)
+
+    if "conditions" in update:
+        update.pop("conditions")
+        for c in list(item.conditions):
+            db.delete(c)
+        db.flush()
+        item.conditions = _build_conditions(item_id, body.conditions or [])
+
+    for key, value in update.items():
+        setattr(item, key, value)
+
+    db.commit()
+    db.refresh(item)
+    return item
 
 
 @router.put("/wishlist/{item_id}/conditions", response_model=WishlistItemResponse)

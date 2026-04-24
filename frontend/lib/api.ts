@@ -322,6 +322,22 @@ export async function getPublicWishlist(profileId: string): Promise<WishlistItem
   return res.json();
 }
 
+export interface WishlistItemPatch {
+  max_price?: number | null;
+  notes?: string | null;
+  conditions?: WishlistConditionInput[];
+}
+
+export async function patchWishlistItem(id: string, patch: WishlistItemPatch): Promise<WishlistItem> {
+  const res = await fetch(`${API_URL}/api/v1/wishlist/${id}`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Failed to update wishlist item: ${res.status}`);
+  return res.json();
+}
+
 export async function updateWishlistConditions(
   itemId: string,
   conditions: WishlistConditionInput[],
