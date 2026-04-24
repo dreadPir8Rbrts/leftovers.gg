@@ -237,20 +237,37 @@ export async function addInventoryItem(item: InventoryItemCreate): Promise<void>
 // Wishlist
 // ---------------------------------------------------------------------------
 
+export interface WishlistCondition {
+  id: string;
+  condition_type: "ungraded" | "graded";
+  condition_ungraded: string | null;
+  grading_company: string | null;
+  grading_company_other: string | null;
+  grade: string | null;
+}
+
+export interface WishlistConditionInput {
+  condition_type: "ungraded" | "graded";
+  condition_ungraded?: string;
+  grading_company?: string;
+  grading_company_other?: string;
+  grade?: string;
+}
+
 export interface WishlistItem {
   id: string;
   card_id: string;
   max_price: number | null;
-  desired_condition: string | null;
   notes: string | null;
+  conditions: WishlistCondition[];
   created_at: string;
 }
 
 export interface WishlistItemCreate {
   card_id: string;
   max_price?: number;
-  desired_condition?: string;
   notes?: string;
+  conditions?: WishlistConditionInput[];
 }
 
 export async function addToWishlist(item: WishlistItemCreate): Promise<WishlistItem> {
@@ -278,6 +295,19 @@ export async function removeFromWishlist(id: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to remove from wishlist: ${res.status}`);
+}
+
+export async function updateWishlistConditions(
+  itemId: string,
+  conditions: WishlistConditionInput[],
+): Promise<WishlistItem> {
+  const res = await fetch(`${API_URL}/api/v1/wishlist/${itemId}/conditions`, {
+    method: "PUT",
+    headers: await authHeaders(),
+    body: JSON.stringify(conditions),
+  });
+  if (!res.ok) throw new Error(`Failed to update wishlist conditions: ${res.status}`);
+  return res.json();
 }
 
 // Update mutable fields on an existing inventory item

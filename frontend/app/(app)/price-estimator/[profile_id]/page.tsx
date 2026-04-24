@@ -30,6 +30,7 @@ import {
   type PricingPreferences,
   type GradedAggregation,
   type CompWindowDays,
+  type WishlistConditionInput,
 } from "@/lib/api";
 import { SoldCompsChart } from "@/components/pricing/SoldCompsChart";
 import { Button } from "@/components/ui/button";
@@ -177,6 +178,11 @@ function PriceEstimatorContent() {
   const [invAskingPrice, setInvAskingPrice]     = useState("");
   const [wlMaxPrice, setWlMaxPrice]             = useState("");
   const [wlNotes, setWlNotes]                   = useState("");
+  const [wlConditions, setWlConditions]         = useState<WishlistConditionInput[]>([]);
+  const [wlDraftType, setWlDraftType]           = useState<"ungraded" | "graded">("ungraded");
+  const [wlDraftUngraded, setWlDraftUngraded]   = useState("nm");
+  const [wlDraftCompany, setWlDraftCompany]     = useState("psa");
+  const [wlDraftGrade, setWlDraftGrade]         = useState("");
   const [actionStatus, setActionStatus]         = useState<null | "loading" | "success" | "error">(null);
   const [actionError, setActionError]           = useState<string | null>(null);
 
@@ -254,6 +260,11 @@ function PriceEstimatorContent() {
     setInvAskingPrice("");
     setWlMaxPrice("");
     setWlNotes("");
+    setWlConditions([]);
+    setWlDraftType("ungraded");
+    setWlDraftUngraded("nm");
+    setWlDraftCompany("psa");
+    setWlDraftGrade("");
     setActionStatus(null);
     setActionError(null);
   }
@@ -342,6 +353,7 @@ function PriceEstimatorContent() {
         card_id: selectedCard.id,
         max_price: wlMaxPrice ? parseFloat(wlMaxPrice) : undefined,
         notes: wlNotes || undefined,
+        conditions: wlConditions,
       });
       setActionStatus("success");
     } catch (e) {
@@ -669,6 +681,117 @@ function PriceEstimatorContent() {
           {activeAction === "wishlist" && (
             <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add to Wishlist</p>
+
+              {/* Desired conditions */}
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Desired conditions</label>
+
+                {/* Draft condition row */}
+                <div className="space-y-1.5">
+                  <div className="flex gap-1">
+                    {(["ungraded", "graded"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => { setWlDraftType(t); setWlDraftGrade(""); }}
+                        className={`px-3 py-1 text-xs rounded-md border transition-colors capitalize ${wlDraftType === t ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  {wlDraftType === "ungraded" ? (
+                    <div className="flex flex-wrap gap-1">
+                      {UNGRADED_CONDITIONS.map((c) => (
+                        <button
+                          key={c.value}
+                          onClick={() => setWlDraftUngraded(c.value)}
+                          className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${wlDraftUngraded === c.value ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}
+                        >
+                          {c.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {GRADING_COMPANIES.map((c) => (
+                          <button
+                            key={c.value}
+                            onClick={() => { setWlDraftCompany(c.value); setWlDraftGrade(""); }}
+                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${wlDraftCompany === c.value ? "bg-foreground text-background border-foreground" : "bg-background hover:bg-muted"}`}
+                          >
+                            {c.label}
+                          </button>
+                        ))}
+                      </div>
+                      {wlDraftCompany !== "other" && (
+                        <select
+                          value={wlDraftGrade}
+                          onChange={(e) => setWlDraftGrade(e.target.value)}
+                          className="w-full border rounded-md px-2 py-1.5 text-xs bg-background"
+                        >
+                          <option value="">Select grade…</option>
+                          {gradeOptionsForCompany(wlDraftCompany).map((g) => (
+                            <option key={g.value} value={g.value}>{g.label}</option>
+                          ))}
+                        </select>
+                      )}
+                      {wlDraftCompany === "other" && (
+                        <input
+                          type="text"
+                          value={wlDraftGrade}
+                          onChange={(e) => setWlDraftGrade(e.target.value)}
+                          placeholder="Grade (e.g. 9.5)"
+                          className="w-full border rounded-md px-2 py-1.5 text-xs bg-background"
+                        />
+                      )}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => {
+                      const isDupe = wlConditions.some((c) =>
+                        wlDraftType === "ungraded"
+                          ? c.condition_type === "ungraded" && c.condition_ungraded === wlDraftUngraded
+                          : c.condition_type === "graded" && c.grading_company === wlDraftCompany && c.grade === wlDraftGrade,
+                      );
+                      if (isDupe) return;
+                      if (wlDraftType === "graded" && !wlDraftGrade && wlDraftCompany !== "other") return;
+                      setWlConditions((prev) => [
+                        ...prev,
+                        wlDraftType === "ungraded"
+                          ? { condition_type: "ungraded", condition_ungraded: wlDraftUngraded }
+                          : { condition_type: "graded", grading_company: wlDraftCompany, grade: wlDraftGrade },
+                      ]);
+                    }}
+                    className="text-xs px-2.5 py-1 rounded-md border bg-background hover:bg-muted transition-colors"
+                  >
+                    + Add condition
+                  </button>
+                </div>
+
+                {/* Added conditions list */}
+                {wlConditions.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {wlConditions.map((c, i) => {
+                      const label = c.condition_type === "ungraded"
+                        ? (c.condition_ungraded ?? "").toUpperCase()
+                        : `${(c.grading_company ?? "").toUpperCase()} ${c.grade ?? ""}`.trim();
+                      return (
+                        <span key={i} className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border bg-muted">
+                          {label}
+                          <button
+                            onClick={() => setWlConditions((prev) => prev.filter((_, j) => j !== i))}
+                            className="text-muted-foreground hover:text-foreground leading-none"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Max price (optional)</label>
                 <input
@@ -687,7 +810,7 @@ function PriceEstimatorContent() {
                   type="text"
                   value={wlNotes}
                   onChange={(e) => setWlNotes(e.target.value)}
-                  placeholder="e.g. prefer PSA 9+"
+                  placeholder="e.g. looking for a deal"
                   className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
                 />
               </div>
