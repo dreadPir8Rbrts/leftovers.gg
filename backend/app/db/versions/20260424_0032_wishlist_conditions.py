@@ -7,6 +7,7 @@ Create Date: 2026-04-24
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 revision = "0032"
 down_revision = "0031"
@@ -17,10 +18,10 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "wishlist_conditions",
-        sa.Column("id", sa.String(36), primary_key=True, nullable=False),
+        sa.Column("id", UUID(as_uuid=False), primary_key=True, nullable=False),
         sa.Column(
             "wishlist_item_id",
-            sa.String(36),
+            UUID(as_uuid=False),
             sa.ForeignKey("public.wishlists.id", ondelete="CASCADE"),
             nullable=False,
         ),

@@ -20,9 +20,9 @@ class WishlistCondition(Base):
     __tablename__ = "wishlist_conditions"
     __table_args__ = {"schema": "public"}
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     wishlist_item_id: Mapped[str] = mapped_column(
-        String(36),
+        UUID(as_uuid=False),
         ForeignKey("public.wishlists.id", ondelete="CASCADE"),
         nullable=False,
     )
