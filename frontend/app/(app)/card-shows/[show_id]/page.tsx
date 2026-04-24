@@ -67,6 +67,7 @@ export default function ShowDetailPage() {
   const params = useParams<{ show_id: string }>();
   const [show, setShow] = useState<CardShow | null>(null);
   const [attendingAs, setAttendingAs] = useState<"vendor" | "collector" | null>(null);
+  const [showDiscovery, setShowDiscovery] = useState(true);
   const [attendees, setAttendees] = useState<ShowAttendee[]>([]);
   const [attendeesOpen, setAttendeesOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -84,6 +85,7 @@ export default function ShowDetailPage() {
         setShow(fetchedShow);
         const reg = registrations.find((r) => r.show_id === fetchedShow.id);
         setAttendingAs(reg?.attending_as ?? null);
+        setShowDiscovery(reg?.show_discovery ?? true);
         setAttendees(fetchedAttendees);
       })
       .catch((err: Error) => setError(err.message))
@@ -96,13 +98,24 @@ export default function ShowDetailPage() {
     setAttendingAs(role);
     setActionLoading(true);
     try {
-      await registerForShow(show.id, role);
+      await registerForShow(show.id, role, showDiscovery);
     } catch {
       setAttendingAs(prev);
     } finally {
       setActionLoading(false);
     }
-  }, [show, attendingAs]);
+  }, [show, attendingAs, showDiscovery]);
+
+  const handleToggleDiscovery = useCallback(async (enabled: boolean) => {
+    if (!show || !attendingAs) return;
+    const prev = showDiscovery;
+    setShowDiscovery(enabled);
+    try {
+      await registerForShow(show.id, attendingAs, enabled);
+    } catch {
+      setShowDiscovery(prev);
+    }
+  }, [show, attendingAs, showDiscovery]);
 
   const handleUnregister = useCallback(async () => {
     if (!show) return;
@@ -158,30 +171,43 @@ export default function ShowDetailPage() {
       <div className="mt-5 flex items-start justify-between gap-4">
         <h1 className="text-2xl font-bold leading-snug">{show.name}</h1>
 
-        {/* Two registration buttons */}
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={() => attendingAs === "vendor" ? handleUnregister() : handleRegister("vendor")}
-            disabled={actionLoading}
-            className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50
-              ${attendingAs === "vendor"
-                ? "bg-foreground text-background border-foreground hover:bg-foreground/80"
-                : "bg-background text-foreground border-border hover:bg-muted"
-              }`}
-          >
-            {attendingAs === "vendor" ? "✓ Vendor" : "Attending as Vendor"}
-          </button>
-          <button
-            onClick={() => attendingAs === "collector" ? handleUnregister() : handleRegister("collector")}
-            disabled={actionLoading}
-            className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50
-              ${attendingAs === "collector"
-                ? "bg-foreground text-background border-foreground hover:bg-foreground/80"
-                : "bg-background text-foreground border-border hover:bg-muted"
-              }`}
-          >
-            {attendingAs === "collector" ? "✓ Collector" : "Attending as Collector"}
-          </button>
+        {/* Registration buttons */}
+        <div className="flex flex-col items-end gap-2 shrink-0">
+          <div className="flex gap-2">
+            <button
+              onClick={() => attendingAs === "vendor" ? handleUnregister() : handleRegister("vendor")}
+              disabled={actionLoading}
+              className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50
+                ${attendingAs === "vendor"
+                  ? "bg-foreground text-background border-foreground hover:bg-foreground/80"
+                  : "bg-background text-foreground border-border hover:bg-muted"
+                }`}
+            >
+              {attendingAs === "vendor" ? "✓ Vendor" : "Attending as Vendor"}
+            </button>
+            <button
+              onClick={() => attendingAs === "collector" ? handleUnregister() : handleRegister("collector")}
+              disabled={actionLoading}
+              className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50
+                ${attendingAs === "collector"
+                  ? "bg-foreground text-background border-foreground hover:bg-foreground/80"
+                  : "bg-background text-foreground border-border hover:bg-muted"
+                }`}
+            >
+              {attendingAs === "collector" ? "✓ Collector" : "Attending as Collector"}
+            </button>
+          </div>
+          {attendingAs && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showDiscovery}
+                onChange={(e) => handleToggleDiscovery(e.target.checked)}
+                className="rounded"
+              />
+              Show my inventory &amp; wishlist in show discovery
+            </label>
+          )}
         </div>
       </div>
 

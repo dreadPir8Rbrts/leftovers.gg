@@ -16,6 +16,7 @@ import {
   UserCircle,
   TrendingUp,
   Heart,
+  Compass,
 } from "lucide-react";
 
 interface NavLinkProps {
@@ -54,6 +55,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
     { href: p ? `/dashboard/${p}`       : "#", label: "Dashboard",       icon: LayoutDashboard },
     { href: p ? `/price-estimator/${p}` : "#", label: "Price Estimator", icon: TrendingUp },
     { href: "/card-shows",                     label: "Card Shows",      icon: CalendarDays },
+    { href: "/discover",                       label: "Discover",        icon: Compass },
   ];
 
   const bottomItems = [

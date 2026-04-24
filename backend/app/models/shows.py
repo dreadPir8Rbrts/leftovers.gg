@@ -84,6 +84,7 @@ class ProfileShowRegistration(Base):
         nullable=False,
     )
     attending_as: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    show_discovery: Mapped[bool] = mapped_column(Boolean(), nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 
     show: Mapped["CardShow"] = relationship("CardShow")
