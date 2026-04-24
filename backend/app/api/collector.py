@@ -14,6 +14,7 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from psycopg2.errors import UniqueViolation
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -108,12 +109,14 @@ def add_to_wishlist(
     try:
         db.commit()
         db.refresh(item)
-    except IntegrityError:
+    except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Card is already in your wishlist",
-        )
+        if isinstance(exc.orig, UniqueViolation):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Card is already in your wishlist",
+            )
+        raise
     return item
 
 
