@@ -116,6 +116,23 @@ def get_profile(
     return _profile_response(profile)
 
 
+@router.get("/profiles/me/wishlist")
+def get_own_wishlist(
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Return the authenticated user's wishlist with card details."""
+    rows = (
+        db.query(Wishlist, CardV2, ExpansionV2)
+        .outerjoin(CardV2, CardV2.id == cast(Wishlist.card_id, PGUUID(as_uuid=True)))
+        .outerjoin(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        .filter(Wishlist.profile_id == profile.id)
+        .order_by(Wishlist.created_at.desc())
+        .all()
+    )
+    return [_wishlist_item_response(item, card, expansion) for item, card, expansion in rows]
+
+
 @router.patch("/profiles/me")
 def update_profile(
     body: ProfileUpdate,

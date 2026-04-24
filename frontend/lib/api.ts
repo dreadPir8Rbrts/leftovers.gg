@@ -308,6 +308,14 @@ export interface WishlistItemWithCard extends WishlistItem {
   language_code: string | null;
 }
 
+export async function getOwnWishlist(): Promise<WishlistItemWithCard[]> {
+  const res = await fetch(`${API_URL}/api/v1/profiles/me/wishlist`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wishlist: ${res.status}`);
+  return res.json();
+}
+
 export async function getPublicWishlist(profileId: string): Promise<WishlistItemWithCard[]> {
   const res = await fetch(`${API_URL}/api/v1/profiles/${profileId}/wishlist`);
   if (!res.ok) throw new Error(`Failed to fetch wishlist: ${res.status}`);

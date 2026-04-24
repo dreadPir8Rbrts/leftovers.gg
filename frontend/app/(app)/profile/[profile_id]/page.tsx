@@ -20,6 +20,7 @@ import { RoleToggle } from "@/components/shared/RoleToggle";
 import Image from "next/image";
 import {
   getRegisteredShows,
+  getOwnWishlist,
   getPublicWishlist,
   removeFromWishlist,
   type InventoryItemWithCard,
@@ -125,8 +126,8 @@ export default function ProfilePage() {
         .then(setInventory)
         .catch(() => {});
     }
-    // Both owner and visitor use the public wishlist endpoint (returns card details)
-    getPublicWishlist(params.profile_id).then(setWishlist).catch(() => {});
+    const wishlistFetch = isOwner ? getOwnWishlist() : getPublicWishlist(params.profile_id);
+    wishlistFetch.then(setWishlist).catch(() => {});
   }, [profile, isOwner, params.profile_id, API]);
 
   async function handleImageUpload(file: File, imageType: "background" | "avatar") {
