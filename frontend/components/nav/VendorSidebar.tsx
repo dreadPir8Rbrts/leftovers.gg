@@ -62,7 +62,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
     <aside className="w-56 border-r border-r-white/10 bg-black shrink-0 flex flex-col py-4 px-2 overflow-y-auto">
       <div className="flex flex-col gap-1">
         {mainItems.map((item) => (
-          <NavLink key={item.href} {...item} />
+          <NavLink key={item.label} {...item} />
         ))}
       </div>
       <div className="my-3 border-t border-white/10" />
