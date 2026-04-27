@@ -38,6 +38,7 @@ export interface ProfileData {
   buying_rate: number | null;
   trade_rate: number | null;
   is_accounting_enabled: boolean;
+  is_public: boolean;
 }
 
 export interface ProfileUpdate {
@@ -51,6 +52,7 @@ export interface ProfileUpdate {
   buying_rate?: number;
   trade_rate?: number;
   is_accounting_enabled?: boolean;
+  is_public?: boolean;
 }
 
 export async function getProfile(): Promise<ProfileData> {

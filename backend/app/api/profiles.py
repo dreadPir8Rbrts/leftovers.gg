@@ -44,6 +44,7 @@ class ProfileUpdate(BaseModel):
     buying_rate: Optional[Decimal] = Field(None, ge=0, le=1)
     trade_rate: Optional[Decimal] = Field(None, ge=0, le=1)
     is_accounting_enabled: Optional[bool] = None
+    is_public: Optional[bool] = None
 
 
 def _public_profile_response(profile: Profile) -> Dict[str, Any]:
@@ -106,6 +107,7 @@ def _profile_response(profile: Profile) -> Dict[str, Any]:
         "buying_rate": profile.buying_rate,
         "trade_rate": profile.trade_rate,
         "is_accounting_enabled": profile.is_accounting_enabled,
+        "is_public": profile.is_public,
     }
 
 

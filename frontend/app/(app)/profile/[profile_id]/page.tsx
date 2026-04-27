@@ -300,8 +300,37 @@ export default function ProfilePage() {
           {isOwner ? activeRole : profile.role}
         </span>
         {isOwner && (
-          <div className="mt-3 flex justify-center">
+          <div className="mt-3 flex flex-col items-center gap-2">
             <RoleToggle />
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <span className="text-xs text-muted-foreground">
+                {(profile as ProfileData).is_public ? "Public profile" : "Private profile"}
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={(profile as ProfileData).is_public}
+                onClick={async () => {
+                  const next = !(profile as ProfileData).is_public;
+                  setProfile((prev) => prev ? { ...prev, is_public: next } : prev);
+                  try {
+                    const updated = await updateProfile({ is_public: next });
+                    setProfile(updated);
+                  } catch {
+                    setProfile((prev) => prev ? { ...prev, is_public: !next } : prev);
+                  }
+                }}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                  (profile as ProfileData).is_public ? "bg-primary" : "bg-muted border"
+                }`}
+              >
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                    (profile as ProfileData).is_public ? "translate-x-4" : "translate-x-1"
+                  }`}
+                />
+              </button>
+            </label>
           </div>
         )}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
