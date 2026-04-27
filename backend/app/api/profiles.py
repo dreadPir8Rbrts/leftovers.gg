@@ -277,6 +277,7 @@ def get_public_profile_inventory(
             Inventory.profile_id == profile_id,
             Inventory.status == "active",
             Inventory.deleted_at.is_(None),
+            Inventory.is_public.is_(True),
             (Inventory.is_for_sale.is_(True)) | (Inventory.is_for_trade.is_(True)),
         )
         .all()

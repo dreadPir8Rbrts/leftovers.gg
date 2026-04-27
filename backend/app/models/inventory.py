@@ -44,6 +44,7 @@ class Inventory(Base):
     asking_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     is_for_sale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_for_trade: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     photo_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="active")

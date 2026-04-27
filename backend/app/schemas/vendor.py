@@ -116,4 +116,5 @@ class InventoryItemPatch(BaseModel):
     asking_price: Optional[Decimal] = Field(None, ge=0)
     is_for_sale: Optional[bool] = None
     is_for_trade: Optional[bool] = None
+    is_public: Optional[bool] = None
     notes: Optional[str] = None

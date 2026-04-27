@@ -22,6 +22,7 @@ import {
   getRegisteredShows,
   getOwnWishlist,
   getPublicWishlist,
+  patchInventoryItem,
   type InventoryItemWithCard,
   type CardShow,
   type WishlistItemWithCard,
@@ -587,14 +588,36 @@ export default function ProfilePage() {
                           {item.is_for_sale && <span className="text-xs text-muted-foreground">Sale</span>}
                           {item.is_for_trade && <span className="text-xs text-muted-foreground">Trade</span>}
                           {isOwner && (
-                            <button
-                              type="button"
-                              onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
-                              className="ml-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                              title="Edit"
-                            >
-                              ✎
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={item.is_public}
+                                title={item.is_public ? "Public — click to hide" : "Hidden — click to show"}
+                                onClick={async () => {
+                                  const next = !item.is_public;
+                                  setInventory((prev) => prev.map((i) => i.id === item.id ? { ...i, is_public: next } : i));
+                                  try {
+                                    await patchInventoryItem(item.id, { is_public: next });
+                                  } catch {
+                                    setInventory((prev) => prev.map((i) => i.id === item.id ? { ...i, is_public: !next } : i));
+                                  }
+                                }}
+                                className={`ml-1 relative inline-flex h-4 w-7 items-center rounded-full transition-colors focus:outline-none ${
+                                  item.is_public ? "bg-primary" : "bg-muted border"
+                                }`}
+                              >
+                                <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${item.is_public ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+                                className="ml-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                title="Edit"
+                              >
+                                ✎
+                              </button>
+                            </>
                           )}
                         </div>
                       </div>

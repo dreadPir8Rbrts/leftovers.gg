@@ -61,6 +61,7 @@ export interface InventoryItemPatch {
   asking_price?: number;
   is_for_sale?: boolean;
   is_for_trade?: boolean;
+  is_public?: boolean;
   notes?: string;
 }
 
@@ -200,6 +201,7 @@ export interface InventoryItemWithCard {
   asking_price?: number;
   is_for_sale: boolean;
   is_for_trade: boolean;
+  is_public: boolean;
   notes?: string;
   created_at: string;
   estimated_value?: number;

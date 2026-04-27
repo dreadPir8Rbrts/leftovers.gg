@@ -276,6 +276,7 @@ def list_inventory(
             "asking_price": item.asking_price,
             "is_for_sale": item.is_for_sale,
             "is_for_trade": item.is_for_trade,
+            "is_public": item.is_public,
             "notes": item.notes,
             "created_at": item.created_at,
             "estimated_value": estimated_value,
@@ -317,6 +318,8 @@ def patch_inventory_item(
         item.is_for_sale = body.is_for_sale
     if body.is_for_trade is not None:
         item.is_for_trade = body.is_for_trade
+    if body.is_public is not None:
+        item.is_public = body.is_public
     if body.notes is not None:
         item.notes = body.notes
 
