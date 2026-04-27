@@ -340,6 +340,7 @@ def patch_inventory_item(
         "asking_price": item.asking_price,
         "is_for_sale": item.is_for_sale,
         "is_for_trade": item.is_for_trade,
+        "is_public": item.is_public,
         "notes": item.notes,
         "photo_url": item.photo_url,
         "created_at": item.created_at,

@@ -93,6 +93,7 @@ class InventoryItemWithCardResponse(BaseModel):
     asking_price: Optional[Decimal]
     is_for_sale: bool
     is_for_trade: bool
+    is_public: bool = True
     notes: Optional[str]
     created_at: datetime
     estimated_value: Optional[Decimal] = None
