@@ -1,9 +1,9 @@
 """
 FastAPI dependencies for authentication.
 
-get_current_profile — verifies a Supabase JWT from the Authorization header
-using Supabase's JWKS endpoint (ES256 asymmetric signing), then returns
-the matching public.profiles row. Used by all protected routes.
+get_current_profile  — verifies a Supabase JWT, raises 401 if missing/invalid.
+get_optional_profile — same verification, returns None instead of raising 401.
+                       Used for endpoints accessible to anonymous users.
 """
 
 from typing import Optional, List
@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db, settings
 from app.models.profiles import Profile
 
-_bearer = HTTPBearer()
+_bearer          = HTTPBearer()
+_optional_bearer = HTTPBearer(auto_error=False)
 
 # Module-level JWKS cache — fetched once on first request, reused after.
 _jwks_keys: Optional[List[dict]] = None
@@ -49,16 +50,11 @@ def _get_jwks() -> List[dict]:
         )
 
 
-def get_current_profile(
-    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
-    db: Session = Depends(get_db),
-) -> Profile:
+def _verify_token(token: str, db: Session) -> Profile:
+    """Verify a Supabase JWT and return the matching Profile row.
+
+    Raises HTTPException on any failure (invalid token, unknown user, etc.).
     """
-    Verify the Bearer JWT issued by Supabase Auth (ES256).
-    Returns the public.profiles row for the authenticated user.
-    Raises HTTP 401 if the token is missing, expired, or invalid.
-    """
-    token = credentials.credentials
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid or expired token",
@@ -67,16 +63,15 @@ def get_current_profile(
 
     try:
         header = jwt.get_unverified_header(token)
-        kid = header.get("kid")
-        keys = _get_jwks()
+        kid    = header.get("kid")
+        keys   = _get_jwks()
 
-        # Match by kid if present, otherwise try all keys
         candidates = [k for k in keys if k.get("kid") == kid] if kid else keys
         if not candidates:
             candidates = keys
 
         last_exc = None
-        payload = None
+        payload  = None
         for key_data in candidates:
             try:
                 public_key = jwk.construct(key_data)
@@ -109,3 +104,29 @@ def get_current_profile(
         )
 
     return profile
+
+
+def get_current_profile(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+    db: Session = Depends(get_db),
+) -> Profile:
+    """Verify the Bearer JWT issued by Supabase Auth (ES256).
+    Returns the public.profiles row for the authenticated user.
+    Raises HTTP 401 if the token is missing, expired, or invalid.
+    """
+    return _verify_token(credentials.credentials, db)
+
+
+def get_optional_profile(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_bearer),
+    db: Session = Depends(get_db),
+) -> Optional[Profile]:
+    """Like get_current_profile but returns None instead of raising 401 when no
+    token is present. Used for endpoints accessible to anonymous users.
+    """
+    if credentials is None:
+        return None
+    try:
+        return _verify_token(credentials.credentials, db)
+    except HTTPException:
+        return None

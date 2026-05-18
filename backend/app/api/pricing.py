@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, settings
-from app.dependencies import get_current_profile
+from app.dependencies import get_current_profile, get_optional_profile
 from urllib.parse import urlencode
 
 from app.models.catalog import PriceSnapshot, SoldComp
@@ -624,13 +624,13 @@ def get_card_sold_comps(
     grade: Optional[str] = Query(None),
     condition_ungraded: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=500),
-    profile: Profile = Depends(get_current_profile),
+    profile: Optional[Profile] = Depends(get_optional_profile),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Return eBay sold comps for a card (up to 90 days) with optional condition filters.
 
-    Each comp includes an `excluded` flag indicating whether the current user
-    has excluded it from their price estimation.
+    Auth is optional — anonymous users receive the same comps with excluded=false.
+    Authenticated users have their per-comp exclusions reflected in the response.
 
     Returns 200 with comps data when cached data exists.
     Returns 202 with { "status": "pending" } when no data is cached yet.
@@ -665,12 +665,16 @@ def get_card_sold_comps(
         .all()
     )
 
-    excluded_ids = {
-        row.sold_comp_id
-        for row in db.query(ExcludedSoldComp)
-        .filter(ExcludedSoldComp.profile_id == profile.id)
-        .all()
-    }
+    excluded_ids = (
+        {
+            row.sold_comp_id
+            for row in db.query(ExcludedSoldComp)
+            .filter(ExcludedSoldComp.profile_id == profile.id)
+            .all()
+        }
+        if profile is not None
+        else set()
+    )
 
     ebay_url = _build_ebay_search_url(db, card_v2_id, grading_company, grade)
 
