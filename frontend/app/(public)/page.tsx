@@ -86,7 +86,7 @@ export default function HomePage() {
             <Link href="/price-estimator">Price Estimator</Link>
           </Button>
           <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
-            <Link href="/card-shows">Browse Shows</Link>
+            <Link href="/browse-shows">Browse Shows</Link>
           </Button>
         </div>
       </section>

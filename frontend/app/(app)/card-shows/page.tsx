@@ -237,7 +237,6 @@ export default function CardShowsPage() {
       <h1 className="text-2xl font-bold mb-1">Upcoming Card Shows</h1>
       <p className="text-muted-foreground text-sm mb-5">Updated weekly.</p>
 
-      {/* Filter bar */}
       <div className="border rounded-lg p-4 mb-6 flex flex-col gap-3">
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
@@ -252,7 +251,6 @@ export default function CardShowsPage() {
               className="border rounded-md px-3 py-2 text-sm bg-background w-32"
             />
           </div>
-
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">Radius</label>
             <select
@@ -265,7 +263,6 @@ export default function CardShowsPage() {
               ))}
             </select>
           </div>
-
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground">State</label>
             <input
@@ -277,7 +274,6 @@ export default function CardShowsPage() {
               className="border rounded-md px-3 py-2 text-sm bg-background w-20"
             />
           </div>
-
           <button
             onClick={handleUseMyLocation}
             disabled={locating}
@@ -292,23 +288,15 @@ export default function CardShowsPage() {
             </svg>
             {locating ? "Locating..." : "Use my location"}
           </button>
-
-          <button
-            onClick={handleApply}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-foreground text-background hover:bg-foreground/80 transition-colors"
-          >
+          <button onClick={handleApply} className="px-4 py-2 text-sm font-medium rounded-md bg-foreground text-background hover:bg-foreground/80 transition-colors">
             Apply
           </button>
           {anyFilterActive && (
-            <button
-              onClick={handleClear}
-              className="px-4 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
-            >
+            <button onClick={handleClear} className="px-4 py-2 text-sm rounded-md border hover:bg-muted transition-colors">
               Clear
             </button>
           )}
         </div>
-
         {locError && <p className="text-xs text-destructive">{locError}</p>}
         {draft.useMyLocation && !locError && (
           <p className="text-xs text-muted-foreground">Using your current location.</p>

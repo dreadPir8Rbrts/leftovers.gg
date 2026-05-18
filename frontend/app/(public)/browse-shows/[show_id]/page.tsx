@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import {
-  getShow,
-  getMyShowRegistrations,
-  getShowAttendees,
-  registerForShow,
-  unregisterFromShow,
-  type CardShow,
-  type ShowAttendee,
-} from "@/lib/api";
+import { getShow, getShowAttendees, type CardShow, type ShowAttendee } from "@/lib/api";
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
@@ -52,70 +44,25 @@ function AttendeeList({ attendees, emptyLabel }: { attendees: ShowAttendee[]; em
   );
 }
 
-export default function ShowDetailPage() {
+export default function BrowseShowDetailPage() {
   const params = useParams<{ show_id: string }>();
   const [show, setShow] = useState<CardShow | null>(null);
-  const [attendingAs, setAttendingAs] = useState<"vendor" | "collector" | null>(null);
-  const [showDiscovery, setShowDiscovery] = useState(true);
   const [attendees, setAttendees] = useState<ShowAttendee[]>([]);
   const [attendeesOpen, setAttendeesOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!params.show_id) return;
 
-    Promise.all([getShow(params.show_id), getMyShowRegistrations(), getShowAttendees(params.show_id)])
-      .then(([fetchedShow, registrations, fetchedAttendees]) => {
+    Promise.all([getShow(params.show_id), getShowAttendees(params.show_id)])
+      .then(([fetchedShow, fetchedAttendees]) => {
         setShow(fetchedShow);
-        const reg = registrations.find((r) => r.show_id === fetchedShow.id);
-        setAttendingAs(reg?.attending_as ?? null);
-        setShowDiscovery(reg?.show_discovery ?? true);
         setAttendees(fetchedAttendees);
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [params.show_id]);
-
-  const handleRegister = useCallback(async (role: "vendor" | "collector") => {
-    if (!show) return;
-    const prev = attendingAs;
-    setAttendingAs(role);
-    setActionLoading(true);
-    try {
-      await registerForShow(show.id, role, showDiscovery);
-    } catch {
-      setAttendingAs(prev);
-    } finally {
-      setActionLoading(false);
-    }
-  }, [show, attendingAs, showDiscovery]);
-
-  const handleToggleDiscovery = useCallback(async (enabled: boolean) => {
-    if (!show || !attendingAs) return;
-    const prev = showDiscovery;
-    setShowDiscovery(enabled);
-    try {
-      await registerForShow(show.id, attendingAs, enabled);
-    } catch {
-      setShowDiscovery(prev);
-    }
-  }, [show, attendingAs, showDiscovery]);
-
-  const handleUnregister = useCallback(async () => {
-    if (!show) return;
-    const prev = attendingAs;
-    setAttendingAs(null);
-    setActionLoading(true);
-    try {
-      await unregisterFromShow(show.id);
-    } catch {
-      setAttendingAs(prev);
-    } finally {
-      setActionLoading(false);
-    }
-  }, [show, attendingAs]);
 
   if (loading) return <div className="p-6 text-muted-foreground text-sm">Loading...</div>;
 
@@ -123,7 +70,7 @@ export default function ShowDetailPage() {
     return (
       <div className="p-6">
         <p className="text-destructive text-sm mb-4">{error ?? "Show not found."}</p>
-        <Link href="/card-shows" className="text-sm underline">← Back to card shows</Link>
+        <Link href="/browse-shows" className="text-sm underline">← Back to card shows</Link>
       </div>
     );
   }
@@ -139,7 +86,7 @@ export default function ShowDetailPage() {
 
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <Link href="/card-shows" className="text-sm text-muted-foreground hover:underline">
+      <Link href="/browse-shows" className="text-sm text-muted-foreground hover:underline">
         ← Back to card shows
       </Link>
 
@@ -151,31 +98,9 @@ export default function ShowDetailPage() {
 
       <div className="mt-5 flex items-start justify-between gap-4">
         <h1 className="text-2xl font-bold leading-snug">{show.name}</h1>
-
-        <div className="flex flex-col items-end gap-2 shrink-0">
-          <div className="flex gap-2">
-            <button
-              onClick={() => attendingAs === "vendor" ? handleUnregister() : handleRegister("vendor")}
-              disabled={actionLoading}
-              className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50 ${attendingAs === "vendor" ? "bg-foreground text-background border-foreground hover:bg-foreground/80" : "bg-background text-foreground border-border hover:bg-muted"}`}
-            >
-              {attendingAs === "vendor" ? "✓ Vendor" : "Attending as Vendor"}
-            </button>
-            <button
-              onClick={() => attendingAs === "collector" ? handleUnregister() : handleRegister("collector")}
-              disabled={actionLoading}
-              className={`text-sm font-medium px-4 py-2 rounded-md border transition-colors disabled:opacity-50 ${attendingAs === "collector" ? "bg-foreground text-background border-foreground hover:bg-foreground/80" : "bg-background text-foreground border-border hover:bg-muted"}`}
-            >
-              {attendingAs === "collector" ? "✓ Collector" : "Attending as Collector"}
-            </button>
-          </div>
-          {attendingAs && (
-            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
-              <input type="checkbox" checked={showDiscovery} onChange={(e) => handleToggleDiscovery(e.target.checked)} className="rounded" />
-              Show my inventory &amp; wishlist in show discovery
-            </label>
-          )}
-        </div>
+        <Link href="/signup" className="shrink-0 text-sm font-medium px-4 py-2 rounded-md border border-border hover:bg-muted transition-colors">
+          Sign in to register
+        </Link>
       </div>
 
       <div className="mt-4 flex flex-col gap-3">
