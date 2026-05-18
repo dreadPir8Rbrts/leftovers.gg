@@ -1,9 +1,6 @@
-/**
- * Homepage — leftovers.gg landing page.
- *
- * Sections: Hero → Value props → Price Estimator callout → Who it's for → CTA footer
- */
+"use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,10 +11,10 @@ import {
   BarChart2,
   Check,
 } from "lucide-react";
-
-// ---------------------------------------------------------------------------
-// Data
-// ---------------------------------------------------------------------------
+import { supabase } from "@/lib/supabase";
+import { useProfile } from "@/lib/hooks/useProfile";
+import { VendorSidebar } from "@/components/nav/VendorSidebar";
+import { MobileBottomNav } from "@/components/nav/MobileBottomNav";
 
 const FEATURES = [
   {
@@ -57,18 +54,15 @@ const COLLECTOR_BULLETS = [
   "Browse show listings before you arrive",
 ];
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
-
-export default function HomePage() {
+function MarketingContent({ showCtas }: { showCtas: boolean }) {
   return (
     <div className="bg-black text-white">
-
-      {/* ------------------------------------------------------------------ */}
-      {/* Hero                                                                */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] text-center px-6 py-24">
+      {/* Hero */}
+      <section
+        className={`flex flex-col items-center justify-center text-center px-6 py-24 ${
+          showCtas ? "min-h-[calc(100vh-3.5rem)]" : ""
+        }`}
+      >
         <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "#c9104f" }}>
           Built for TCG vendors
         </p>
@@ -78,22 +72,22 @@ export default function HomePage() {
         <p className="mt-6 text-lg text-gray-400 max-w-xl">
           Price lookups, inventory, transactions, and card shows — all in one place. Stop juggling five tabs and a spreadsheet.
         </p>
-        <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-          <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
-            <Link href="/signup">Get Started Free</Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
-            <Link href="/price-estimator">Price Estimator</Link>
-          </Button>
-          <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
-            <Link href="/browse-shows">Browse Shows</Link>
-          </Button>
-        </div>
+        {showCtas && (
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
+            <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
+              <Link href="/signup">Get Started Free</Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
+              <Link href="/price-estimator">Price Estimator</Link>
+            </Button>
+            <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
+              <Link href="/browse-shows">Browse Shows</Link>
+            </Button>
+          </div>
+        )}
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Value props                                                         */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Value props */}
       <section className="border-t border-white/10 px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-4">
@@ -121,9 +115,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Price estimator callout                                             */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Price estimator callout */}
       <section className="border-t border-white/10 px-6 py-24 bg-white/[0.02]">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
@@ -176,16 +168,13 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Who it's for                                                        */}
-      {/* ------------------------------------------------------------------ */}
+      {/* Who it's for */}
       <section className="border-t border-white/10 px-6 py-24">
         <div className="max-w-5xl mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-14">
             Built for vendors. Useful for collectors.
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
             <div className="rounded-xl border p-8" style={{ borderColor: "#c9104f55", backgroundColor: "#c9104f08" }}>
               <div className="flex items-center gap-3 mb-6">
                 <BarChart2 size={20} style={{ color: "#c9104f" }} />
@@ -201,7 +190,6 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
-
             <div className="rounded-xl border border-white/10 p-8 bg-white/[0.02]">
               <div className="flex items-center gap-3 mb-6">
                 <Package size={20} className="text-gray-400" />
@@ -216,26 +204,56 @@ export default function HomePage() {
                 ))}
               </ul>
             </div>
-
           </div>
         </div>
       </section>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* Footer CTA                                                          */}
-      {/* ------------------------------------------------------------------ */}
-      <section className="border-t border-white/10 px-6 py-24 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold mb-4">
-          Ready to run your hobby like a business?
-        </h2>
-        <p className="text-gray-400 mb-10 max-w-md mx-auto">
-          Built for the hobby, not the enterprise. Free to get started.
-        </p>
-        <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
-          <Link href="/signup">Create Your Account</Link>
-        </Button>
-      </section>
-
+      {/* Footer CTA — anonymous only */}
+      {showCtas && (
+        <section className="border-t border-white/10 px-6 py-24 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+            Ready to run your hobby like a business?
+          </h2>
+          <p className="text-gray-400 mb-10 max-w-md mx-auto">
+            Built for the hobby, not the enterprise. Free to get started.
+          </p>
+          <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
+            <Link href="/signup">Create Your Account</Link>
+          </Button>
+        </section>
+      )}
     </div>
+  );
+}
+
+export default function HomePage() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [sessionChecked, setSessionChecked] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsLoggedIn(!!data.session);
+      setSessionChecked(true);
+    });
+  }, []);
+
+  const { data: profile } = useProfile({ enabled: isLoggedIn });
+
+  // Anonymous view (also shown briefly while session loads)
+  if (!sessionChecked || !isLoggedIn) {
+    return <MarketingContent showCtas={true} />;
+  }
+
+  // Logged-in view — sidebar layout, no conversion CTAs
+  return (
+    <>
+      <div className="flex" style={{ height: "calc(100vh - 3.5rem)" }}>
+        <VendorSidebar profileId={profile?.id} />
+        <div className="flex-1 overflow-y-auto pb-16 md:pb-0">
+          <MarketingContent showCtas={false} />
+        </div>
+      </div>
+      <MobileBottomNav profileId={profile?.id} />
+    </>
   );
 }
