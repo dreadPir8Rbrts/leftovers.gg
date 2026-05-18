@@ -499,21 +499,49 @@ function PriceEstimatorContent() {
 
       {/* Search */}
       <div className="border rounded-lg p-4 space-y-3">
-        <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => { setQuery(e.target.value); if (showAdvanced) setShowAdvanced(false); }}
-              placeholder="e.g. squirtle 170, jolteon prismatic, 034/193 ja…"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-              disabled={showAdvanced}
-            />
-            {searching && !showAdvanced && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
-            )}
-          </div>
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); if (showAdvanced) setShowAdvanced(false); }}
+            placeholder="e.g. squirtle 170, jolteon prismatic, 034/193 ja…"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            disabled={showAdvanced}
+          />
+          {searching && !showAdvanced && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
+          )}
         </div>
+
+        {/* Mobile-only inventory picker */}
+        {!inventoryLoading && inventory.length > 0 && (
+          <div className="block md:hidden">
+            <select
+              value=""
+              onChange={(e) => {
+                const item = inventory.find((i) => i.id === e.target.value);
+                if (item) handleSelectFromInventory(item);
+              }}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            >
+              <option value="">Select from inventory…</option>
+              {inventory.map((item) => {
+                const condLabel =
+                  item.condition_type === "graded" && item.grading_company && item.grade
+                    ? `${item.grading_company.toUpperCase()} ${item.grade}`
+                    : item.condition_ungraded
+                    ? item.condition_ungraded.toUpperCase()
+                    : "—";
+                const name = item.language_code === "JA" && item.card_name_en ? item.card_name_en : item.card_name;
+                return (
+                  <option key={item.id} value={item.id}>
+                    {name} · {condLabel}
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <button
@@ -1008,8 +1036,8 @@ function PriceEstimatorContent() {
 
         </div>{/* end main content */}
 
-        {/* Inventory sidebar */}
-        <div className="w-72 flex-shrink-0 border rounded-lg overflow-hidden">
+        {/* Inventory sidebar — desktop only */}
+        <div className="hidden md:block w-72 flex-shrink-0 border rounded-lg overflow-hidden">
           <div className="px-3 py-2.5 border-b bg-muted/40">
             <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">My Inventory</p>
           </div>
