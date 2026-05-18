@@ -66,7 +66,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
   ];
 
   return (
-    <aside className="w-56 border-r border-r-white/10 bg-black shrink-0 flex flex-col py-4 px-2 overflow-y-auto">
+    <aside className="hidden md:flex w-56 border-r border-r-white/10 bg-black shrink-0 flex-col py-4 px-2 overflow-y-auto">
       <div className="flex flex-col gap-1">
         {topItems.map((item) => (
           <NavLink key={item.label} {...item} />

@@ -26,6 +26,7 @@ import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { TopNav } from "./TopNav";
 import { VendorSidebar } from "./VendorSidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -78,8 +79,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <TopNav profile={profile ?? null} />
       <div className="flex flex-1 overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
         <VendorSidebar profileId={profile?.id} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{children}</main>
       </div>
+      <MobileBottomNav profileId={profile?.id} />
     </div>
   );
 }
