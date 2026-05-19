@@ -7,36 +7,34 @@ Routes:
   POST /vendor/profile/image — generate presigned S3 URL for profile image upload
 """
 
+import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db, settings
+from app.db.session import get_db, SessionLocal, settings
 from app.dependencies import get_current_profile
-from app.models.catalog import SoldComp
-from app.models.excluded_sold_comps import ExcludedSoldComp
 from app.models.inventory import Inventory
 from app.models.profiles import Profile
 from app.models.catalog_v2 import CardV2, ExpansionV2
+from app.models.scrydex_prices import ScrydexPrice
 from app.schemas.vendor import (
     InventoryItemCreate,
     InventoryItemPatch,
     InventoryItemResponse,
     InventoryItemWithCardResponse,
 )
-from app.api.pricing import (
-    _aggregate_prices,
-    _enqueue_ebay_on_demand,
-    _get_or_create_preferences,
-)
+from app.api.pricing import _enqueue_ebay_on_demand
+from app.services.scrydex import fetch_scrydex_prices, lookup_market_price
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["inventory"])
 
@@ -168,8 +166,34 @@ def add_inventory_item(
     }
 
 
+def _refresh_scrydex_cache(cards: List[Tuple[str, str]]) -> None:
+    """Background task: fetch and upsert Scrydex prices for stale/missing cards."""
+    db = SessionLocal()
+    try:
+        for card_v2_id, external_id in cards:
+            prices = fetch_scrydex_prices(external_id)
+            if prices is None:
+                continue
+            existing = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
+            if existing:
+                existing.prices_json = prices
+                existing.fetched_at = datetime.utcnow()
+            else:
+                db.add(ScrydexPrice(
+                    card_v2_id=card_v2_id,
+                    prices_json=prices,
+                    fetched_at=datetime.utcnow(),
+                ))
+            db.commit()
+    except Exception as exc:
+        logger.error("Scrydex cache refresh error: %s", exc)
+    finally:
+        db.close()
+
+
 @router.get("/inventory", response_model=List[InventoryItemWithCardResponse])
 def list_inventory(
+    background_tasks: BackgroundTasks,
     condition_type: Optional[str] = Query(None),
     card_id: Optional[str] = Query(None),
     is_for_sale: Optional[bool] = Query(None),
@@ -200,69 +224,50 @@ def list_inventory(
 
     rows = query.order_by(Inventory.created_at.desc()).offset(offset).limit(limit).all()
 
-    # Build estimated_value for graded items using stored sold comps + user preferences.
-    prefs = _get_or_create_preferences(db, profile.id)
+    # ---------------------------------------------------------------------------
+    # Scrydex price cache lookup
+    # ---------------------------------------------------------------------------
+    SCRYDEX_CACHE_TTL_HOURS = 24
+    stale_cutoff = datetime.utcnow() - timedelta(hours=SCRYDEX_CACHE_TTL_HOURS)
 
-    comp_map: Dict[tuple, List[SoldComp]] = {}
-    graded_combos = {
-        (item.card_v2_id, item.grading_company, item.grade)
-        for item, _, _ in rows
-        if item.condition_type == "graded" and item.grading_company and item.grade
-    }
+    # Collect unique (card_v2_id, external_id) pairs for all inventory items
+    card_external: Dict[str, str] = {}
+    for item, card, _ in rows:
+        if card.external_id and card.game == "pokemon":
+            card_external[str(item.card_v2_id)] = card.external_id
 
-    if graded_combos:
-        excluded_ids = {
-            row.sold_comp_id
-            for row in db.query(ExcludedSoldComp)
-            .filter(ExcludedSoldComp.profile_id == profile.id)
-            .all()
-        }
-        sold_cutoff = datetime.utcnow() - timedelta(days=prefs.graded_comp_window_days)
-        fetch_cutoff = datetime.utcnow() - timedelta(days=90)
-        conditions = or_(*[
-            and_(
-                SoldComp.card_v2_id == card_v2_id,
-                SoldComp.grading_company == gc,
-                SoldComp.grade == gr,
-            )
-            for card_v2_id, gc, gr in graded_combos
-        ])
-        all_comps = (
-            db.query(SoldComp)
-            .filter(
-                conditions,
-                SoldComp.condition_type == "graded",
-                SoldComp.sold_date >= sold_cutoff,
-                SoldComp.price.isnot(None),
-                SoldComp.fetched_at >= fetch_cutoff,
-            )
-            .order_by(SoldComp.sold_date.desc().nullslast())
+    # Batch-fetch cached Scrydex prices
+    scrydex_cache: Dict[str, List] = {}
+    needs_refresh: List[Tuple[str, str]] = []
+
+    if card_external:
+        cached_rows = (
+            db.query(ScrydexPrice)
+            .filter(ScrydexPrice.card_v2_id.in_(list(card_external.keys())))
             .all()
         )
-        for comp in all_comps:
-            if comp.id in excluded_ids:
-                continue
-            key = (str(comp.card_v2_id), comp.grading_company, comp.grade)
-            comp_map.setdefault(key, []).append(comp)
+        cached_by_id = {row.card_v2_id: row for row in cached_rows}
 
-    now = datetime.utcnow()
+        for card_v2_id, external_id in card_external.items():
+            cached = cached_by_id.get(card_v2_id)
+            if cached and cached.fetched_at >= stale_cutoff:
+                scrydex_cache[card_v2_id] = cached.prices_json
+            else:
+                needs_refresh.append((card_v2_id, external_id))
+
+    if needs_refresh:
+        background_tasks.add_task(_refresh_scrydex_cache, needs_refresh)
 
     result = []
     for item, card, expansion in rows:
-        estimated_value = None
-        if item.condition_type == "graded" and item.grading_company and item.grade:
-            comps = comp_map.get((str(item.card_v2_id), item.grading_company, item.grade), [])
-            if comps:
-                prices = [float(c.price) for c in comps]
-                days_ago = [(now - c.sold_date).days if c.sold_date else 0.0 for c in comps]
-                estimated_value = _aggregate_prices(
-                    prices,
-                    prefs.graded_aggregation,
-                    iqr_multiplier=float(prefs.graded_iqr_multiplier),
-                    halflife_days=prefs.graded_recency_halflife_days,
-                    trim_pct=float(prefs.graded_trim_pct),
-                    days_ago=days_ago,
-                )
+        prices = scrydex_cache.get(str(item.card_v2_id), [])
+        estimated_value = lookup_market_price(
+            prices,
+            item.condition_type,
+            item.condition_ungraded,
+            item.grading_company,
+            item.grade,
+        )
         result.append({
             "id": item.id,
             "card_id": str(item.card_v2_id),
