@@ -1009,6 +1009,34 @@ export async function getCardEstimatedValue(
 }
 
 // ---------------------------------------------------------------------------
+// Scrydex prices
+// ---------------------------------------------------------------------------
+
+export interface ScrydexPriceEntry {
+  type: "raw" | "graded";
+  condition?: string;       // raw only: NM, LP, MP, HP, DM
+  company?: string;         // graded only: PSA, BGS, CGC, etc.
+  grade?: string;           // graded only: "10", "9.5", etc.
+  is_perfect?: boolean;
+  is_signed?: boolean;
+  is_error?: boolean;
+  market?: number | null;
+  low?: number | null;
+  mid?: number | null;
+  high?: number | null;
+}
+
+export async function getCardScrydexPrices(
+  cardV2Id: string
+): Promise<{ prices: ScrydexPriceEntry[] }> {
+  const res = await fetch(`${API_URL}/api/v1/cards/${cardV2Id}/scrydex-prices`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load Scrydex prices: ${res.status}`);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // Identify a card via Google Cloud Vision OCR — faster than Claude Vision.
 // Note: do NOT set Content-Type header — browser sets it with the multipart boundary.
 export async function quickIdentifyCard(file: File): Promise<QuickScanResult> {

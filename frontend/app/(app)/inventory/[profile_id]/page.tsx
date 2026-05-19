@@ -21,18 +21,10 @@ import {
   quickIdentifyCard,
   addInventoryItem,
   getInventory,
-  getCardPricing,
-  getSoldComps,
-  excludeSoldComp,
-  unexcludeSoldComp,
-  getMyPricingPreferences,
+  getCardScrydexPrices,
   type Card,
   type InventoryItemWithCard,
-  type SoldCompsParams,
-  type SoldCompsResponse,
-  type PricingPreferences,
-  type GradedAggregation,
-  type CompWindowDays,
+  type ScrydexPriceEntry,
 } from "@/lib/api";
 import { InventoryEditPanel } from "@/components/inventory/InventoryEditPanel";
 import { Button } from "@/components/ui/button";
@@ -252,28 +244,16 @@ export default function InventoryPage() {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Pricing debug
-  const [pricingResult, setPricingResult] = useState<unknown>(null);
-  const [pricingLoading, setPricingLoading] = useState(false);
-  const [pricingError, setPricingError] = useState<string | null>(null);
-  const pricingPrefetchRef = useRef<Promise<unknown> | null>(null);
+  // Scrydex prices (shared by Raw Prices + Sold Comps sections)
+  const [scrydexPrices, setScrydexPrices] = useState<ScrydexPriceEntry[] | null>(null);
+  const [scrydexLoading, setScrydexLoading] = useState(false);
+  const [scrydexError, setScrydexError] = useState<string | null>(null);
 
-  // Sold comps
+  // Sold comps condition selector
   const [compsConditionType, setCompsConditionType] = useState<"ungraded" | "graded">("ungraded");
   const [compsConditionUngraded, setCompsConditionUngraded] = useState("nm");
   const [compsGradingCompany, setCompsGradingCompany] = useState("psa");
   const [compsGrade, setCompsGrade] = useState("");
-  const [compsResult, setCompsResult] = useState<SoldCompsResponse | null>(null);
-  const [compsLoading, setCompsLoading] = useState(false);
-  const [compsError, setCompsError] = useState<string | null>(null);
-
-  // Estimation controls (defaults; overridden by saved prefs on load)
-  const [estWindow, setEstWindow] = useState<CompWindowDays>(30);
-  const [estMethod, setEstMethod] = useState<GradedAggregation>("median");
-  const [estIqrMultiplier, setEstIqrMultiplier] = useState(2.0);
-  const [estHalflife, setEstHalflife] = useState(30);
-  const [estTrimPct, setEstTrimPct] = useState(10);
-  const [savedPrefs, setSavedPrefs] = useState<PricingPreferences | null>(null);
 
   useEffect(() => {
     getInventory()
@@ -356,28 +336,12 @@ export default function InventoryPage() {
     setQuantity("1");
     setNotes("");
     setAddError(null);
-    // Reset pricing debug state for the new card
-    pricingPrefetchRef.current = null;
-    setPricingResult(null);
-    setPricingError(null);
-    setCompsResult(null);
-    setCompsError(null);
+    setScrydexPrices(null);
+    setScrydexError(null);
     setCompsConditionType("ungraded");
     setCompsConditionUngraded("nm");
     setCompsGradingCompany("psa");
     setCompsGrade("");
-    prefetchPricing(card.id);
-    // Load saved pricing preferences to seed the estimation controls
-    if (!savedPrefs) {
-      getMyPricingPreferences().then((p) => {
-        setSavedPrefs(p);
-        setEstWindow(p.graded_comp_window_days);
-        setEstMethod(p.graded_aggregation);
-        setEstIqrMultiplier(p.graded_iqr_multiplier);
-        setEstHalflife(p.graded_recency_halflife_days);
-        setEstTrimPct(p.graded_trim_pct);
-      }).catch(() => { /* non-blocking */ });
-    }
   }
 
   async function handleAdvancedSearch() {
@@ -451,153 +415,27 @@ export default function InventoryPage() {
     }
   }
 
-  function prefetchPricing(cardId: string) {
-    pricingPrefetchRef.current = (async () => {
-      let result = await getCardPricing(cardId);
-      while ((result as { http_status: number }).http_status === 202) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        result = await getCardPricing(cardId);
-      }
-      return result;
-    })();
-  }
-
-  async function handleFetchPricing() {
+  async function handleFetchScrydex() {
     if (!confirm) return;
-    setPricingLoading(true);
-    setPricingError(null);
-    setPricingResult(null);
+    setScrydexLoading(true);
+    setScrydexError(null);
     try {
-      const result = pricingPrefetchRef.current
-        ? await pricingPrefetchRef.current
-        : await (async () => {
-            let r = await getCardPricing(confirm.card.id);
-            while ((r as { http_status: number }).http_status === 202) {
-              await new Promise((resolve) => setTimeout(resolve, 3000));
-              r = await getCardPricing(confirm.card.id);
-            }
-            return r;
-          })();
-      setPricingResult(result);
+      const result = await getCardScrydexPrices(confirm.card.id);
+      setScrydexPrices(result.prices);
     } catch (e) {
-      setPricingError(e instanceof Error ? e.message : "Failed to fetch pricing");
+      setScrydexError(e instanceof Error ? e.message : "Failed to fetch prices");
     } finally {
-      setPricingLoading(false);
+      setScrydexLoading(false);
     }
   }
 
-  async function handleFetchComps() {
-    if (!confirm) return;
-    setCompsLoading(true);
-    setCompsError(null);
-    setCompsResult(null);
-    try {
-      const params: SoldCompsParams = { condition_type: compsConditionType };
-      if (compsConditionType === "ungraded") {
-        params.condition_ungraded = compsConditionUngraded;
-      } else {
-        params.grading_company = compsGradingCompany;
-        if (compsGrade) params.grade = compsGrade;
-      }
-      let response = await getSoldComps(confirm.card.id, params);
-      while (response.http_status === 202) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-        response = await getSoldComps(confirm.card.id, params);
-      }
-      setCompsResult(response.data);
-    } catch (e) {
-      setCompsError(e instanceof Error ? e.message : "Failed to fetch sold comps");
-    } finally {
-      setCompsLoading(false);
-    }
-  }
-
-  async function handleToggleExclude(compId: string, currentlyExcluded: boolean) {
-    if (!compsResult) return;
-    try {
-      if (currentlyExcluded) {
-        await unexcludeSoldComp(compId);
-      } else {
-        await excludeSoldComp(compId);
-      }
-      setCompsResult({
-        ...compsResult,
-        comps: compsResult.comps.map((c) =>
-          c.id === compId ? { ...c, excluded: !currentlyExcluded } : c
-        ),
-      });
-    } catch { /* best-effort */ }
-  }
-
-  function computeEstimate(): { value: number | null; count: number } {
-    if (!compsResult || compsResult.comps.length === 0) return { value: null, count: 0 };
-
-    const now = Date.now();
-    const cutoffMs = estWindow * 24 * 60 * 60 * 1000;
-    const eligible = compsResult.comps.filter((c) => {
-      if (c.excluded) return false;
-      if (!c.sold_date) return true;
-      return now - new Date(c.sold_date).getTime() <= cutoffMs;
-    });
-    if (eligible.length === 0) return { value: null, count: 0 };
-
-    const prices = eligible.map((c) => c.price);
-
-    if (estMethod === "median") {
-      const sorted = [...prices].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const value = sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-      return { value: Math.round(value * 100) / 100, count: eligible.length };
-    }
-
-    if (estMethod === "median_iqr") {
-      let working = [...prices];
-      if (working.length >= 5) {
-        const sorted = [...working].sort((a, b) => a - b);
-        const q1 = sorted[Math.floor(sorted.length * 0.25)];
-        const q3 = sorted[Math.floor(sorted.length * 0.75)];
-        const iqr = q3 - q1;
-        const filtered = working.filter((p) => p >= q1 - estIqrMultiplier * iqr && p <= q3 + estIqrMultiplier * iqr);
-        if (filtered.length >= 3) working = filtered;
-      }
-      const sorted = [...working].sort((a, b) => a - b);
-      const mid = Math.floor(sorted.length / 2);
-      const value = sorted.length % 2 === 0
-        ? (sorted[mid - 1] + sorted[mid]) / 2
-        : sorted[mid];
-      return { value: Math.round(value * 100) / 100, count: eligible.length };
-    }
-
-    if (estMethod === "weighted_recency") {
-      const lam = Math.log(2) / Math.max(estHalflife, 1);
-      let weightedSum = 0;
-      let totalW = 0;
-      for (const c of eligible) {
-        const daysAgo = c.sold_date
-          ? (now - new Date(c.sold_date).getTime()) / (24 * 60 * 60 * 1000)
-          : 0;
-        const w = Math.exp(-lam * daysAgo);
-        weightedSum += c.price * w;
-        totalW += w;
-      }
-      return {
-        value: totalW > 0 ? Math.round((weightedSum / totalW) * 100) / 100 : null,
-        count: eligible.length,
-      };
-    }
-
-    if (estMethod === "trimmed_mean") {
-      const sorted = [...prices].sort((a, b) => a - b);
-      const n = sorted.length;
-      const cut = n >= 4 ? Math.max(1, Math.round(n * estTrimPct / 100)) : 0;
-      const trimmed = cut > 0 ? sorted.slice(cut, n - cut) : sorted;
-      const value = trimmed.reduce((s, p) => s + p, 0) / (trimmed.length || 1);
-      return { value: Math.round(value * 100) / 100, count: eligible.length };
-    }
-
-    return { value: null, count: 0 };
+  function normalizeGrade(grade: string): { numericGrade: string; isPerfect: boolean } {
+    const g = grade.trim();
+    if (g.includes("(Black label)")) return { numericGrade: g.replace(" (Black label)", "").trim(), isPerfect: true };
+    if (g.includes("(Gold label)")) return { numericGrade: g.replace(" (Gold label)", "").trim(), isPerfect: false };
+    if (g.includes("(Pristine)") || g.includes("(Perfect)")) return { numericGrade: g.split("(")[0].trim(), isPerfect: true };
+    if (g.includes("(GM)")) return { numericGrade: g.split("(")[0].trim(), isPerfect: false };
+    return { numericGrade: g, isPerfect: false };
   }
 
   async function handleAddToInventory() {
@@ -1058,42 +896,45 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* ---- Pricing debug ---- */}
+            {/* ---- Raw Prices (Scrydex) ---- */}
             <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Raw Prices</p>
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleFetchPricing}
-                disabled={pricingLoading}
+                onClick={handleFetchScrydex}
+                disabled={scrydexLoading}
               >
-                Fetch Data
+                {scrydexLoading ? "Fetching…" : "Fetch Data"}
               </Button>
-              {pricingError && <p className="text-xs text-destructive">{pricingError}</p>}
-              {(pricingLoading || (pricingResult !== null && (pricingResult as { http_status: number }).http_status === 202)) && (
+              {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
+              {scrydexLoading && (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>Fetching live price, this may take a moment…</span>
+                  <span>Fetching prices…</span>
                 </div>
               )}
-              {pricingResult !== null && (pricingResult as { http_status: number }).http_status === 200 && (() => {
-                const data = (pricingResult as { http_status: number; data: { nm_market_price: number; condition_estimates: { condition: string; label: string; estimated_price: number }[] } }).data;
-                const estimates = data.condition_estimates.filter((e) => e.condition !== "nm");
+              {scrydexPrices !== null && !scrydexLoading && (() => {
+                const rawPrices = scrydexPrices.filter((p) => p.type === "raw" && p.market != null);
+                if (rawPrices.length === 0) {
+                  return <p className="text-xs text-muted-foreground">No raw prices available.</p>;
+                }
                 return (
                   <div className="space-y-1 text-xs">
-                    <p className="font-medium">NM Market Price: ${data.nm_market_price.toFixed(2)}</p>
-                    {estimates.map((e) => (
-                      <p key={e.condition} className="text-muted-foreground">
-                        {e.label} estimate: ${e.estimated_price.toFixed(2)}
-                      </p>
+                    {rawPrices.map((p) => (
+                      <div key={p.condition} className="flex justify-between">
+                        <span className="text-muted-foreground">{p.condition}</span>
+                        <span className="font-medium">${Number(p.market).toFixed(2)}</span>
+                      </div>
                     ))}
                   </div>
                 );
               })()}
             </div>
 
+            {/* ---- Graded Prices (Scrydex) ---- */}
             <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sold Comps</p>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Graded Prices</p>
 
               {/* Ungraded / Graded toggle */}
               <div className="flex gap-1">
@@ -1102,8 +943,6 @@ export default function InventoryPage() {
                     key={t}
                     onClick={() => {
                       setCompsConditionType(t);
-                      setCompsResult(null);
-                      setCompsError(null);
                     }}
                     className={`px-2.5 py-1 text-xs rounded-md border transition-colors capitalize ${
                       compsConditionType === t
@@ -1121,7 +960,7 @@ export default function InventoryPage() {
                   {UNGRADED_CONDITIONS.map((c) => (
                     <button
                       key={c.value}
-                      onClick={() => { setCompsConditionUngraded(c.value); setCompsResult(null); }}
+                      onClick={() => setCompsConditionUngraded(c.value)}
                       className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
                         compsConditionUngraded === c.value
                           ? "bg-foreground text-background border-foreground"
@@ -1140,7 +979,7 @@ export default function InventoryPage() {
                     {GRADING_COMPANIES.filter((co) => co.value !== "other").map((co) => (
                       <button
                         key={co.value}
-                        onClick={() => { setCompsGradingCompany(co.value); setCompsGrade(""); setCompsResult(null); }}
+                        onClick={() => { setCompsGradingCompany(co.value); setCompsGrade(""); }}
                         className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
                           compsGradingCompany === co.value
                             ? "bg-foreground text-background border-foreground"
@@ -1155,7 +994,7 @@ export default function InventoryPage() {
                     {gradeOptionsForCompany(compsGradingCompany).map((g) => (
                       <button
                         key={g.value}
-                        onClick={() => { setCompsGrade(g.value); setCompsResult(null); }}
+                        onClick={() => setCompsGrade(g.value)}
                         className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
                           compsGrade === g.value
                             ? "bg-foreground text-background border-foreground"
@@ -1172,219 +1011,53 @@ export default function InventoryPage() {
               <Button
                 size="sm"
                 variant="outline"
-                onClick={handleFetchComps}
-                disabled={compsLoading || (compsConditionType === "graded" && !compsGrade)}
+                onClick={handleFetchScrydex}
+                disabled={scrydexLoading || (compsConditionType === "graded" && !compsGrade)}
               >
-                {compsLoading ? "Fetching…" : "Fetch Data"}
+                {scrydexLoading ? "Fetching…" : "Fetch Data"}
               </Button>
-              {compsError && <p className="text-xs text-destructive">{compsError}</p>}
-              {compsLoading && (
-                <p className="text-xs text-muted-foreground animate-pulse">Fetching sold listings…</p>
-              )}
-              {compsResult !== null && !compsLoading && (
-                <div className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    {compsResult.total === 0
-                      ? "No sales found in the last 90 days."
-                      : `${compsResult.total} sale${compsResult.total !== 1 ? "s" : ""} in last 90 days`}
-                  </p>
-
-                  {compsResult.comps.length > 0 && (() => {
-                    const est = computeEstimate();
-                    return (
-                      <>
-                        {/* ── Estimation panel ── */}
-                        <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Price estimate</p>
-                            {est.value !== null ? (
-                              <p className="text-lg font-bold text-foreground">
-                                ${est.value.toFixed(2)}
-                                <span className="text-xs font-normal text-muted-foreground ml-1">({est.count} sales)</span>
-                              </p>
-                            ) : (
-                              <p className="text-sm text-muted-foreground">No data in window</p>
-                            )}
-                          </div>
-
-                          {/* Controls row */}
-                          <div className="grid grid-cols-2 gap-2">
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">Method</label>
-                              <select
-                                value={estMethod}
-                                onChange={(e) => setEstMethod(e.target.value as GradedAggregation)}
-                                className="w-full border rounded px-2 py-1 text-xs bg-background"
-                              >
-                                <option value="median">Median</option>
-                                <option value="median_iqr">Median + IQR</option>
-                                <option value="weighted_recency">Weighted Recency</option>
-                                <option value="trimmed_mean">Trimmed Mean</option>
-                              </select>
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">Time window</label>
-                              <select
-                                value={estWindow}
-                                onChange={(e) => setEstWindow(Number(e.target.value) as CompWindowDays)}
-                                className="w-full border rounded px-2 py-1 text-xs bg-background"
-                              >
-                                <option value={7}>Last 7 days</option>
-                                <option value={14}>Last 14 days</option>
-                                <option value={30}>Last 30 days</option>
-                                <option value={60}>Last 60 days</option>
-                                <option value={90}>Last 90 days</option>
-                              </select>
-                            </div>
-                          </div>
-
-                          {/* Tuning params — conditional on method */}
-                          {estMethod === "median_iqr" && (
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">
-                                IQR multiplier: <span className="font-medium text-foreground">{estIqrMultiplier.toFixed(1)}×</span>
-                              </label>
-                              <input
-                                type="range" min="0.5" max="5" step="0.5"
-                                value={estIqrMultiplier}
-                                onChange={(e) => setEstIqrMultiplier(Number(e.target.value))}
-                                className="w-full h-1.5 accent-primary"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground/60">
-                                <span>0.5× (tighter)</span><span>5× (looser)</span>
-                              </div>
-                            </div>
-                          )}
-                          {estMethod === "weighted_recency" && (
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">
-                                Half-life: <span className="font-medium text-foreground">{estHalflife} days</span>
-                              </label>
-                              <input
-                                type="range" min="7" max="60" step="7"
-                                value={estHalflife}
-                                onChange={(e) => setEstHalflife(Number(e.target.value))}
-                                className="w-full h-1.5 accent-primary"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground/60">
-                                <span>7d (fast decay)</span><span>60d (slow decay)</span>
-                              </div>
-                            </div>
-                          )}
-                          {estMethod === "trimmed_mean" && (
-                            <div className="space-y-1">
-                              <label className="text-xs text-muted-foreground">
-                                Trim: <span className="font-medium text-foreground">{estTrimPct}% each end</span>
-                              </label>
-                              <input
-                                type="range" min="5" max="25" step="5"
-                                value={estTrimPct}
-                                onChange={(e) => setEstTrimPct(Number(e.target.value))}
-                                className="w-full h-1.5 accent-primary"
-                              />
-                              <div className="flex justify-between text-xs text-muted-foreground/60">
-                                <span>5%</span><span>25%</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* ── Comps table ── */}
-                        <div className="border rounded-md overflow-hidden">
-                          <table className="w-full text-xs">
-                            <thead className="bg-muted text-muted-foreground">
-                              <tr>
-                                <th className="text-left px-2 py-1.5 font-medium">Date</th>
-                                <th className="text-left px-2 py-1.5 font-medium">Title</th>
-                                <th className="text-left px-2 py-1.5 font-medium">Condition</th>
-                                <th className="text-left px-2 py-1.5 font-medium">Type</th>
-                                <th className="text-right px-2 py-1.5 font-medium">Price</th>
-                                <th className="px-2 py-1.5"></th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                              {compsResult.comps.map((comp) => {
-                                const withinWindow = !comp.sold_date ||
-                                  Date.now() - new Date(comp.sold_date).getTime() <= estWindow * 24 * 60 * 60 * 1000;
-                                const dimmed = comp.excluded || !withinWindow;
-                                return (
-                                  <tr
-                                    key={comp.id}
-                                    className={`transition-colors ${dimmed ? "opacity-40" : "hover:bg-muted/40"}`}
-                                  >
-                                    <td
-                                      className="px-2 py-1.5 whitespace-nowrap text-muted-foreground cursor-pointer"
-                                      onClick={() => window.open(comp.listing_url, "_blank", "noopener,noreferrer")}
-                                    >
-                                      {comp.sold_date
-                                        ? new Date(comp.sold_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                                        : "—"}
-                                    </td>
-                                    <td
-                                      className="px-2 py-1.5 max-w-[160px] cursor-pointer"
-                                      onClick={() => window.open(comp.listing_url, "_blank", "noopener,noreferrer")}
-                                    >
-                                      <span className="truncate block text-foreground" title={comp.title}>{comp.title}</span>
-                                    </td>
-                                    <td className="px-2 py-1.5 whitespace-nowrap">
-                                      {comp.condition_type === "graded" && comp.grading_company && comp.grade ? (
-                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 font-medium">
-                                          {comp.grading_company.toUpperCase()} {comp.grade}
-                                        </span>
-                                      ) : comp.condition_ungraded ? (
-                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
-                                          {comp.condition_ungraded}
-                                        </span>
-                                      ) : (
-                                        <span className="text-muted-foreground">—</span>
-                                      )}
-                                    </td>
-                                    <td className="px-2 py-1.5 whitespace-nowrap">
-                                      {comp.sale_type === "buy_now" && <span className="inline-flex px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-medium">Buy Now</span>}
-                                      {comp.sale_type === "auction" && <span className="inline-flex px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 font-medium">Auction</span>}
-                                      {comp.sale_type === "obo" && <span className="inline-flex px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 font-medium">OBO</span>}
-                                      {!comp.sale_type && <span className="text-muted-foreground">—</span>}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-right font-medium whitespace-nowrap">
-                                      {comp.currency === "USD" ? "$" : comp.currency}{Number(comp.price).toFixed(2)}
-                                    </td>
-                                    <td className="px-2 py-1.5 text-center">
-                                      <button
-                                        type="button"
-                                        title={comp.excluded ? "Restore to estimate" : "Exclude from estimate"}
-                                        onClick={() => handleToggleExclude(comp.id, comp.excluded)}
-                                        className="text-muted-foreground hover:text-destructive transition-colors text-xs"
-                                      >
-                                        {comp.excluded ? "↩" : "✕"}
-                                      </button>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      </>
-                    );
-                  })()}
+              {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
+              {scrydexLoading && (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>Fetching prices…</span>
                 </div>
               )}
+              {scrydexPrices !== null && !scrydexLoading && (() => {
+                const COND_MAP: Record<string, string> = { nm: "NM", lp: "LP", mp: "MP", hp: "HP", dmg: "DM" };
+                let entry: ScrydexPriceEntry | undefined;
+                if (compsConditionType === "ungraded") {
+                  const target = COND_MAP[compsConditionUngraded] ?? compsConditionUngraded.toUpperCase();
+                  entry = scrydexPrices.find((p) => p.type === "raw" && p.condition === target);
+                } else if (compsGrade) {
+                  const { numericGrade, isPerfect } = normalizeGrade(compsGrade);
+                  entry = scrydexPrices.find(
+                    (p) =>
+                      p.type === "graded" &&
+                      p.company?.toUpperCase() === compsGradingCompany.toUpperCase() &&
+                      p.grade === numericGrade &&
+                      !!p.is_perfect === isPerfect &&
+                      !p.is_signed &&
+                      !p.is_error
+                  );
+                }
+                if (!entry || entry.market == null) {
+                  return <p className="text-xs text-muted-foreground">No price found for this condition.</p>;
+                }
+                const label = compsConditionType === "ungraded"
+                  ? (COND_MAP[compsConditionUngraded] ?? compsConditionUngraded.toUpperCase())
+                  : `${compsGradingCompany.toUpperCase()} ${compsGrade}`;
+                return (
+                  <div className="text-xs">
+                    <div className="flex justify-between items-baseline">
+                      <span className="text-muted-foreground">{label} market</span>
+                      <span className="text-lg font-bold">${Number(entry.market).toFixed(2)}</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
-              {/* ---- eBay search URL debug ---- */}
-              {compsResult?.ebay_search_url && (
-                <div className="mt-2 pt-2 border-t border-border/50">
-                  <p className="text-xs text-muted-foreground mb-1 font-medium">eBay search URL</p>
-                  <a
-                    href={compsResult.ebay_search_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-primary hover:underline break-all"
-                  >
-                    {compsResult.ebay_search_url}
-                  </a>
-                </div>
-              )}
-            {/* ---- end sold comps ---- */}
+            {/* ---- end graded prices ---- */}
 
             {addError && <p className="text-xs text-destructive">{addError}</p>}
 

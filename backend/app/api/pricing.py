@@ -34,6 +34,8 @@ from app.models.catalog_v2 import CardV2, ExpansionV2
 from app.models.excluded_sold_comps import ExcludedSoldComp
 from app.models.pricing_preferences import PricingPreferences
 from app.models.profiles import Profile
+from app.models.scrydex_prices import ScrydexPrice
+from app.services.scrydex import fetch_scrydex_prices
 
 logger = logging.getLogger(__name__)
 
@@ -723,3 +725,46 @@ def unexclude_sold_comp(
     if row:
         db.delete(row)
         db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Scrydex prices
+# ---------------------------------------------------------------------------
+
+_SCRYDEX_CACHE_TTL_HOURS = 24
+
+
+@router.get("/cards/{card_v2_id}/scrydex-prices")
+def get_scrydex_prices(
+    card_v2_id: str,
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Return Scrydex prices for a card, refreshing the cache if stale or missing."""
+    stale_cutoff = datetime.utcnow() - timedelta(hours=_SCRYDEX_CACHE_TTL_HOURS)
+
+    card = db.get(CardV2, card_v2_id)
+    if card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+
+    cached = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
+    if cached and cached.fetched_at >= stale_cutoff:
+        return {"prices": cached.prices_json}
+
+    if not card.external_id or card.game != "pokemon":
+        return {"prices": cached.prices_json if cached else []}
+
+    prices = fetch_scrydex_prices(card.external_id)
+    if prices is None:
+        return {"prices": cached.prices_json if cached else []}
+
+    if cached:
+        cached.prices_json = prices
+        cached.fetched_at = datetime.utcnow()
+    else:
+        db.add(ScrydexPrice(
+            card_v2_id=card_v2_id,
+            prices_json=prices,
+            fetched_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {"prices": prices}
