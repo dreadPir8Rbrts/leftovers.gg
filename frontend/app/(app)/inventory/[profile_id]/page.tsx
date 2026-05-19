@@ -915,16 +915,26 @@ export default function InventoryPage() {
                 </div>
               )}
               {scrydexPrices !== null && !scrydexLoading && (() => {
-                const rawPrices = scrydexPrices.filter((p) => p.type === "raw" && p.market != null);
+                const rawPrices = scrydexPrices.filter((p) => p.type === "raw");
                 if (rawPrices.length === 0) {
                   return <p className="text-xs text-muted-foreground">No raw prices available.</p>;
                 }
                 return (
-                  <div className="space-y-1 text-xs">
+                  <div className="text-xs border rounded-md overflow-hidden">
+                    <div className="grid grid-cols-3 bg-muted text-muted-foreground font-medium px-2 py-1.5">
+                      <span>Condition</span>
+                      <span className="text-right">Low</span>
+                      <span className="text-right">Market</span>
+                    </div>
                     {rawPrices.map((p) => (
-                      <div key={p.condition} className="flex justify-between">
-                        <span className="text-muted-foreground">{p.condition}</span>
-                        <span className="font-medium">${Number(p.market).toFixed(2)}</span>
+                      <div key={p.condition} className="grid grid-cols-3 px-2 py-1.5 border-t">
+                        <span className="font-medium">{p.condition}</span>
+                        <span className="text-right text-muted-foreground">
+                          {p.low != null ? `$${Number(p.low).toFixed(2)}` : "—"}
+                        </span>
+                        <span className="text-right font-medium">
+                          {p.market != null ? `$${Number(p.market).toFixed(2)}` : "—"}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -1041,17 +1051,35 @@ export default function InventoryPage() {
                       !p.is_error
                   );
                 }
-                if (!entry || entry.market == null) {
+                if (!entry) {
                   return <p className="text-xs text-muted-foreground">No price found for this condition.</p>;
                 }
                 const label = compsConditionType === "ungraded"
                   ? (COND_MAP[compsConditionUngraded] ?? compsConditionUngraded.toUpperCase())
                   : `${compsGradingCompany.toUpperCase()} ${compsGrade}`;
+                const fields = compsConditionType === "ungraded"
+                  ? [
+                      { label: "Low", value: entry.low },
+                      { label: "Market", value: entry.market },
+                    ]
+                  : [
+                      { label: "Low", value: entry.low },
+                      { label: "Mid", value: entry.mid },
+                      { label: "High", value: entry.high },
+                      { label: "Market", value: entry.market },
+                    ];
                 return (
-                  <div className="text-xs">
-                    <div className="flex justify-between items-baseline">
-                      <span className="text-muted-foreground">{label} market</span>
-                      <span className="text-lg font-bold">${Number(entry.market).toFixed(2)}</span>
+                  <div className="text-xs border rounded-md overflow-hidden">
+                    <div className="px-2 py-1.5 bg-muted font-medium">{label}</div>
+                    <div className="divide-y">
+                      {fields.map(({ label: fl, value }) => (
+                        <div key={fl} className="flex justify-between px-2 py-1.5">
+                          <span className="text-muted-foreground">{fl}</span>
+                          <span className={fl === "Market" ? "font-bold" : "font-medium"}>
+                            {value != null ? `$${Number(value).toFixed(2)}` : "—"}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 );
