@@ -376,6 +376,16 @@ export async function deleteInventoryItem(itemId: string): Promise<void> {
 // Quick Scan — Google Cloud Vision OCR fast path
 // ---------------------------------------------------------------------------
 
+export interface ScanCandidate {
+  card_id: string;
+  name: string;
+  card_num: string | null;
+  rarity: string | null;
+  image_url: string | null;
+  set_name: string;
+  language_code: string;
+}
+
 export interface QuickScanResult {
   matched: boolean;
   reason?: string;           // "no_text_detected" | "no_catalog_match"
@@ -389,6 +399,8 @@ export interface QuickScanResult {
     hp: number | null;
     illustrator: string | null;
   };
+  ambiguous?: boolean;       // true when multiple candidates found but can't auto-select
+  candidates?: ScanCandidate[];  // populated when ambiguous=true
   // Populated when matched=true — same shape as IdentifyResult / Card
   card_id?: string;
   name?: string;

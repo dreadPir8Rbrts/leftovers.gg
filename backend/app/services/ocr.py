@@ -76,9 +76,10 @@ async def extract_card_text(image_bytes: bytes) -> Dict[str, Any]:
 # Lines that are never the card name when they appear alone.
 # Covers: stage markers (digit and roman), Pocket-era "BASIC" standalone,
 # VMAX, HP values, bare numbers, trainer/energy type headers,
-# and "STAGET" which is OCR noise for "STAGE 1".
+# "STAGET" which is OCR noise for "STAGE 1",
+# and Japanese equivalents: 進化/1進化/2進化 (stage markers), たね (basic).
 _NON_NAME_PATTERN = re.compile(
-    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY)$",
+    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY|\d*進化|たね)$",
     re.IGNORECASE,
 )
 
@@ -91,8 +92,9 @@ _INLINE_PREFIX_PATTERN = re.compile(
 )
 
 # Lines to skip entirely — appear before the name on old-format cards.
+# Also skips Japanese "Evolves from X" lines: "ヒトカゲから進化" etc.
 _SKIP_LINE_PATTERN = re.compile(
-    r"^(?:E(?:vo|va)lves?\s+from)",
+    r"^(?:E(?:vo|va)lves?\s+from|.+から進化)$",
     re.IGNORECASE,
 )
 

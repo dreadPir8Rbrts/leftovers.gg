@@ -15,7 +15,7 @@ import uuid
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 
 import anthropic
 import boto3
@@ -471,12 +471,24 @@ async def scan_job_websocket(
 # POST /scans/quick-identify  (Google Cloud Vision OCR fast path)
 # ---------------------------------------------------------------------------
 
+class CandidateCard(BaseModel):
+    card_id: str
+    name: str
+    card_num: Optional[str] = None
+    rarity: Optional[str] = None
+    image_url: Optional[str] = None
+    set_name: str
+    language_code: str
+
+
 class QuickIdentifyResponse(BaseModel):
     matched: bool
     reason: Optional[str] = None          # populated when matched=False
     confidence: Optional[float] = None
     method: Optional[str] = None          # exact | local_id | local_id_hp | fuzzy_name
     ocr: dict                              # raw OCR fields: name, set_number, ocr_num1, ocr_num2, hp, illustrator
+    ambiguous: bool = False               # True when multiple candidates found but can't auto-select
+    candidates: Optional[List[CandidateCard]] = None  # populated when ambiguous=True
     # Full card details — same shape as IdentifyResponse card fields (populated when matched=True)
     card_id: Optional[str] = None
     name: Optional[str] = None
@@ -533,6 +545,24 @@ async def quick_identify(
     if not match:
         logger.info("quick_identify — no catalog match for OCR: %s", ocr_result)
         return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_result}
+
+    # Ambiguous: multiple candidates, let user pick
+    if match.get("ambiguous"):
+        raw_candidates = match["candidates"]
+        logger.info("quick_identify — ambiguous match: %d candidates", len(raw_candidates))
+        candidates = [
+            CandidateCard(
+                card_id=str(c["card"].id),
+                name=c["card"].name,
+                card_num=c["card"].number,
+                rarity=c["card"].rarity,
+                image_url=_extract_image_url(c["card"].images),
+                set_name=c["expansion"].name,
+                language_code=c["card"].language_code or "EN",
+            )
+            for c in raw_candidates
+        ]
+        return {"matched": False, "ambiguous": True, "candidates": candidates, "ocr": ocr_result}
 
     card: CardV2 = match["card"]
     expansion: ExpansionV2 = match["expansion"]

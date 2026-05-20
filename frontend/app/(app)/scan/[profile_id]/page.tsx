@@ -11,6 +11,7 @@ import {
   identifyCard,
   quickIdentifyCard,
   type QuickScanResult,
+  type ScanCandidate,
 } from "@/lib/api";
 
 // Resize + compress an image client-side before upload.
@@ -55,6 +56,7 @@ export default function ScanPage() {
   const [state, setState] = useState<ScanState>({ step: "idle" });
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [quickScanNoMatch, setQuickScanNoMatch] = useState<QuickScanResult | null>(null);
+  const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -91,6 +93,7 @@ export default function ScanPage() {
     if (!file) return;
     setQuickScanLoading(true);
     setQuickScanNoMatch(null);
+    setScanCandidates(null);
     setState({ step: "idle" });
     try {
       const compressed = await compressImage(file, 1200, 0.70);
@@ -98,6 +101,8 @@ export default function ScanPage() {
       const result = await quickIdentifyCard(compressed);
       if (result.matched && result.card_id) {
         router.push(`/cards/${result.card_id}`);
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
       } else {
         setQuickScanNoMatch(result);
       }
@@ -113,6 +118,7 @@ export default function ScanPage() {
     setPreview(null);
     setFile(null);
     setQuickScanNoMatch(null);
+    setScanCandidates(null);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -175,6 +181,34 @@ export default function ScanPage() {
             {quickScanLoading ? "Scanning..." : "Quick Scan"}
           </Button>
         </div>
+      )}
+
+      {/* Quick Scan — ambiguous: let user pick the right card */}
+      {scanCandidates && scanCandidates.length > 0 && (
+        <Card className="mb-4">
+          <CardContent className="pt-6 space-y-3">
+            <p className="text-sm font-medium">Multiple matches found — which card is this?</p>
+            <div className="flex flex-col gap-2">
+              {scanCandidates.map((c) => (
+                <button
+                  key={c.card_id}
+                  onClick={() => router.push(`/cards/${c.card_id}`)}
+                  className="flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                >
+                  {c.image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={c.image_url} alt={c.name} className="h-16 w-11 rounded object-cover shrink-0" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{c.name}</div>
+                    <div className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</div>
+                    <div className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Quick Scan — no match feedback */}

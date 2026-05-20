@@ -34,6 +34,7 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
     name: str = (ocr.get("name") or "").strip()
     set_number: str = (ocr.get("set_number") or "").strip()
     hp: Optional[int] = ocr.get("hp")
+    tier2_candidates: List[tuple] = []  # populated when Tier 2 finds rows but can't disambiguate
 
     local_id_variants = _local_id_variants(set_number) if set_number else []
     card_count = _parse_card_count(set_number) if set_number else None  # e.g. 131 from "029/131"
@@ -124,6 +125,11 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
             if len(hp_matched) == 1:
                 return {"card": hp_matched[0][0], "expansion": hp_matched[0][1], "confidence": 0.88, "method": "local_id_hp"}
 
+        # Multiple rows remain after all Tier 2 disambiguation — save for fallback.
+        # If Tier 4 also fails, these will be surfaced as ambiguous candidates.
+        if len(rows) > 1:
+            tier2_candidates = rows
+
     # Tier 4: fuzzy name match
     if name and len(name) >= 3:
         rows = (
@@ -189,6 +195,14 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                     "confidence": round(score / 100, 2),
                     "method": "fuzzy_name",
                 }
+
+    # All tiers exhausted. If Tier 2 had multiple candidates that couldn't be
+    # disambiguated by name/HP, surface them so the caller can ask the user.
+    if tier2_candidates:
+        return {
+            "ambiguous": True,
+            "candidates": [{"card": r[0], "expansion": r[1]} for r in tier2_candidates],
+        }
 
     return None
 
