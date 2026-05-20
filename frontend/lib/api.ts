@@ -1012,6 +1012,11 @@ export async function getCardEstimatedValue(
 // Scrydex prices
 // ---------------------------------------------------------------------------
 
+export interface ScrydexTrend {
+  price_change: number;
+  percent_change: number;
+}
+
 export interface ScrydexPriceEntry {
   type: "raw" | "graded";
   condition?: string;       // raw only: NM, LP, MP, HP, DM
@@ -1024,6 +1029,14 @@ export interface ScrydexPriceEntry {
   low?: number | null;
   mid?: number | null;
   high?: number | null;
+  trends?: {
+    days_1?: ScrydexTrend;
+    days_7?: ScrydexTrend;
+    days_14?: ScrydexTrend;
+    days_30?: ScrydexTrend;
+    days_90?: ScrydexTrend;
+    days_180?: ScrydexTrend;
+  };
 }
 
 export async function getCardScrydexPrices(

@@ -26,6 +26,7 @@ import {
   type InventoryItemWithCard,
   type ScrydexPriceEntry,
 } from "@/lib/api";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { InventoryEditPanel } from "@/components/inventory/InventoryEditPanel";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -249,11 +250,9 @@ export default function InventoryPage() {
   const [scrydexLoading, setScrydexLoading] = useState(false);
   const [scrydexError, setScrydexError] = useState<string | null>(null);
 
-  // Sold comps condition selector
-  const [compsConditionType, setCompsConditionType] = useState<"ungraded" | "graded">("ungraded");
-  const [compsConditionUngraded, setCompsConditionUngraded] = useState("nm");
-  const [compsGradingCompany, setCompsGradingCompany] = useState("psa");
-  const [compsGrade, setCompsGrade] = useState("");
+  // Market price chart selection
+  const [priceCategory, setPriceCategory] = useState("RAW");
+  const [selectedEntryIdx, setSelectedEntryIdx] = useState(0);
 
   useEffect(() => {
     getInventory()
@@ -338,10 +337,8 @@ export default function InventoryPage() {
     setAddError(null);
     setScrydexPrices(null);
     setScrydexError(null);
-    setCompsConditionType("ungraded");
-    setCompsConditionUngraded("nm");
-    setCompsGradingCompany("psa");
-    setCompsGrade("");
+    setPriceCategory("RAW");
+    setSelectedEntryIdx(0);
   }
 
   async function handleAdvancedSearch() {
@@ -427,15 +424,6 @@ export default function InventoryPage() {
     } finally {
       setScrydexLoading(false);
     }
-  }
-
-  function normalizeGrade(grade: string): { numericGrade: string; isPerfect: boolean } {
-    const g = grade.trim();
-    if (g.includes("(Black label)")) return { numericGrade: g.replace(" (Black label)", "").trim(), isPerfect: true };
-    if (g.includes("(Gold label)")) return { numericGrade: g.replace(" (Gold label)", "").trim(), isPerfect: false };
-    if (g.includes("(Pristine)") || g.includes("(Perfect)")) return { numericGrade: g.split("(")[0].trim(), isPerfect: true };
-    if (g.includes("(GM)")) return { numericGrade: g.split("(")[0].trim(), isPerfect: false };
-    return { numericGrade: g, isPerfect: false };
   }
 
   async function handleAddToInventory() {
@@ -896,196 +884,213 @@ export default function InventoryPage() {
               />
             </div>
 
-            {/* ---- Raw Prices (Scrydex) ---- */}
-            <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Raw Prices</p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleFetchScrydex}
-                disabled={scrydexLoading}
-              >
-                {scrydexLoading ? "Fetching…" : "Fetch Data"}
-              </Button>
-              {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
-              {scrydexLoading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>Fetching prices…</span>
-                </div>
-              )}
-              {scrydexPrices !== null && !scrydexLoading && (() => {
-                const rawPrices = scrydexPrices.filter((p) => p.type === "raw");
-                if (rawPrices.length === 0) {
-                  return <p className="text-xs text-muted-foreground">No raw prices available.</p>;
+            {/* ---- Market Price (Scrydex) ---- */}
+            {(() => {
+              // Ordered condition display for RAW
+              const RAW_ORDER = ["NM", "LP", "MP", "HP", "DM"];
+              const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE", "AGS"];
+
+              // Derive available categories from loaded prices
+              const availableCategories: string[] = [];
+              if (scrydexPrices) {
+                if (scrydexPrices.some((p) => p.type === "raw")) availableCategories.push("RAW");
+                const companies = [...new Set(
+                  scrydexPrices
+                    .filter((p) => p.type === "graded" && !p.is_signed && !p.is_error)
+                    .map((p) => p.company?.toUpperCase() ?? "")
+                )].filter(Boolean);
+                COMPANY_ORDER.forEach((c) => { if (companies.includes(c)) availableCategories.push(c); });
+                companies.filter((c) => !COMPANY_ORDER.includes(c)).forEach((c) => availableCategories.push(c));
+              }
+
+              // Entries for the currently selected category, sorted
+              const currentEntries: ScrydexPriceEntry[] = scrydexPrices
+                ? priceCategory === "RAW"
+                  ? RAW_ORDER
+                      .map((cond) => scrydexPrices.find((p) => p.type === "raw" && p.condition === cond))
+                      .filter((p): p is ScrydexPriceEntry => p !== undefined)
+                  : scrydexPrices
+                      .filter((p) => p.type === "graded" && p.company?.toUpperCase() === priceCategory && !p.is_signed && !p.is_error)
+                      .sort((a, b) => parseFloat(b.grade ?? "0") - parseFloat(a.grade ?? "0"))
+                : [];
+
+              const safeIdx = Math.min(selectedEntryIdx, Math.max(0, currentEntries.length - 1));
+              const selectedEntry = currentEntries[safeIdx] ?? null;
+
+              // Label for each pill
+              function entryPillLabel(entry: ScrydexPriceEntry): string {
+                if (entry.type === "raw") return entry.condition === "DM" ? "DMG" : (entry.condition ?? "—");
+                const g = entry.grade ?? "?";
+                if (entry.is_perfect) {
+                  if (priceCategory === "BGS") return `${g} Black`;
+                  if (priceCategory === "CGC") return `${g} Pristine`;
+                  return `${g}★`;
                 }
+                if (priceCategory === "BGS" && g === "10") return `${g} Gold`;
+                return g;
+              }
+
+              // Build chart data points from trends
+              function buildChartData(entry: ScrydexPriceEntry): Array<{ label: string; price: number }> {
+                const market = entry.market ?? 0;
+                const t = entry.trends ?? {};
+                const POINTS = [
+                  { label: "6mo", key: "days_180" as const },
+                  { label: "3mo", key: "days_90" as const },
+                  { label: "1mo", key: "days_30" as const },
+                  { label: "2wk", key: "days_14" as const },
+                  { label: "1wk", key: "days_7" as const },
+                  { label: "1d", key: "days_1" as const },
+                ];
+                const result: Array<{ label: string; price: number }> = [];
+                for (const { label, key } of POINTS) {
+                  if (t[key] != null) {
+                    result.push({ label, price: Math.max(0, market - t[key]!.price_change) });
+                  }
+                }
+                result.push({ label: "Now", price: market });
+                return result;
+              }
+
+              const chartData = selectedEntry ? buildChartData(selectedEntry) : [];
+              const chartUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
+              const chartColor = chartUp ? "#22c55e" : "#ef4444";
+
+              // Trend badges (1d, 7d, 30d)
+              function trendBadge(entry: ScrydexPriceEntry | null, key: keyof NonNullable<ScrydexPriceEntry["trends"]>, label: string) {
+                const t = entry?.trends?.[key];
+                if (!t) return null;
+                const up = t.price_change >= 0;
+                const sign = up ? "+" : "";
                 return (
-                  <div className="text-xs border rounded-md overflow-hidden">
-                    <div className="grid grid-cols-3 bg-muted text-muted-foreground font-medium px-2 py-1.5">
-                      <span>Condition</span>
-                      <span className="text-right">Low</span>
-                      <span className="text-right">Market</span>
-                    </div>
-                    {rawPrices.map((p) => (
-                      <div key={p.condition} className="grid grid-cols-3 px-2 py-1.5 border-t">
-                        <span className="font-medium">{p.condition}</span>
-                        <span className="text-right text-muted-foreground">
-                          {p.low != null ? `$${Number(p.low).toFixed(2)}` : "—"}
-                        </span>
-                        <span className="text-right font-medium">
-                          {p.market != null ? `$${Number(p.market).toFixed(2)}` : "—"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                  <span key={label} className={`text-xs ${up ? "text-green-500" : "text-red-500"}`}>
+                    {sign}{t.price_change >= 0 || t.price_change < 0 ? `$${Math.abs(t.price_change).toFixed(2)}` : "—"} ({sign}{t.percent_change.toFixed(1)}%) {label}
+                  </span>
                 );
-              })()}
-            </div>
+              }
 
-            {/* ---- Graded Prices (Scrydex) ---- */}
-            <div className="border rounded-lg p-3 space-y-2 bg-muted/20">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Graded Prices</p>
-
-              {/* Ungraded / Graded toggle */}
-              <div className="flex gap-1">
-                {(["ungraded", "graded"] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => {
-                      setCompsConditionType(t);
-                    }}
-                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors capitalize ${
-                      compsConditionType === t
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-background hover:bg-muted"
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-
-              {compsConditionType === "ungraded" && (
-                <div className="flex flex-wrap gap-1.5">
-                  {UNGRADED_CONDITIONS.map((c) => (
-                    <button
-                      key={c.value}
-                      onClick={() => setCompsConditionUngraded(c.value)}
-                      className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                        compsConditionUngraded === c.value
-                          ? "bg-foreground text-background border-foreground"
-                          : "bg-background hover:bg-muted"
-                      }`}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {compsConditionType === "graded" && (
-                <div className="space-y-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {GRADING_COMPANIES.filter((co) => co.value !== "other").map((co) => (
-                      <button
-                        key={co.value}
-                        onClick={() => { setCompsGradingCompany(co.value); setCompsGrade(""); }}
-                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                          compsGradingCompany === co.value
-                            ? "bg-foreground text-background border-foreground"
-                            : "bg-background hover:bg-muted"
-                        }`}
+              return (
+                <div className="border rounded-lg p-3 space-y-3 bg-muted/20">
+                  {/* Header row */}
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Market Price</p>
+                    {scrydexPrices && availableCategories.length > 0 && (
+                      <select
+                        value={priceCategory}
+                        onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
+                        className="border rounded px-2 py-0.5 text-xs bg-background"
                       >
-                        {co.label}
-                      </button>
-                    ))}
+                        {availableCategories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {gradeOptionsForCompany(compsGradingCompany).map((g) => (
-                      <button
-                        key={g.value}
-                        onClick={() => setCompsGrade(g.value)}
-                        className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                          compsGrade === g.value
-                            ? "bg-foreground text-background border-foreground"
-                            : "bg-background hover:bg-muted"
-                        }`}
-                      >
-                        {g.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
 
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleFetchScrydex}
-                disabled={scrydexLoading || (compsConditionType === "graded" && !compsGrade)}
-              >
-                {scrydexLoading ? "Fetching…" : "Fetch Data"}
-              </Button>
-              {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
-              {scrydexLoading && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  <span>Fetching prices…</span>
-                </div>
-              )}
-              {scrydexPrices !== null && !scrydexLoading && (() => {
-                const COND_MAP: Record<string, string> = { nm: "NM", lp: "LP", mp: "MP", hp: "HP", dmg: "DM" };
-                let entry: ScrydexPriceEntry | undefined;
-                if (compsConditionType === "ungraded") {
-                  const target = COND_MAP[compsConditionUngraded] ?? compsConditionUngraded.toUpperCase();
-                  entry = scrydexPrices.find((p) => p.type === "raw" && p.condition === target);
-                } else if (compsGrade) {
-                  const { numericGrade, isPerfect } = normalizeGrade(compsGrade);
-                  entry = scrydexPrices.find(
-                    (p) =>
-                      p.type === "graded" &&
-                      p.company?.toUpperCase() === compsGradingCompany.toUpperCase() &&
-                      p.grade === numericGrade &&
-                      !!p.is_perfect === isPerfect &&
-                      !p.is_signed &&
-                      !p.is_error
-                  );
-                }
-                if (!entry) {
-                  return <p className="text-xs text-muted-foreground">No price found for this condition.</p>;
-                }
-                const label = compsConditionType === "ungraded"
-                  ? (COND_MAP[compsConditionUngraded] ?? compsConditionUngraded.toUpperCase())
-                  : `${compsGradingCompany.toUpperCase()} ${compsGrade}`;
-                const fields = compsConditionType === "ungraded"
-                  ? [
-                      { label: "Low", value: entry.low },
-                      { label: "Market", value: entry.market },
-                    ]
-                  : [
-                      { label: "Low", value: entry.low },
-                      { label: "Mid", value: entry.mid },
-                      { label: "High", value: entry.high },
-                      { label: "Market", value: entry.market },
-                    ];
-                return (
-                  <div className="text-xs border rounded-md overflow-hidden">
-                    <div className="px-2 py-1.5 bg-muted font-medium">{label}</div>
-                    <div className="divide-y">
-                      {fields.map(({ label: fl, value }) => (
-                        <div key={fl} className="flex justify-between px-2 py-1.5">
-                          <span className="text-muted-foreground">{fl}</span>
-                          <span className={fl === "Market" ? "font-bold" : "font-medium"}>
-                            {value != null ? `$${Number(value).toFixed(2)}` : "—"}
-                          </span>
+                  {/* Fetch button */}
+                  {!scrydexPrices && (
+                    <Button size="sm" variant="outline" onClick={handleFetchScrydex} disabled={scrydexLoading}>
+                      {scrydexLoading ? "Fetching…" : "Fetch Data"}
+                    </Button>
+                  )}
+                  {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
+                  {scrydexLoading && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      <span>Fetching prices…</span>
+                    </div>
+                  )}
+
+                  {/* Data */}
+                  {scrydexPrices !== null && !scrydexLoading && selectedEntry && (
+                    <>
+                      {/* Current price + trend indicators */}
+                      <div className="space-y-1">
+                        <p className="text-2xl font-bold">
+                          {selectedEntry.market != null ? `$${Number(selectedEntry.market).toFixed(2)}` : "N/A"}
+                        </p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                          {trendBadge(selectedEntry, "days_7", "1wk")}
+                          {trendBadge(selectedEntry, "days_14", "2wk")}
+                          {trendBadge(selectedEntry, "days_30", "1mo")}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-            {/* ---- end graded prices ---- */}
+                      </div>
+
+                      {/* Line chart */}
+                      {chartData.length >= 2 && (
+                        <ResponsiveContainer width="100%" height={110}>
+                          <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                            <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                            <YAxis hide domain={["auto", "auto"]} />
+                            <Tooltip
+                              formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
+                              contentStyle={{ fontSize: 11, padding: "4px 8px" }}
+                            />
+                            <Line
+                              type="monotone"
+                              dataKey="price"
+                              stroke={chartColor}
+                              strokeWidth={2}
+                              dot={false}
+                              activeDot={{ r: 4 }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
+
+                      {/* Grade / condition pills */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentEntries.map((entry, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setSelectedEntryIdx(idx)}
+                            className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                              idx === safeIdx
+                                ? "bg-foreground text-background border-foreground"
+                                : "bg-background hover:bg-muted"
+                            }`}
+                          >
+                            {entryPillLabel(entry)}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Low / mid / high / market */}
+                      <div className="grid grid-cols-2 gap-1 text-xs">
+                        {[
+                          { label: "Low", value: selectedEntry.low },
+                          ...(selectedEntry.type === "graded" ? [{ label: "Mid", value: selectedEntry.mid }, { label: "High", value: selectedEntry.high }] : []),
+                          { label: "Market", value: selectedEntry.market },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="flex justify-between border rounded px-2 py-1">
+                            <span className="text-muted-foreground">{label}</span>
+                            <span className={label === "Market" ? "font-bold" : "font-medium"}>
+                              {value != null ? `$${Number(value).toFixed(2)}` : "—"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {scrydexPrices !== null && !scrydexLoading && !selectedEntry && (
+                    <p className="text-xs text-muted-foreground">No price data available.</p>
+                  )}
+
+                  {/* Refresh button when data is already loaded */}
+                  {scrydexPrices !== null && (
+                    <button
+                      onClick={handleFetchScrydex}
+                      disabled={scrydexLoading}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+                    >
+                      ↻ Refresh
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {/* ---- end market price ---- */}
 
             {addError && <p className="text-xs text-destructive">{addError}</p>}
 
