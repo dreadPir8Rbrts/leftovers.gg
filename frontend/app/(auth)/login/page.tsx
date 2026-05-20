@@ -47,7 +47,7 @@ export default function LoginPage() {
       if (res.ok) {
         const profile = await res.json();
         if (profile.onboarding_complete) {
-          document.cookie = "onboarding_complete=1; Path=/; Max-Age=86400; SameSite=Lax";
+          document.cookie = "onboarding_complete=1; Path=/; Max-Age=2592000; SameSite=Lax";
           router.push(`/dashboard/${profile.id}`);
         } else {
           router.push("/onboarding");

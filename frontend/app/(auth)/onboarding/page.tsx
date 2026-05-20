@@ -80,7 +80,7 @@ const STEP_LABELS = ["Role", "Interests", "Avatar", "Location"];
 // ---------------------------------------------------------------------------
 
 function setOnboardingCookie() {
-  document.cookie = "onboarding_complete=1; Path=/; Max-Age=86400; SameSite=Lax";
+  document.cookie = "onboarding_complete=1; Path=/; Max-Age=2592000; SameSite=Lax";
 }
 
 // ---------------------------------------------------------------------------
