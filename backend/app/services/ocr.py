@@ -113,6 +113,18 @@ def _strip_level_indicator(name: str) -> str:
     return _LEVEL_SUFFIX_PATTERN.sub("", name).strip()
 
 
+# HP noise: Vision sometimes reads the HP value (and adjacent type symbol) onto
+# the same line as the card name because they share the same horizontal band.
+# e.g. "Team Rocket's Zapdos 1204" where "120" = HP and "4" = ⚡ OCR noise.
+# Safe to strip: no legitimate Pokémon name ends with " <2-4 digits>".
+_HP_SUFFIX_PATTERN = re.compile(r"\s+\d{2,4}$")
+
+
+def _strip_hp_suffix(name: str) -> str:
+    """Remove a trailing HP value (+ possible OCR noise digit) from a name."""
+    return _HP_SUFFIX_PATTERN.sub("", name).strip()
+
+
 def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     """
     Extract structured fields from raw OCR text.
@@ -148,13 +160,13 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
         if inline:
             candidate = _strip_level_indicator(inline.group(1).strip())
             if not _NON_NAME_PATTERN.match(candidate):
-                result["name"] = candidate
+                result["name"] = _strip_hp_suffix(candidate)
                 break
             continue  # both tokens are noise (e.g. "BASIC TRAINER") — keep searching
 
         # Standard path: skip stage markers, HP, bare numbers, type headers.
         if not _NON_NAME_PATTERN.match(line):
-            result["name"] = _strip_level_indicator(line)
+            result["name"] = _strip_hp_suffix(_strip_level_indicator(line))
             break
 
     # Allow up to 4 digits on the right side — OCR sometimes appends an extra
@@ -171,7 +183,9 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
 
     # Search the full raw text (not line-by-line) so "HP\n100" is matched
     # even when the number appears on the line after the HP label.
-    hp_pattern = re.compile(r"\b(\d{2,3})\s*HP\b|\bHP\s*(\d{2,3})\b", re.IGNORECASE)
+    # Allow an optional trailing noise digit (e.g. "1204" where ⚡ → "4")
+    # by matching \d{2,3} followed by an optional extra digit before the HP label.
+    hp_pattern = re.compile(r"\b(\d{2,3})\d?\s*HP\b|\bHP\s*(\d{2,3})\d?\b", re.IGNORECASE)
     hp_match = hp_pattern.search(raw_text)
     if hp_match:
         result["hp"] = int(hp_match.group(1) or hp_match.group(2))

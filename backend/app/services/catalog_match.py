@@ -13,7 +13,7 @@ Returns dicts with keys: card (CardV2), expansion (ExpansionV2), confidence (flo
 from typing import Optional, Dict, Any, List
 
 from rapidfuzz import fuzz, process
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.catalog_v2 import CardV2, ExpansionV2
@@ -38,6 +38,10 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
     local_id_variants = _local_id_variants(set_number) if set_number else []
     card_count = _parse_card_count(set_number) if set_number else None  # e.g. 131 from "029/131"
 
+    def _count_filter(q, count):
+        """Filter by card count against both total and printed_total (either may be populated)."""
+        return q.filter(or_(ExpansionV2.total == count, ExpansionV2.printed_total == count))
+
     # Tier 1: name + local_id (+ card_count to pin the expansion when multiple editions share the name/number)
     if name and local_id_variants:
         q = (
@@ -50,12 +54,12 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
             )
         )
         if card_count is not None:
-            q = q.filter(ExpansionV2.total == card_count)
+            q = _count_filter(q, card_count)
         row = q.first()
         if row:
             return {"card": row[0], "expansion": row[1], "confidence": 0.99, "method": "exact"}
 
-        # Retry Tier 1 without card_count filter in case total isn't populated
+        # Retry Tier 1 without card_count filter in case neither total nor printed_total is populated
         if card_count is not None:
             row = (
                 db.query(CardV2, ExpansionV2)
@@ -81,8 +85,20 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
             )
         )
         if card_count is not None:
-            q = q.filter(ExpansionV2.total == card_count)
+            q = _count_filter(q, card_count)
         rows = q.all()
+
+        # Retry Tier 2 without card_count if neither total nor printed_total matched
+        if not rows and card_count is not None:
+            rows = (
+                db.query(CardV2, ExpansionV2)
+                .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+                .filter(
+                    CardV2.number.in_(local_id_variants),
+                    CardV2.game == "pokemon",
+                )
+                .all()
+            )
 
         if len(rows) == 1:
             return {"card": rows[0][0], "expansion": rows[0][1], "confidence": 0.90, "method": "local_id"}
