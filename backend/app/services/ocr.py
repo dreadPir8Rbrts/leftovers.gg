@@ -173,7 +173,8 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
 
     # Allow up to 4 digits on the right side — OCR sometimes appends an extra
     # character to the card count (e.g. "044/1910" instead of "044/191").
-    set_number_pattern = re.compile(r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+)\b")
+    # Also matches old Japanese Base-era "No.NNN" Pokédex-number format.
+    set_number_pattern = re.compile(r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+|No\.\d+)\b", re.IGNORECASE)
     for line in lines:
         match = set_number_pattern.search(line)
         if match:

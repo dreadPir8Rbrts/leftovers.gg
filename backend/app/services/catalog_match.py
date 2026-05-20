@@ -213,7 +213,10 @@ def _parse_card_count(set_number: str) -> Optional[int]:
     '029/131'  -> 131
     '044/1910' -> 191  (OCR noise: 4th digit is a stray character, truncate to 3)
     'TG15/TG30' -> None (TG format doesn't map cleanly to expansion total)
+    'No.150'   -> None (old Japanese Base-era Pokédex-number format, no set total)
     """
+    if set_number.upper().startswith("NO."):
+        return None
     parts = set_number.split("/")
     if len(parts) < 2:
         return None
@@ -230,9 +233,13 @@ def _local_id_variants(set_number: str) -> List[str]:
     Return both the raw and leading-zero-stripped form of a set number's local ID.
     '006/091' -> ['006', '6']
     'TG15/TG30' -> ['TG15']
+    'No.150'   -> ['150']  (old Japanese Base-era Pokédex-number format)
     Deduplicated so exact matches don't produce duplicates.
     """
     part = set_number.split("/")[0]
+    if part.upper().startswith("NO."):
+        digits = part[3:]
+        return [str(int(digits))] if digits.isdigit() else [digits]
     if part.upper().startswith("TG"):
         return [part.upper()]
     stripped = str(int(part)) if part.isdigit() else part
