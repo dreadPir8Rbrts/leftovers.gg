@@ -13,11 +13,12 @@
  * Cards are added via text search or camera scan (quick-identify).
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useTransactionCart } from "@/lib/stores/useTransactionCart";
 import {
   createTransaction,
   patchInventoryItem,
@@ -509,9 +510,45 @@ function computeValue(
 export default function NewTransactionPage() {
   const router = useRouter();
   const params = useParams<{ profile_id: string }>();
+  const searchParams = useSearchParams();
+  const fromCart = searchParams.get("fromCart") === "true";
+  const cartItems = useTransactionCart((s) => s.items);
+  const clearCart = useTransactionCart((s) => s.clear);
 
   const [txType, setTxType] = useState<TransactionType>("buy");
-  const [cards, setCards] = useState<CardDraft[]>([]);
+  const [cards, setCards] = useState<CardDraft[]>(() => {
+    if (!fromCart) return [];
+    return cartItems.map((item) => ({
+      key: item.cartId,
+      card: item.card,
+      direction: "gained" as const,
+      conditionType: item.condition_type,
+      conditionUngraded: item.condition_ungraded ?? "NM",
+      gradingCompany: item.grading_company ?? "",
+      grade: item.grade ?? "",
+      estimatedValue: "",
+      quantity: item.quantity,
+    }));
+  });
+
+  useEffect(() => {
+    if (fromCart && cartItems.length > 0 && cards.length === 0) {
+      setCards(
+        cartItems.map((item) => ({
+          key: item.cartId,
+          card: item.card,
+          direction: "gained" as const,
+          conditionType: item.condition_type,
+          conditionUngraded: item.condition_ungraded ?? "NM",
+          gradingCompany: item.grading_company ?? "",
+          grade: item.grade ?? "",
+          estimatedValue: "",
+          quantity: item.quantity,
+        }))
+      );
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [cashGained, setCashGained] = useState("");
   const [cashLost, setCashLost] = useState("");
   const [marketplace, setMarketplace] = useState("");
@@ -594,6 +631,7 @@ export default function NewTransactionPage() {
         cards: cardPayload,
       });
 
+      if (fromCart) clearCart();
       const estimates = result.estimated_acquired_prices;
       if (estimates && estimates.length > 0) {
         // Prompt user to confirm acquired prices before navigating away
@@ -640,11 +678,28 @@ export default function NewTransactionPage() {
         <h1 className="text-xl font-bold">New Transaction</h1>
       </div>
 
+      {fromCart && cards.length > 0 && (
+        <p className="text-xs text-muted-foreground mb-4">
+          {cards.length} card{cards.length !== 1 ? "s" : ""} loaded from cart — set type, adjust conditions, then save.
+        </p>
+      )}
+
       {/* Type selector */}
       <div className="flex gap-3 mb-8">
-        <TypeButton label="Buy" active={txType === "buy"} onClick={() => { setTxType("buy"); setCards([]); }} />
-        <TypeButton label="Sell" active={txType === "sell"} onClick={() => { setTxType("sell"); setCards([]); }} />
-        <TypeButton label="Trade" active={txType === "trade"} onClick={() => { setTxType("trade"); setCards([]); }} />
+        <TypeButton label="Buy" active={txType === "buy"} onClick={() => {
+          setTxType("buy");
+          if (fromCart) setCards((prev) => prev.map((c) => ({ ...c, direction: "gained" as const })));
+          else setCards([]);
+        }} />
+        <TypeButton label="Sell" active={txType === "sell"} onClick={() => {
+          setTxType("sell");
+          if (fromCart) setCards((prev) => prev.map((c) => ({ ...c, direction: "lost" as const })));
+          else setCards([]);
+        }} />
+        <TypeButton label="Trade" active={txType === "trade"} onClick={() => {
+          setTxType("trade");
+          if (!fromCart) setCards([]);
+        }} />
       </div>
 
       {/* Visualization */}

@@ -894,11 +894,11 @@ export default function InventoryPage() {
               const availableCategories: string[] = [];
               if (scrydexPrices) {
                 if (scrydexPrices.some((p) => p.type === "raw")) availableCategories.push("RAW");
-                const companies = [...new Set(
-                  scrydexPrices
-                    .filter((p) => p.type === "graded" && !p.is_signed && !p.is_error)
-                    .map((p) => p.company?.toUpperCase() ?? "")
-                )].filter(Boolean);
+                const companySeen = new Set<string>();
+                const companies = scrydexPrices
+                  .filter((p) => p.type === "graded" && !p.is_signed && !p.is_error)
+                  .map((p) => p.company?.toUpperCase() ?? "")
+                  .filter((c) => { if (!c || companySeen.has(c)) return false; companySeen.add(c); return true; });
                 COMPANY_ORDER.forEach((c) => { if (companies.includes(c)) availableCategories.push(c); });
                 companies.filter((c) => !COMPANY_ORDER.includes(c)).forEach((c) => availableCategories.push(c));
               }
