@@ -19,6 +19,11 @@ from sqlalchemy.orm import Session
 from app.models.catalog_v2 import CardV2, ExpansionV2
 
 
+def _count_filter(q: Any, count: int) -> Any:
+    """Filter a query by card count against both total and printed_total (either may be NULL)."""
+    return q.filter(or_(ExpansionV2.total == count, ExpansionV2.printed_total == count))
+
+
 def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     """
     Attempt to identify a Pokémon card from OCR-extracted fields.
@@ -38,10 +43,6 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
 
     local_id_variants = _local_id_variants(set_number) if set_number else []
     card_count = _parse_card_count(set_number) if set_number else None  # e.g. 131 from "029/131"
-
-    def _count_filter(q, count):
-        """Filter by card count against both total and printed_total (either may be populated)."""
-        return q.filter(or_(ExpansionV2.total == count, ExpansionV2.printed_total == count))
 
     # Tier 1: name + local_id (+ card_count to pin the expansion when multiple editions share the name/number)
     if name and local_id_variants:
@@ -238,9 +239,221 @@ def _local_id_variants(set_number: str) -> List[str]:
     """
     part = set_number.split("/")[0]
     if part.upper().startswith("NO."):
-        digits = part[3:]
+        digits = part[3:].strip()
         return [str(int(digits))] if digits.isdigit() else [digits]
     if part.upper().startswith("TG"):
         return [part.upper()]
     stripped = str(int(part)) if part.isdigit() else part
     return list(dict.fromkeys([part, stripped]))  # preserve order, deduplicate
+
+
+# ---------------------------------------------------------------------------
+# Quick Scan v2 — Claude extraction + weighted multi-field scoring
+# ---------------------------------------------------------------------------
+
+_SCORE_WEIGHTS: Dict[str, int] = {
+    "name":          35,
+    "number":        30,
+    "hp":            10,
+    "artist":        10,
+    "attacks":        8,
+    "flavor_text":    4,
+    "rarity_symbol":  3,
+}
+
+
+def _normalize_number_for_scoring(raw: Optional[str]) -> str:
+    """Normalize any printed card number to a bare card ID for equality comparison.
+    '029/131' -> '29', 'No.150' -> '150', 'No. 150' -> '150', 'TG15/TG30' -> 'TG15'
+    """
+    if not raw:
+        return ""
+    raw = str(raw).strip()
+    if raw.upper().startswith("NO."):
+        digits = raw[3:].strip()
+        return str(int(digits)) if digits.isdigit() else digits
+    part = raw.split("/")[0].strip() if "/" in raw else raw
+    if part.upper().startswith("TG"):
+        return part.upper()
+    if part.isdigit():
+        return str(int(part))
+    return part
+
+
+def _score_candidate_v2(
+    extracted: Dict[str, Any], card: CardV2, expansion: ExpansionV2
+) -> float:
+    """Score a single (CardV2, ExpansionV2) candidate against Claude-extracted fields.
+    Returns 0–100. Weights sum to 100 so the result is directly a percentage."""
+    score = 0.0
+
+    # Name (35 pts): cross-check extracted name + en_name against DB name + en_name
+    ext_names: List[str] = [n for n in [extracted.get("name"), extracted.get("en_name")] if n]
+    db_names: List[str] = [n for n in [card.name, card.en_name] if n]
+    name_score = 0
+    for en in ext_names:
+        for dn in db_names:
+            name_score = max(name_score, fuzz.token_sort_ratio(en.lower(), dn.lower()))
+    score += (name_score / 100) * _SCORE_WEIGHTS["name"]
+
+    # Number (30 pts): normalize both sides before comparing
+    ext_num = _normalize_number_for_scoring(extracted.get("number"))
+    db_num = _normalize_number_for_scoring(card.number)
+    if ext_num and db_num and ext_num == db_num:
+        score += _SCORE_WEIGHTS["number"]
+
+    # HP (10 pts)
+    if extracted.get("hp") is not None and card.hp:
+        try:
+            if int(extracted["hp"]) == int(card.hp):
+                score += _SCORE_WEIGHTS["hp"]
+        except (ValueError, TypeError):
+            pass
+
+    # Artist (10 pts)
+    if extracted.get("artist") and card.artist:
+        artist_sim = fuzz.ratio(extracted["artist"].lower(), card.artist.lower())
+        score += (artist_sim / 100) * _SCORE_WEIGHTS["artist"]
+
+    # Attacks (8 pts): fuzzy match attack names
+    ext_attacks: List[str] = extracted.get("attacks") or []
+    db_attacks: List[Dict[str, Any]] = card.attacks or []
+    if ext_attacks and db_attacks:
+        db_attack_names = [a.get("name", "") for a in db_attacks if isinstance(a, dict)]
+        if db_attack_names:
+            matched = sum(
+                1 for ea in ext_attacks
+                if any(fuzz.token_sort_ratio(ea.lower(), da.lower()) > 80 for da in db_attack_names)
+            )
+            ratio = matched / max(len(ext_attacks), len(db_attack_names))
+            score += ratio * _SCORE_WEIGHTS["attacks"]
+
+    # Flavor text (4 pts)
+    if extracted.get("flavor_text") and card.flavor_text:
+        ft_sim = fuzz.partial_ratio(
+            extracted["flavor_text"].lower(), card.flavor_text.lower()
+        )
+        score += (ft_sim / 100) * _SCORE_WEIGHTS["flavor_text"]
+
+    # Rarity symbol (3 pts)
+    if extracted.get("rarity_symbol") and card.rarity_code:
+        if extracted["rarity_symbol"].strip() == card.rarity_code.strip():
+            score += _SCORE_WEIGHTS["rarity_symbol"]
+
+    return round(score, 2)
+
+
+def _get_v2_candidate_pool(
+    extracted: Dict[str, Any], db: Session, limit: int = 50
+) -> List[tuple]:
+    """
+    DB-backed pre-filter returning a manageable (CardV2, ExpansionV2) pool.
+    Uses number + name signals to narrow before full scoring — never scans the full table.
+    """
+    number: str = (extracted.get("number") or "").strip()
+    name: str = (extracted.get("name") or "").strip()
+    en_name: str = (extracted.get("en_name") or "").strip()
+    language: str = (extracted.get("language") or "").strip().lower()
+
+    number_variants = _local_id_variants(number) if number else []
+    card_count = _parse_card_count(number) if number else None
+
+    lang_code: Optional[str] = None
+    if "japanese" in language:
+        lang_code = "JA"
+    elif language in ("english", "en"):
+        lang_code = "EN"
+
+    def base_q() -> Any:
+        return (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(CardV2.game == "pokemon")
+        )
+
+    rows: List[tuple] = []
+
+    # Pool A: by card number (tightest signal)
+    if number_variants:
+        q = base_q().filter(CardV2.number.in_(number_variants))
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        if card_count is not None:
+            q = _count_filter(q, card_count)
+        pool_a = q.limit(limit).all()
+        # Retry without card_count if empty (total/printed_total may be NULL)
+        if not pool_a and card_count is not None:
+            q2 = base_q().filter(CardV2.number.in_(number_variants))
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            pool_a = q2.limit(limit).all()
+        rows.extend(pool_a)
+
+    # Pool B: by name ilike — used when number pool is small or absent
+    if len(rows) < 10:
+        for search_name in [name, en_name]:
+            if search_name and len(search_name) >= 2:
+                q = base_q().filter(
+                    or_(
+                        CardV2.name.ilike(f"%{search_name}%"),
+                        CardV2.en_name.ilike(f"%{search_name}%"),
+                    )
+                )
+                if lang_code:
+                    q = q.filter(CardV2.language_code == lang_code)
+                rows.extend(q.limit(limit).all())
+
+    # Deduplicate preserving insertion order
+    seen: set = set()
+    unique: List[tuple] = []
+    for row in rows:
+        cid = row[0].id
+        if cid not in seen:
+            seen.add(cid)
+            unique.append(row)
+
+    return unique[:limit]
+
+
+def match_card_from_claude_extract(
+    extracted: Dict[str, Any], db: Session
+) -> Optional[Dict[str, Any]]:
+    """
+    Match a card using Claude-extracted fields via weighted multi-field scoring.
+    DB-pre-filtered then scored — never iterates the full table.
+
+    Returns same shape as match_card_from_ocr:
+      {"card": CardV2, "expansion": ExpansionV2, "confidence": float, "method": str}
+    Or {"ambiguous": True, "candidates": [...]} when top candidates are too close to auto-select.
+    Or None if no confident match found.
+    """
+    pool = _get_v2_candidate_pool(extracted, db)
+    if not pool:
+        return None
+
+    scored: List[tuple] = sorted(
+        [(row, _score_candidate_v2(extracted, row[0], row[1])) for row in pool],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+
+    best_row, best_score = scored[0]
+
+    # Below minimum threshold — no usable match
+    if best_score < 50:
+        return None
+
+    # Ambiguous: top-2 within 10 points and neither is clearly dominant (< 90)
+    if len(scored) >= 2 and (scored[0][1] - scored[1][1]) < 10 and best_score < 90:
+        top = [(row, s) for row, s in scored if s >= best_score - 15][:5]
+        return {
+            "ambiguous": True,
+            "candidates": [{"card": row[0], "expansion": row[1]} for row, _ in top],
+        }
+
+    return {
+        "card": best_row[0],
+        "expansion": best_row[1],
+        "confidence": round(best_score / 100, 2),
+        "method": "claude_extract",
+    }

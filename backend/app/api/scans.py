@@ -590,3 +590,111 @@ async def quick_identify(
         "game": card.game,
         "language_code": card.language_code,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /scans/quick-identify-v2  (Claude extraction + weighted multi-field match)
+# ---------------------------------------------------------------------------
+
+@router.post("/scans/quick-identify-v2", response_model=QuickIdentifyResponse)
+async def quick_identify_v2(
+    image: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Quick Scan v2: Claude structured extraction + weighted multi-field DB match.
+
+    Stage 1 — Claude reads: name, en_name, number, hp, artist, attacks,
+               flavor_text, rarity_symbol, language from the card image.
+    Stage 2 — DB pre-filter (by number + name) then rapidfuzz multi-field
+               weighted scoring against the candidate pool.
+
+    Returns the same QuickIdentifyResponse schema as /scans/quick-identify
+    so the frontend can handle both identically.
+    """
+    from app.services.claude_extract import extract_card_fields as _extract_fields
+    from app.services.catalog_match import match_card_from_claude_extract
+
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+
+    image_bytes = await image.read()
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 10 MB")
+
+    try:
+        extracted = await _extract_fields(image_bytes)
+    except Exception as exc:
+        logger.error("quick_identify_v2 — extraction error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Extraction service error — please try again")
+
+    logger.info(
+        "quick_identify_v2 — extracted: name=%r en_name=%r number=%r hp=%r artist=%r",
+        extracted.get("name"), extracted.get("en_name"), extracted.get("number"),
+        extracted.get("hp"), extracted.get("artist"),
+    )
+
+    # Map to the standard ocr response shape for frontend consistency
+    ocr_payload = {
+        "name": extracted.get("name"),
+        "set_number": extracted.get("number"),
+        "ocr_num1": None,
+        "ocr_num2": None,
+        "hp": extracted.get("hp"),
+        "illustrator": extracted.get("artist"),
+    }
+
+    if not extracted.get("name") and not extracted.get("number"):
+        return {"matched": False, "reason": "no_text_detected", "ocr": ocr_payload}
+
+    match = await asyncio.to_thread(match_card_from_claude_extract, extracted, db)
+
+    if not match:
+        logger.info("quick_identify_v2 — no catalog match: %s", extracted)
+        return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_payload}
+
+    if match.get("ambiguous"):
+        raw_candidates = match["candidates"]
+        logger.info("quick_identify_v2 — ambiguous: %d candidates", len(raw_candidates))
+        candidates = [
+            CandidateCard(
+                card_id=str(c["card"].id),
+                name=c["card"].name,
+                card_num=c["card"].number,
+                rarity=c["card"].rarity,
+                image_url=_extract_image_url(c["card"].images),
+                set_name=c["expansion"].name,
+                language_code=c["card"].language_code or "EN",
+            )
+            for c in raw_candidates
+        ]
+        return {"matched": False, "ambiguous": True, "candidates": candidates, "ocr": ocr_payload}
+
+    card: CardV2 = match["card"]
+    expansion: ExpansionV2 = match["expansion"]
+    confidence: float = match["confidence"]
+    method: str = match["method"]
+
+    logger.info(
+        "quick_identify_v2 — matched: card=%s confidence=%.2f method=%s",
+        card.id, confidence, method,
+    )
+
+    return {
+        "matched": True,
+        "confidence": confidence,
+        "method": method,
+        "ocr": ocr_payload,
+        "card_id": str(card.id),
+        "name": card.name,
+        "card_num": card.number,
+        "rarity": card.rarity,
+        "image_url": _extract_image_url(card.images),
+        "set_name": expansion.name,
+        "release_date": str(expansion.release_date) if expansion.release_date else None,
+        "series_name": expansion.series,
+        "game": card.game,
+        "language_code": card.language_code,
+    }

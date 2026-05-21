@@ -1079,3 +1079,23 @@ export async function quickIdentifyCard(file: File): Promise<QuickScanResult> {
   }
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// Quick Scan v2 — Claude structured extraction + weighted multi-field DB match.
+// Handles Japanese, old-format, and edge-case cards better than v1 OCR.
+// Note: do NOT set Content-Type header — browser sets it with the multipart boundary.
+export async function quickIdentifyCardV2(file: File): Promise<QuickScanResult> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append("image", file, file.name);
+  const res = await fetch(`${API_URL}/api/v1/scans/quick-identify-v2`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Smart scan failed: ${res.status}`);
+  }
+  return res.json();
+}

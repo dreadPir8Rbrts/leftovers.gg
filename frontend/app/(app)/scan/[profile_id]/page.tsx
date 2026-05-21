@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   identifyCard,
   quickIdentifyCard,
+  quickIdentifyCardV2,
   type QuickScanResult,
   type ScanCandidate,
 } from "@/lib/api";
@@ -55,6 +56,7 @@ export default function ScanPage() {
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<ScanState>({ step: "idle" });
   const [quickScanLoading, setQuickScanLoading] = useState(false);
+  const [smartScanLoading, setSmartScanLoading] = useState(false);
   const [quickScanNoMatch, setQuickScanNoMatch] = useState<QuickScanResult | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
 
@@ -113,12 +115,37 @@ export default function ScanPage() {
     }
   }
 
+  async function handleSmartScan() {
+    if (!file) return;
+    setSmartScanLoading(true);
+    setQuickScanNoMatch(null);
+    setScanCandidates(null);
+    setState({ step: "idle" });
+    try {
+      const compressed = await compressImage(file, 1200, 0.80);
+      setPreview(URL.createObjectURL(compressed));
+      const result = await quickIdentifyCardV2(compressed);
+      if (result.matched && result.card_id) {
+        router.push(`/cards/${result.card_id}`);
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
+      } else {
+        setQuickScanNoMatch(result);
+      }
+    } catch (err) {
+      setState({ step: "error", message: err instanceof Error ? err.message : "Smart Scan failed — please try again." });
+    } finally {
+      setSmartScanLoading(false);
+    }
+  }
+
   function handleReset() {
     setState({ step: "idle" });
     setPreview(null);
     setFile(null);
     setQuickScanNoMatch(null);
     setScanCandidates(null);
+    setSmartScanLoading(false);
     if (fileRef.current) fileRef.current.value = "";
   }
 
@@ -173,12 +200,17 @@ export default function ScanPage() {
 
       {/* Scan buttons */}
       {file && state.step === "idle" && (
-        <div className="flex gap-3 mb-4">
-          <Button className="flex-1" onClick={handleScan}>
-            Identify Card
-          </Button>
-          <Button variant="secondary" className="flex-1" onClick={handleQuickScan} disabled={quickScanLoading}>
-            {quickScanLoading ? "Scanning..." : "Quick Scan"}
+        <div className="flex flex-col gap-2 mb-4">
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={handleScan}>
+              Identify Card
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={handleQuickScan} disabled={quickScanLoading}>
+              {quickScanLoading ? "Scanning..." : "Quick Scan"}
+            </Button>
+          </div>
+          <Button variant="outline" className="w-full" onClick={handleSmartScan} disabled={smartScanLoading}>
+            {smartScanLoading ? "Scanning..." : "Smart Scan (v2)"}
           </Button>
         </div>
       )}
