@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { AvatarDropdown } from "@/components/nav/AvatarDropdown";
+import { GlobalSearch } from "@/components/nav/GlobalSearch";
 
 export default function PublicLayout({
   children,
@@ -37,7 +38,10 @@ export default function PublicLayout({
         >
           leftovers<span className="text-primary">.gg</span>
         </Link>
-        <div className="flex-1" />
+        <div className="hidden md:flex flex-1 justify-center px-8">
+          <GlobalSearch />
+        </div>
+        <div className="flex md:hidden flex-1" />
         <nav className="flex items-center gap-3">
           {sessionChecked && isLoggedIn ? (
             <AvatarDropdown profile={profile ?? null} />

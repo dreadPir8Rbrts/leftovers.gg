@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { AvatarDropdown } from "./AvatarDropdown";
+import { GlobalSearch } from "./GlobalSearch";
 import type { ProfileData } from "@/lib/api/profiles";
 
 interface TopNavProps {
@@ -19,7 +20,10 @@ export function TopNav({ profile }: TopNavProps) {
       <Link href="/" className="font-brand text-sm flex items-center" style={{ color: '#FFFFFF', fontWeight: 500, letterSpacing: '0.2px' }}>
         leftovers<span className="text-primary">.gg</span>
       </Link>
-      <div className="flex-1" />
+      <div className="hidden md:flex flex-1 justify-center px-8">
+        <GlobalSearch />
+      </div>
+      <div className="flex md:hidden flex-1" />
       <AvatarDropdown profile={profile ?? null} />
     </header>
   );

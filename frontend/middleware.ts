@@ -17,7 +17,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 // Routes that bypass the onboarding check entirely.
-const PUBLIC_PREFIXES = ["/onboarding", "/shows", "/browse-shows", "/discover", "/price-estimator", "/cards"];
+const PUBLIC_PREFIXES = ["/onboarding", "/shows", "/browse-shows", "/discover", "/price-estimator", "/cards", "/search"];
 const PUBLIC_EXACT = new Set(["/", "/login", "/signup"]);
 
 export function middleware(request: NextRequest): NextResponse {

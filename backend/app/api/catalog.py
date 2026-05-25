@@ -140,15 +140,21 @@ def smart_search_cards(
 
     if q:
         for word in q.strip().split():
-            query = query.filter(
-                or_(
-                    CardV2.name.ilike(f"%{word}%"),
-                    CardV2.en_name.ilike(f"%{word}%"),
-                    ExpansionV2.name.ilike(f"%{word}%"),
-                    ExpansionV2.name_en.ilike(f"%{word}%"),
-                    ExpansionV2.translation.ilike(f"%{word}%"),
-                )
-            )
+            num_stripped = word.lstrip("0") or word
+            is_numeric = word.replace("/", "").isdigit()
+            name_conditions = [
+                CardV2.name.ilike(f"%{word}%"),
+                CardV2.en_name.ilike(f"%{word}%"),
+                ExpansionV2.name.ilike(f"%{word}%"),
+                ExpansionV2.name_en.ilike(f"%{word}%"),
+                ExpansionV2.translation.ilike(f"%{word}%"),
+            ]
+            if is_numeric:
+                name_conditions += [
+                    CardV2.number == num_stripped,
+                    CardV2.printed_number.ilike(f"%{word}%"),
+                ]
+            query = query.filter(or_(*name_conditions))
 
     if card_num:
         if "/" in card_num:

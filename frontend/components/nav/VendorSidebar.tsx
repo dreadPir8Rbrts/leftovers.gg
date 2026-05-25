@@ -14,8 +14,6 @@ import {
   CalendarDays,
   ArrowLeftRight,
   UserCircle,
-  TrendingUp,
-  Heart,
   Compass,
 } from "lucide-react";
 
@@ -52,16 +50,14 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
   const p = profileId ?? "";
 
   const topItems = [
-    { href: "/discover",                       label: "Discover",        icon: Compass },
-    { href: p ? `/price-estimator/${p}` : "#", label: "Price Estimator", icon: TrendingUp },
-    { href: "/card-shows",                     label: "Card Shows",      icon: CalendarDays },
+    { href: "/discover",   label: "Discover",   icon: Compass },
+    { href: "/card-shows", label: "Card Shows", icon: CalendarDays },
   ];
 
   const bottomItems = [
     { href: p ? `/dashboard/${p}`    : "#", label: "Dashboard",    icon: LayoutDashboard },
     { href: p ? `/transactions/${p}` : "#", label: "Transactions", icon: ArrowLeftRight },
     { href: p ? `/inventory/${p}`    : "#", label: "Inventory",    icon: Package },
-    { href: p ? `/wishlist/${p}`     : "#", label: "Wishlist",     icon: Heart },
     { href: p ? `/profile/${p}`      : "#", label: "Profile",      icon: UserCircle },
   ];
 

@@ -5,13 +5,14 @@ import { useParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ArrowLeft, Loader2, ShoppingCart, Plus } from "lucide-react";
+import { ArrowLeft, Loader2, ShoppingCart, Plus, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCard,
   getCardScrydexPrices,
   getCardEstimatedValue,
   addInventoryItem,
+  addToWishlist,
   type Card,
   type ScrydexPriceEntry,
 } from "@/lib/api";
@@ -118,6 +119,11 @@ export default function CardDetailPage() {
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  // Wishlist
+  const [wishlistLoading, setWishlistLoading] = useState(false);
+  const [wishlistAdded, setWishlistAdded] = useState(false);
+  const [wishlistError, setWishlistError] = useState<string | null>(null);
 
   const { items: cartItems, addItem: addToCart } = useTransactionCart();
 
@@ -243,6 +249,25 @@ export default function CardDetailPage() {
     }
   }
 
+  async function handleAddToWishlist() {
+    if (!card) return;
+    setWishlistLoading(true);
+    setWishlistError(null);
+    try {
+      await addToWishlist({ card_id: card.id });
+      setWishlistAdded(true);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to add to wishlist.";
+      if (msg.includes("Already in wishlist")) {
+        setWishlistAdded(true);
+      } else {
+        setWishlistError(msg);
+      }
+    } finally {
+      setWishlistLoading(false);
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // Condition label for action bar
   // ---------------------------------------------------------------------------
@@ -276,11 +301,187 @@ export default function CardDetailPage() {
     );
   }
 
+  // Shared card info chips used in both mobile and desktop layouts
+  const cardChips = (
+    <div className="flex flex-wrap gap-1.5">
+      {card.game && (
+        <span className="text-xs bg-muted border border-black/20 px-2 py-0.5 rounded-full font-medium">{card.game}</span>
+      )}
+      {card.set_name && (
+        <span className="text-xs bg-muted border border-black/20 px-2 py-0.5 rounded-full">{card.set_name}{card.language_code === "JA" && card.set_name_en ? ` (${card.set_name_en})` : ""}</span>
+      )}
+      {card.language_code && (
+        <span className="text-xs bg-muted border border-black/20 px-2 py-0.5 rounded-full">
+          {card.language_code === "JA" ? "JA" : card.language_code === "EN" ? "EN" : card.language_code}
+        </span>
+      )}
+      {card.rarity && (
+        <span className="text-xs bg-muted border border-black/20 px-2 py-0.5 rounded-full">{card.rarity}</span>
+      )}
+    </div>
+  );
+
+  const cardHeading = (
+    <div className="space-y-2">
+      <h1 className="font-bold text-2xl leading-tight">
+        {card.name}
+        {card.card_num ? <span className="text-muted-foreground font-semibold"> #{card.card_num}</span> : null}
+      </h1>
+      {card.language_code === "JA" && card.en_name && (
+        <p className="text-sm text-muted-foreground">{card.en_name}</p>
+      )}
+      {cardChips}
+    </div>
+  );
+
+  const marketPriceSection = (
+    <div className="border border-black/20 rounded-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Market Price</p>
+        {availableCategories.length > 0 && (
+          <select
+            value={priceCategory}
+            onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
+            className="border border-black/20 roundedpx-2 py-0.5 text-xs bg-background"
+          >
+            {availableCategories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {scrydexLoading && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Loading prices…</span>
+        </div>
+      )}
+      {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
+
+      {selectedEntry && !scrydexLoading && (
+        <>
+          <div className="space-y-1">
+            <p className="text-3xl font-bold">
+              {selectedEntry.market != null ? `$${Number(selectedEntry.market).toFixed(2)}` : "N/A"}
+            </p>
+            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+              {(["days_7", "days_14", "days_30"] as const).map((key) => {
+                const t = selectedEntry.trends?.[key];
+                if (!t) return null;
+                const up = t.price_change >= 0;
+                const label = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
+                return (
+                  <span key={key} className={up ? "text-green-500" : "text-red-500"}>
+                    {up ? "+" : ""}{`$${Math.abs(t.price_change).toFixed(2)}`} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {label}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {chartData.length >= 2 && (
+            <ResponsiveContainer width="100%" height={120}>
+              <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                <YAxis hide domain={["auto", "auto"]} />
+                <Tooltip
+                  formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
+                  contentStyle={{ fontSize: 11, padding: "4px 8px" }}
+                />
+                <Line type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+
+          <div className="flex flex-wrap gap-1.5">
+            {currentEntries.map((entry, idx) => (
+              <button
+                key={idx}
+                onClick={() => { setSelectedEntryIdx(idx); setEbayValue(null); setEbayDataPoints(null); }}
+                className={`px-2.5 py-1 text-xs rounded-md border border-border transition-colors ${
+                  idx === safeIdx
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background hover:bg-muted"
+                }`}
+              >
+                {entryPillLabel(entry, priceCategory)}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5 text-xs">
+            {[
+              { label: "Low", value: selectedEntry.low },
+              ...(selectedEntry.type === "graded"
+                ? [{ label: "Mid", value: selectedEntry.mid }, { label: "High", value: selectedEntry.high }]
+                : []),
+              { label: "Market", value: selectedEntry.market },
+            ].map(({ label, value }) => (
+              <div key={label} className="flex justify-between border border-black/20 roundedpx-2.5 py-1.5">
+                <span className="text-muted-foreground">{label}</span>
+                <span className={label === "Market" ? "font-bold" : "font-medium"}>
+                  {value != null ? `$${Number(value).toFixed(2)}` : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {scrydexPrices !== null && !scrydexLoading && !selectedEntry && (
+        <p className="text-xs text-muted-foreground text-center py-4">No pricing data available for this card.</p>
+      )}
+    </div>
+  );
+
+  const ebaySection = (
+    <div className="border border-black/20 rounded-xl p-4 space-y-3">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">eBay Market Data</p>
+      {!isLoggedIn ? (
+        <p className="text-xs text-muted-foreground">
+          <Link href="/login" className="text-primary hover:underline">Sign in</Link> to access eBay sold comps and build a custom price estimate.
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground">
+            {selectedEntry
+              ? `Fetches recent eBay sold listings for ${selectedConditionLabel()}.`
+              : "Select a condition above to fetch eBay data."}
+          </p>
+          <Button size="sm" variant="outline" onClick={handleFetchEbay} disabled={ebayLoading || !selectedEntry}>
+            {ebayLoading ? (
+              <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Fetching…</span>
+            ) : "Fetch eBay Comps"}
+          </Button>
+          {ebayError && <p className="text-xs text-destructive">{ebayError}</p>}
+          {ebayLoading && (
+            <p className="text-xs text-muted-foreground animate-pulse">Searching eBay sold listings… this may take a moment.</p>
+          )}
+          {ebayValue != null && !ebayLoading && (
+            <div className="flex items-baseline justify-between border border-black/20 rounded-lg px-3 py-2">
+              <div>
+                <p className="text-xs text-muted-foreground">eBay Estimate · {selectedConditionLabel()}</p>
+                {ebayDataPoints != null && (
+                  <p className="text-xs text-muted-foreground">{ebayDataPoints} sales</p>
+                )}
+              </div>
+              <p className="text-2xl font-bold">${ebayValue.toFixed(2)}</p>
+            </div>
+          )}
+          {ebayValue === null && !ebayLoading && ebayError === null && ebayDataPoints !== null && (
+            <p className="text-xs text-muted-foreground">No eBay sales found for this condition.</p>
+          )}
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-background pb-32">
 
       {/* ── Top bar ── */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b flex items-center gap-3 px-4 py-3">
+      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-black/20 flex items-center gap-3 px-4 py-3">
         <button onClick={() => window.history.back()} className="text-muted-foreground hover:text-foreground">
           <ArrowLeft size={20} />
         </button>
@@ -295,192 +496,37 @@ export default function CardDetailPage() {
         )}
       </div>
 
-      <div className="max-w-lg mx-auto px-4 space-y-5 pt-4">
+      {/* ── Main layout ── */}
+      <div className="max-w-5xl mx-auto px-4 pt-6 pb-4">
+        <div className="flex flex-col md:grid md:grid-cols-[2fr_3fr] md:gap-10 gap-6">
 
-        {/* ── Card image + info ── */}
-        <div className="flex gap-4 items-start">
-          {card.image_url ? (
-            <div className="w-28 flex-shrink-0 aspect-[3/4] relative rounded-lg overflow-hidden border">
-              <Image src={card.image_url} alt={card.name} fill sizes="112px" className="object-contain" />
-            </div>
-          ) : (
-            <div className="w-28 flex-shrink-0 aspect-[3/4] rounded-lg border bg-muted" />
-          )}
-          <div className="flex-1 min-w-0 space-y-1 pt-1">
-            <p className="font-bold text-lg leading-tight">
-              {card.name}
-              {card.language_code === "JA" && card.en_name ? (
-                <span className="text-muted-foreground font-normal text-sm"> ({card.en_name})</span>
-              ) : null}
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {card.set_name}
-              {card.language_code === "JA" && card.set_name_en ? ` (${card.set_name_en})` : ""}
-            </p>
-            {card.card_num && <p className="text-xs text-muted-foreground">#{card.card_num}</p>}
-            <div className="flex flex-wrap gap-1.5 pt-0.5">
-              {card.rarity && (
-                <span className="text-xs bg-muted px-2 py-0.5 rounded-full">{card.rarity}</span>
-              )}
-              {card.language_code && (
-                <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
-                  {card.language_code === "JA" ? "Japanese" : card.language_code === "EN" ? "English" : card.language_code}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* ── Market Price (Scrydex) ── */}
-        <div className="border rounded-xl p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Market Price</p>
-            {availableCategories.length > 0 && (
-              <select
-                value={priceCategory}
-                onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
-                className="border rounded px-2 py-0.5 text-xs bg-background"
-              >
-                {availableCategories.map((cat) => (
-                  <option key={cat} value={cat}>{cat}</option>
-                ))}
-              </select>
+          {/* ── Left: large card image ── */}
+          <div className="md:sticky md:top-20 md:self-start">
+            {card.image_url ? (
+              <div className="relative w-full max-w-xs mx-auto md:max-w-none aspect-[3/4] rounded-xl overflow-hidden border border-black/20">
+                <Image src={card.image_url} alt={card.name} fill sizes="(max-width: 768px) 80vw, 40vw" className="object-contain" />
+              </div>
+            ) : (
+              <div className="w-full max-w-xs mx-auto md:max-w-none aspect-[3/4] rounded-xl border border-black/20 bg-muted" />
             )}
+            {/* Mobile card info below image */}
+            <div className="md:hidden mt-4">
+              {cardHeading}
+            </div>
           </div>
 
-          {scrydexLoading && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading prices…</span>
+          {/* ── Right: info + pricing ── */}
+          <div className="space-y-5">
+            {/* Desktop card heading */}
+            <div className="hidden md:block">
+              {cardHeading}
             </div>
-          )}
-          {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
 
-          {selectedEntry && !scrydexLoading && (
-            <>
-              {/* Market price + trends */}
-              <div className="space-y-1">
-                <p className="text-3xl font-bold">
-                  {selectedEntry.market != null ? `$${Number(selectedEntry.market).toFixed(2)}` : "N/A"}
-                </p>
-                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-                  {(["days_7", "days_14", "days_30"] as const).map((key) => {
-                    const t = selectedEntry.trends?.[key];
-                    if (!t) return null;
-                    const up = t.price_change >= 0;
-                    const label = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
-                    return (
-                      <span key={key} className={up ? "text-green-500" : "text-red-500"}>
-                        {up ? "+" : ""}{t.price_change >= 0 || t.price_change < 0 ? `$${Math.abs(t.price_change).toFixed(2)}` : "—"} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {label}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
+            {marketPriceSection}
+            {ebaySection}
+          </div>
 
-              {/* Chart */}
-              {chartData.length >= 2 && (
-                <ResponsiveContainer width="100%" height={120}>
-                  <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                    <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                    <YAxis hide domain={["auto", "auto"]} />
-                    <Tooltip
-                      formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
-                      contentStyle={{ fontSize: 11, padding: "4px 8px" }}
-                    />
-                    <Line type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-
-              {/* Grade pills */}
-              <div className="flex flex-wrap gap-1.5">
-                {currentEntries.map((entry, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => { setSelectedEntryIdx(idx); setEbayValue(null); setEbayDataPoints(null); }}
-                    className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                      idx === safeIdx
-                        ? "bg-foreground text-background border-foreground"
-                        : "bg-background hover:bg-muted"
-                    }`}
-                  >
-                    {entryPillLabel(entry, priceCategory)}
-                  </button>
-                ))}
-              </div>
-
-              {/* Low / mid / high / market */}
-              <div className="grid grid-cols-2 gap-1.5 text-xs">
-                {[
-                  { label: "Low", value: selectedEntry.low },
-                  ...(selectedEntry.type === "graded"
-                    ? [{ label: "Mid", value: selectedEntry.mid }, { label: "High", value: selectedEntry.high }]
-                    : []),
-                  { label: "Market", value: selectedEntry.market },
-                ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between border rounded px-2.5 py-1.5">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className={label === "Market" ? "font-bold" : "font-medium"}>
-                      {value != null ? `$${Number(value).toFixed(2)}` : "—"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          {scrydexPrices !== null && !scrydexLoading && !selectedEntry && (
-            <p className="text-xs text-muted-foreground text-center py-4">No pricing data available for this card.</p>
-          )}
         </div>
-
-        {/* ── eBay Market Data ── */}
-        <div className="border rounded-xl p-4 space-y-3">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">eBay Market Data</p>
-          {!isLoggedIn ? (
-            <p className="text-xs text-muted-foreground">
-              <Link href="/login" className="text-primary hover:underline">Sign in</Link> to access eBay sold comps and build a custom price estimate.
-            </p>
-          ) : (
-            <>
-              <p className="text-xs text-muted-foreground">
-                {selectedEntry
-                  ? `Fetches recent eBay sold listings for ${selectedConditionLabel()}.`
-                  : "Select a condition above to fetch eBay data."}
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleFetchEbay}
-                disabled={ebayLoading || !selectedEntry}
-              >
-                {ebayLoading ? (
-                  <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Fetching…</span>
-                ) : "Fetch eBay Comps"}
-              </Button>
-              {ebayError && <p className="text-xs text-destructive">{ebayError}</p>}
-              {ebayLoading && (
-                <p className="text-xs text-muted-foreground animate-pulse">Searching eBay sold listings… this may take a moment.</p>
-              )}
-              {ebayValue != null && !ebayLoading && (
-                <div className="flex items-baseline justify-between border rounded-lg px-3 py-2">
-                  <div>
-                    <p className="text-xs text-muted-foreground">eBay Estimate · {selectedConditionLabel()}</p>
-                    {ebayDataPoints != null && (
-                      <p className="text-xs text-muted-foreground">{ebayDataPoints} sales</p>
-                    )}
-                  </div>
-                  <p className="text-2xl font-bold">${ebayValue.toFixed(2)}</p>
-                </div>
-              )}
-              {ebayValue === null && !ebayLoading && ebayError === null && ebayDataPoints !== null && (
-                <p className="text-xs text-muted-foreground">No eBay sales found for this condition.</p>
-              )}
-            </>
-          )}
-        </div>
-
       </div>
 
       {/* ── Add to Inventory sheet (overlay) ── */}
@@ -501,7 +547,7 @@ export default function CardDetailPage() {
                 <input
                   type="number" min="1" value={addQuantity}
                   onChange={(e) => setAddQuantity(e.target.value)}
-                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
                 />
               </div>
               <div className="space-y-1">
@@ -512,7 +558,7 @@ export default function CardDetailPage() {
                     type="number" min="0" step="0.01" value={addAskingPrice}
                     onChange={(e) => setAddAskingPrice(e.target.value)}
                     placeholder="0.00"
-                    className="w-full border rounded-md pl-6 pr-3 py-2 text-sm bg-background"
+                    className="w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background"
                   />
                 </div>
               </div>
@@ -527,7 +573,7 @@ export default function CardDetailPage() {
 
       {/* ── Sticky action bar ── */}
       <div
-        className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t px-4 py-3"
+        className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-black/20 px-4 py-3"
         style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
       >
         {addSuccess && (
@@ -549,10 +595,7 @@ export default function CardDetailPage() {
                 <Plus size={14} className="mr-1.5" />
                 Add to Inventory
               </Button>
-              <Button
-                className="flex-1"
-                onClick={handleAddToCart}
-              >
+              <Button className="flex-1" onClick={handleAddToCart}>
                 <ShoppingCart size={14} className="mr-1.5" />
                 Add to Cart
                 {cartItems.length > 0 && (
@@ -562,6 +605,19 @@ export default function CardDetailPage() {
                 )}
               </Button>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full text-muted-foreground"
+              onClick={handleAddToWishlist}
+              disabled={wishlistLoading || wishlistAdded}
+            >
+              <Heart size={14} className={`mr-1.5 ${wishlistAdded ? "fill-current text-red-500" : ""}`} />
+              {wishlistAdded ? "Added to Wishlist" : wishlistLoading ? "Adding…" : "Add to Wishlist"}
+            </Button>
+            {wishlistError && (
+              <p className="text-xs text-destructive text-center">{wishlistError}</p>
+            )}
           </div>
         ) : (
           <p className="text-xs text-muted-foreground text-center">Select a condition above</p>
