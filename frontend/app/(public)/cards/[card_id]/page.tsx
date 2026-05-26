@@ -11,10 +11,12 @@ import {
   getCard,
   getCardScrydexPrices,
   getCardEstimatedValue,
+  getCardPricing,
   addInventoryItem,
   addToWishlist,
   type Card,
   type ScrydexPriceEntry,
+  type PricingReady,
 } from "@/lib/api";
 import { useTransactionCart } from "@/lib/stores/useTransactionCart";
 import { supabase } from "@/lib/supabase";
@@ -120,6 +122,10 @@ export default function CardDetailPage() {
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
+  // TCGPlayer raw pricing
+  const [tcgRaw, setTcgRaw] = useState<PricingReady | null>(null);
+  const [tcgRawLoading, setTcgRawLoading] = useState(false);
+
   // Wishlist
   const [wishlistLoading, setWishlistLoading] = useState(false);
   const [wishlistAdded, setWishlistAdded] = useState(false);
@@ -148,24 +154,50 @@ export default function CardDetailPage() {
     getCardScrydexPrices(cardId)
       .then((res) => {
         setScrydexPrices(res.prices);
-        // Default to first available category
-        const hasPrices = res.prices.length > 0;
-        if (hasPrices) {
-          const hasRaw = res.prices.some((p) => p.type === "raw");
-          setPriceCategory(hasRaw ? "RAW" : (res.prices.find((p) => p.type === "graded")?.company?.toUpperCase() ?? "RAW"));
+        // Default to PSA if available, else first graded company, else RAW
+        const graded = res.prices.filter((p) => p.type === "graded" && !p.is_signed && !p.is_error);
+        if (graded.length > 0) {
+          const hasPsa = graded.some((p) => p.company?.toUpperCase() === "PSA");
+          setPriceCategory(hasPsa ? "PSA" : (graded[0].company?.toUpperCase() ?? "RAW"));
+        } else {
+          setPriceCategory("RAW");
         }
+        setSelectedEntryIdx(0);
       })
       .catch(() => setScrydexError("Could not load pricing data."))
       .finally(() => setScrydexLoading(false));
   }, [cardId]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !cardId) return;
+
+    async function loadTcgRaw(retryOnPending = true) {
+      setTcgRawLoading(true);
+      try {
+        const { http_status, data } = await getCardPricing(cardId);
+        if (http_status === 200 && data.status === "ready") {
+          setTcgRaw(data as PricingReady);
+          setTcgRawLoading(false);
+        } else if (data.status === "pending" && retryOnPending) {
+          setTimeout(() => loadTcgRaw(false), 4000);
+        } else {
+          setTcgRawLoading(false);
+        }
+      } catch {
+        setTcgRawLoading(false);
+      }
+    }
+
+    loadTcgRaw();
+  }, [cardId, isLoggedIn]);
 
   // ---------------------------------------------------------------------------
   // Derived pricing state
   // ---------------------------------------------------------------------------
 
   const availableCategories: string[] = [];
-  if (scrydexPrices) {
-    if (scrydexPrices.some((p) => p.type === "raw")) availableCategories.push("RAW");
+  if (scrydexPrices !== null) {
+    availableCategories.push("RAW"); // always present; sourced from TCGPlayer
     const companySeen = new Set<string>();
     const companies = scrydexPrices
       .filter((p) => p.type === "graded" && !p.is_signed && !p.is_error)
@@ -175,14 +207,11 @@ export default function CardDetailPage() {
     companies.filter((c) => !COMPANY_ORDER.includes(c)).forEach((c) => availableCategories.push(c));
   }
 
-  const currentEntries: ScrydexPriceEntry[] = scrydexPrices
-    ? priceCategory === "RAW"
-      ? RAW_ORDER
-          .map((cond) => scrydexPrices.find((p) => p.type === "raw" && p.condition === cond))
-          .filter((p): p is ScrydexPriceEntry => p !== undefined)
-      : scrydexPrices
-          .filter((p) => p.type === "graded" && p.company?.toUpperCase() === priceCategory && !p.is_signed && !p.is_error)
-          .sort((a, b) => parseFloat(b.grade ?? "0") - parseFloat(a.grade ?? "0"))
+  // RAW tab is served by TCGPlayer — Scrydex only provides graded entries
+  const currentEntries: ScrydexPriceEntry[] = scrydexPrices && priceCategory !== "RAW"
+    ? scrydexPrices
+        .filter((p) => p.type === "graded" && p.company?.toUpperCase() === priceCategory && !p.is_signed && !p.is_error)
+        .sort((a, b) => parseFloat(b.grade ?? "0") - parseFloat(a.grade ?? "0"))
     : [];
 
   const safeIdx = Math.min(selectedEntryIdx, Math.max(0, currentEntries.length - 1));
@@ -196,13 +225,14 @@ export default function CardDetailPage() {
   // ---------------------------------------------------------------------------
 
   async function handleFetchEbay() {
-    if (!card || !selectedEntry) return;
+    if (!card) return;
+    const cond = getConditionParams();
+    if (!cond) return;
     setEbayLoading(true);
     setEbayError(null);
     setEbayValue(null);
     setEbayDataPoints(null);
     try {
-      const cond = entryConditionParams(selectedEntry, priceCategory);
       let result = await getCardEstimatedValue(card.id, cond);
       while (result.http_status === 202) {
         await new Promise((r) => setTimeout(r, 3000));
@@ -218,18 +248,20 @@ export default function CardDetailPage() {
   }
 
   function handleAddToCart() {
-    if (!card || !selectedEntry) return;
-    const cond = entryConditionParams(selectedEntry, priceCategory);
+    if (!card) return;
+    const cond = getConditionParams();
+    if (!cond) return;
     addToCart({ card, quantity: 1, ...cond });
   }
 
   async function handleAddToInventory() {
-    if (!card || !selectedEntry) return;
+    if (!card) return;
+    const cond = getConditionParams();
+    if (!cond) return;
     setAdding(true);
     setAddError(null);
     setAddSuccess(false);
     try {
-      const cond = entryConditionParams(selectedEntry, priceCategory);
       await addInventoryItem({
         card_id: card.id,
         ...cond,
@@ -269,14 +301,18 @@ export default function CardDetailPage() {
   }
 
   // ---------------------------------------------------------------------------
-  // Condition label for action bar
+  // Condition helpers for action bar + handlers
   // ---------------------------------------------------------------------------
 
+  function getConditionParams() {
+    if (priceCategory === "RAW") return { condition_type: "ungraded" as const, condition_ungraded: "nm" };
+    if (!selectedEntry) return null;
+    return entryConditionParams(selectedEntry, priceCategory);
+  }
+
   function selectedConditionLabel(): string {
+    if (priceCategory === "RAW") return "NM";
     if (!selectedEntry) return "";
-    if (selectedEntry.type === "raw") {
-      return selectedEntry.condition === "DM" ? "DMG" : (selectedEntry.condition ?? "");
-    }
     return `${priceCategory} ${entryPillLabel(selectedEntry, priceCategory)}`;
   }
 
@@ -342,7 +378,7 @@ export default function CardDetailPage() {
           <select
             value={priceCategory}
             onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
-            className="border border-black/20 roundedpx-2 py-0.5 text-xs bg-background"
+            className="border border-black/20 rounded px-2 py-0.5 text-xs bg-background"
           >
             {availableCategories.map((cat) => (
               <option key={cat} value={cat}>{cat}</option>
@@ -351,86 +387,122 @@ export default function CardDetailPage() {
         )}
       </div>
 
-      {scrydexLoading && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Loading prices…</span>
-        </div>
-      )}
-      {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
-
-      {selectedEntry && !scrydexLoading && (
+      {/* RAW tab — TCGPlayer pricing */}
+      {priceCategory === "RAW" && (
         <>
-          <div className="space-y-1">
-            <p className="text-3xl font-bold">
-              {selectedEntry.market != null ? `$${Number(selectedEntry.market).toFixed(2)}` : "N/A"}
-            </p>
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
-              {(["days_7", "days_14", "days_30"] as const).map((key) => {
-                const t = selectedEntry.trends?.[key];
-                if (!t) return null;
-                const up = t.price_change >= 0;
-                const label = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
-                return (
-                  <span key={key} className={up ? "text-green-500" : "text-red-500"}>
-                    {up ? "+" : ""}{`$${Math.abs(t.price_change).toFixed(2)}`} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {label}
-                  </span>
-                );
-              })}
+          {tcgRawLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading TCGPlayer prices…</span>
             </div>
-          </div>
-
-          {chartData.length >= 2 && (
-            <ResponsiveContainer width="100%" height={120}>
-              <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-                <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
-                <YAxis hide domain={["auto", "auto"]} />
-                <Tooltip
-                  formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
-                  contentStyle={{ fontSize: 11, padding: "4px 8px" }}
-                />
-                <Line type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
           )}
-
-          <div className="flex flex-wrap gap-1.5">
-            {currentEntries.map((entry, idx) => (
-              <button
-                key={idx}
-                onClick={() => { setSelectedEntryIdx(idx); setEbayValue(null); setEbayDataPoints(null); }}
-                className={`px-2.5 py-1 text-xs rounded-md border border-border transition-colors ${
-                  idx === safeIdx
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-background hover:bg-muted"
-                }`}
-              >
-                {entryPillLabel(entry, priceCategory)}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-1.5 text-xs">
-            {[
-              { label: "Low", value: selectedEntry.low },
-              ...(selectedEntry.type === "graded"
-                ? [{ label: "Mid", value: selectedEntry.mid }, { label: "High", value: selectedEntry.high }]
-                : []),
-              { label: "Market", value: selectedEntry.market },
-            ].map(({ label, value }) => (
-              <div key={label} className="flex justify-between border border-black/20 roundedpx-2.5 py-1.5">
-                <span className="text-muted-foreground">{label}</span>
-                <span className={label === "Market" ? "font-bold" : "font-medium"}>
-                  {value != null ? `$${Number(value).toFixed(2)}` : "—"}
-                </span>
+          {!tcgRawLoading && tcgRaw && (
+            <>
+              <div className="space-y-1">
+                <p className="text-3xl font-bold">${Number(tcgRaw.nm_market_price).toFixed(2)}</p>
+                <p className="text-xs text-muted-foreground">NM Market · TCGPlayer</p>
               </div>
-            ))}
-          </div>
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                {tcgRaw.condition_estimates.map(({ condition, label, estimated_price }) => (
+                  <div key={condition} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="font-medium">{estimated_price != null ? `$${Number(estimated_price).toFixed(2)}` : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {!tcgRawLoading && !tcgRaw && (
+            <p className="text-xs text-muted-foreground text-center py-4">No TCGPlayer pricing available for this card.</p>
+          )}
         </>
       )}
 
-      {scrydexPrices !== null && !scrydexLoading && !selectedEntry && (
-        <p className="text-xs text-muted-foreground text-center py-4">No pricing data available for this card.</p>
+      {/* Graded tab — Scrydex pricing */}
+      {priceCategory !== "RAW" && (
+        <>
+          {scrydexLoading && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Loading prices…</span>
+            </div>
+          )}
+          {scrydexError && <p className="text-xs text-destructive">{scrydexError}</p>}
+
+          {selectedEntry && !scrydexLoading && (
+            <>
+              <div className="space-y-1">
+                <p className="text-3xl font-bold">
+                  {selectedEntry.market != null ? `$${Number(selectedEntry.market).toFixed(2)}` : "N/A"}
+                </p>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                  {(["days_7", "days_14", "days_30"] as const).map((key) => {
+                    const t = selectedEntry.trends?.[key];
+                    if (!t) return null;
+                    const up = t.price_change >= 0;
+                    const label = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
+                    return (
+                      <span key={key} className={up ? "text-green-500" : "text-red-500"}>
+                        {up ? "+" : ""}{`$${Math.abs(t.price_change).toFixed(2)}`} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {chartData.length >= 2 && (
+                <ResponsiveContainer width="100%" height={120}>
+                  <LineChart data={chartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                    <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis hide domain={["auto", "auto"]} />
+                    <Tooltip
+                      formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
+                      contentStyle={{ fontSize: 11, padding: "4px 8px" }}
+                    />
+                    <Line type="monotone" dataKey="price" stroke={chartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+
+              <div className="flex flex-wrap gap-1.5">
+                {currentEntries.map((entry, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => { setSelectedEntryIdx(idx); setEbayValue(null); setEbayDataPoints(null); }}
+                    className={`px-2.5 py-1 text-xs rounded-md border border-border transition-colors ${
+                      idx === safeIdx
+                        ? "bg-foreground text-background border-foreground"
+                        : "bg-background hover:bg-muted"
+                    }`}
+                  >
+                    {entryPillLabel(entry, priceCategory)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5 text-xs">
+                {[
+                  { label: "Low", value: selectedEntry.low },
+                  ...(selectedEntry.type === "graded"
+                    ? [{ label: "Mid", value: selectedEntry.mid }, { label: "High", value: selectedEntry.high }]
+                    : []),
+                  { label: "Market", value: selectedEntry.market },
+                ].map(({ label, value }) => (
+                  <div key={label} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className={label === "Market" ? "font-bold" : "font-medium"}>
+                      {value != null ? `$${Number(value).toFixed(2)}` : "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {scrydexPrices !== null && !scrydexLoading && !selectedEntry && (
+            <p className="text-xs text-muted-foreground text-center py-4">No pricing data available for this card.</p>
+          )}
+        </>
       )}
     </div>
   );
@@ -445,11 +517,11 @@ export default function CardDetailPage() {
       ) : (
         <>
           <p className="text-xs text-muted-foreground">
-            {selectedEntry
+            {(priceCategory === "RAW" || selectedEntry)
               ? `Fetches recent eBay sold listings for ${selectedConditionLabel()}.`
               : "Select a condition above to fetch eBay data."}
           </p>
-          <Button size="sm" variant="outline" onClick={handleFetchEbay} disabled={ebayLoading || !selectedEntry}>
+          <Button size="sm" variant="outline" onClick={handleFetchEbay} disabled={ebayLoading || (priceCategory !== "RAW" && !selectedEntry)}>
             {ebayLoading ? (
               <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Fetching…</span>
             ) : "Fetch eBay Comps"}
@@ -583,7 +655,7 @@ export default function CardDetailPage() {
           <Link href="/login">
             <Button className="w-full" variant="outline">Sign in to add to inventory or cart</Button>
           </Link>
-        ) : selectedEntry ? (
+        ) : (priceCategory === "RAW" || selectedEntry) ? (
           <div className="space-y-2 max-w-lg mx-auto">
             <p className="text-xs text-muted-foreground text-center">{selectedConditionLabel()}</p>
             <div className="flex gap-2">
