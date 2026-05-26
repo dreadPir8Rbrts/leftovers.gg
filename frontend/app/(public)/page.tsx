@@ -63,7 +63,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
           showCtas ? "min-h-[calc(100vh-3.5rem)]" : ""
         }`}
       >
-        <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "#c9104f" }}>
+        <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "#BF40BF" }}>
           Built for TCG vendors
         </p>
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight">
@@ -74,7 +74,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
         </p>
         {showCtas && (
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
-            <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
+            <Button size="lg" asChild style={{ backgroundColor: "#BF40BF", color: "#fff" }} className="hover:opacity-90">
               <Link href="/signup">Get Started Free</Link>
             </Button>
             <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
@@ -101,9 +101,9 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
               <div key={title} className="flex gap-4">
                 <div
                   className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center"
-                  style={{ backgroundColor: "#c9104f22" }}
+                  style={{ backgroundColor: "#BF40BF22" }}
                 >
-                  <Icon size={20} style={{ color: "#c9104f" }} />
+                  <Icon size={20} style={{ color: "#BF40BF" }} />
                 </div>
                 <div>
                   <p className="font-semibold mb-1">{title}</p>
@@ -119,7 +119,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
       <section className="border-t border-white/10 px-6 py-24 bg-white/[0.02]">
         <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
-            <p className="text-sm font-medium tracking-widest uppercase mb-4" style={{ color: "#c9104f" }}>
+            <p className="text-sm font-medium tracking-widest uppercase mb-4" style={{ color: "#BF40BF" }}>
               Price Estimator
             </p>
             <h2 className="text-2xl sm:text-3xl font-bold mb-6 leading-tight">
@@ -140,7 +140,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
           <div className="rounded-xl border border-white/10 bg-white/5 p-6 space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500 uppercase tracking-wide">Charizard ex · 199/165</span>
-              <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#c9104f22", color: "#c9104f" }}>PSA 10</span>
+              <span className="text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#BF40BF22", color: "#BF40BF" }}>PSA 10</span>
             </div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-bold">$312.00</span>
@@ -157,7 +157,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
                   <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
                     <div
                       className="h-full rounded-full"
-                      style={{ width: `${60 + i * 8}%`, backgroundColor: "#c9104f" }}
+                      style={{ width: `${60 + i * 8}%`, backgroundColor: "#BF40BF" }}
                     />
                   </div>
                   <span className="text-xs text-gray-400 w-10 text-right">{p}</span>
@@ -175,16 +175,16 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
             Built for vendors. Useful for collectors.
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="rounded-xl border p-8" style={{ borderColor: "#c9104f55", backgroundColor: "#c9104f08" }}>
+            <div className="rounded-xl border p-8" style={{ borderColor: "#BF40BF55", backgroundColor: "#BF40BF08" }}>
               <div className="flex items-center gap-3 mb-6">
-                <BarChart2 size={20} style={{ color: "#c9104f" }} />
+                <BarChart2 size={20} style={{ color: "#BF40BF" }} />
                 <p className="font-semibold text-lg">For Vendors</p>
-                <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#c9104f22", color: "#c9104f" }}>Primary</span>
+                <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#BF40BF22", color: "#BF40BF" }}>Primary</span>
               </div>
               <ul className="space-y-3">
                 {VENDOR_BULLETS.map((b) => (
                   <li key={b} className="flex items-start gap-3 text-sm text-gray-300">
-                    <Check size={15} className="flex-shrink-0 mt-0.5" style={{ color: "#c9104f" }} />
+                    <Check size={15} className="flex-shrink-0 mt-0.5" style={{ color: "#BF40BF" }} />
                     {b}
                   </li>
                 ))}
@@ -217,7 +217,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
           <p className="text-gray-400 mb-10 max-w-md mx-auto">
             Built for the hobby, not the enterprise. Free to get started.
           </p>
-          <Button size="lg" asChild style={{ backgroundColor: "#c9104f", color: "#fff" }} className="hover:opacity-90">
+          <Button size="lg" asChild style={{ backgroundColor: "#BF40BF", color: "#fff" }} className="hover:opacity-90">
             <Link href="/signup">Create Your Account</Link>
           </Button>
         </section>

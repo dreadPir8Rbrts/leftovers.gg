@@ -10,7 +10,7 @@
     --card-foreground: 0 0% 100%;
     --popover: 0 0% 8%;
     --popover-foreground: 0 0% 100%;
-    --primary: 340 85% 43%;         /* #c9104f */
+    --primary: 300 50% 50%;         /* #BF40BF */
     --primary-foreground: 0 0% 100%;
     --secondary: 259 46% 15%;       /* #1F1436 */
     --secondary-foreground: 0 0% 100%;
@@ -18,11 +18,11 @@
     --muted-foreground: 0 0% 55%;
     --accent: 0 0% 18%;             /* dark gray — sidebar selected bg */
     --accent-foreground: 0 0% 100%;
-    --destructive: 340 85% 43%;
+    --destructive: 300 50% 50%;
     --destructive-foreground: 0 0% 100%;
-    --border: 340 85% 43%;          /* #c9104f — container borders */
-    --input: 340 85% 43%;
-    --ring: 340 85% 43%;
+    --border: 300 50% 50%;          /* #BF40BF — container borders */
+    --input: 300 50% 50%;
+    --ring: 300 50% 50%;
     --radius: 0.5rem;
   }
 
@@ -46,14 +46,14 @@
 
   /* Crimson glow on focused inputs — reinforces the dark/moody aesthetic */
   .glow-primary {
-    box-shadow: 0 0 12px hsl(340 85% 43% / 0.4);
+    box-shadow: 0 0 12px hsl(300 50% 50% / 0.4);
   }
 }
 
-/* Subtle crimson glow on input focus */
+/* Subtle purple glow on input focus */
 @layer components {
   input:focus-visible,
   textarea:focus-visible {
-    box-shadow: 0 0 0 1px hsl(340 85% 43%), 0 0 10px hsl(340 85% 43% / 0.25);
+    box-shadow: 0 0 0 1px hsl(300 50% 50%), 0 0 10px hsl(300 50% 50% / 0.25);
   }
 }

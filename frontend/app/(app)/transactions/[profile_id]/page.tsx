@@ -44,7 +44,7 @@ function ValueDisplay({ value }: { value: number | null | undefined }) {
   if (value == null) return <span className="text-muted-foreground">—</span>;
   const isPositive = value >= 0;
   return (
-    <span className={isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}>
+    <span className={isPositive ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}>
       {isPositive ? "+" : ""}${Math.abs(value).toFixed(2)}
     </span>
   );

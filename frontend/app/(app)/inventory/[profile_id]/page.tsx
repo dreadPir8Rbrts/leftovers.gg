@@ -954,7 +954,7 @@ export default function InventoryPage() {
 
               const chartData = selectedEntry ? buildChartData(selectedEntry) : [];
               const chartUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
-              const chartColor = chartUp ? "#22c55e" : "#ef4444";
+              const chartColor = chartUp ? "#22c55e" : "#BF40BF";
 
               // Trend badges (1d, 7d, 30d)
               function trendBadge(entry: ScrydexPriceEntry | null, key: keyof NonNullable<ScrydexPriceEntry["trends"]>, label: string) {
@@ -963,7 +963,7 @@ export default function InventoryPage() {
                 const up = t.price_change >= 0;
                 const sign = up ? "+" : "";
                 return (
-                  <span key={label} className={`text-xs ${up ? "text-green-500" : "text-red-500"}`}>
+                  <span key={label} className={`text-xs ${up ? "text-green-500" : "text-[#BF40BF]"}`}>
                     {sign}{t.price_change >= 0 || t.price_change < 0 ? `$${Math.abs(t.price_change).toFixed(2)}` : "—"} ({sign}{t.percent_change.toFixed(1)}%) {label}
                   </span>
                 );

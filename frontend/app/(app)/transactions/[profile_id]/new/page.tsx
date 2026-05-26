@@ -771,7 +771,7 @@ export default function NewTransactionPage() {
               />
             </div>
           ) : (
-            <span className={`text-sm font-semibold ${displayValue >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
+            <span className={`text-sm font-semibold ${displayValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
               {displayValue >= 0 ? "+" : ""}${Math.abs(displayValue).toFixed(2)}
             </span>
           )}

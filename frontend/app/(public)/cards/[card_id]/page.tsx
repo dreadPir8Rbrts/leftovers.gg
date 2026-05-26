@@ -218,7 +218,7 @@ export default function CardDetailPage() {
   const selectedEntry = currentEntries[safeIdx] ?? null;
   const chartData = selectedEntry ? buildChartData(selectedEntry) : [];
   const chartUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
-  const chartColor = chartUp ? "#22c55e" : "#ef4444";
+  const chartColor = chartUp ? "#22c55e" : "#BF40BF";
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -442,7 +442,7 @@ export default function CardDetailPage() {
                     const up = t.price_change >= 0;
                     const label = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
                     return (
-                      <span key={key} className={up ? "text-green-500" : "text-red-500"}>
+                      <span key={key} className={up ? "text-green-500" : "text-[#BF40BF]"}>
                         {up ? "+" : ""}{`$${Math.abs(t.price_change).toFixed(2)}`} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {label}
                       </span>
                     );
@@ -684,7 +684,7 @@ export default function CardDetailPage() {
               onClick={handleAddToWishlist}
               disabled={wishlistLoading || wishlistAdded}
             >
-              <Heart size={14} className={`mr-1.5 ${wishlistAdded ? "fill-current text-red-500" : ""}`} />
+              <Heart size={14} className={`mr-1.5 ${wishlistAdded ? "fill-current text-[#BF40BF]" : ""}`} />
               {wishlistAdded ? "Added to Wishlist" : wishlistLoading ? "Adding…" : "Add to Wishlist"}
             </Button>
             {wishlistError && (
