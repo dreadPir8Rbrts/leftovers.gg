@@ -1,24 +1,11 @@
 "use client";
 
-/**
- * Transaction builder — create a new buy, sell, or trade.
- * Route: /transactions/new
- *
- * Layout:
- *   1. Type selector (Buy / Sell / Trade)
- *   2. Transaction visualization: [You Give] → [You Receive]
- *   3. Metadata: date, marketplace, counterparty, notes
- *   4. Save
- *
- * Cards are added via text search or camera scan (quick-identify).
- */
-
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useParams } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { useTransactionCart } from "@/lib/stores/useTransactionCart";
+import { ArrowLeft } from "lucide-react";
+import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import {
   createTransaction,
   patchInventoryItem,
@@ -31,20 +18,21 @@ import {
   type Card,
   type EstimatedAcquiredPrice,
 } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
 interface CardDraft {
-  key: string;                     // local unique key for React list
+  key: string;
   card: Card;
   direction: TransactionDirection;
   conditionType: "ungraded" | "graded";
   conditionUngraded: string;
   gradingCompany: string;
   grade: string;
-  estimatedValue: string;          // string for input binding
+  estimatedValue: string;
   quantity: number;
   inventoryItemId?: string;
 }
@@ -53,192 +41,358 @@ const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "SGC", "HGA", "other"];
 
 // ---------------------------------------------------------------------------
-// Sub-components
+// Helpers
 // ---------------------------------------------------------------------------
 
-function TypeButton({
-  label, active, onClick,
-}: { label: string; active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 py-3 text-sm font-semibold rounded-lg border-2 transition-colors
-        ${active
-          ? "border-foreground bg-foreground text-background"
-          : "border-border bg-background text-muted-foreground hover:border-foreground/40"
-        }`}
-    >
-      {label}
-    </button>
-  );
+function inferTxType(cards: CardDraft[], cashLost: string, cashGained: string): TransactionType {
+  const giving = cards.filter((c) => c.direction === "lost");
+  const receiving = cards.filter((c) => c.direction === "gained");
+  const hasCashLost = parseFloat(cashLost) > 0;
+  const hasCashGained = parseFloat(cashGained) > 0;
+  if (giving.length === 0 && hasCashLost && receiving.length > 0 && !hasCashGained) return "buy";
+  if (giving.length > 0 && !hasCashLost && receiving.length === 0 && hasCashGained) return "sell";
+  return "trade";
 }
 
-function CardDraftRow({
+function computeValue(cashGained: string, cashLost: string, cards: CardDraft[]): number {
+  const cg = parseFloat(cashGained) || 0;
+  const cl = parseFloat(cashLost) || 0;
+  const gained = cards.filter((c) => c.direction === "gained").reduce((s, c) => s + (parseFloat(c.estimatedValue) || 0) * c.quantity, 0);
+  const lost = cards.filter((c) => c.direction === "lost").reduce((s, c) => s + (parseFloat(c.estimatedValue) || 0) * c.quantity, 0);
+  return Math.round((cg + gained - cl - lost) * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
+// Card chip
+// ---------------------------------------------------------------------------
+
+function CardChip({
   draft,
-  onUpdate,
+  onEdit,
   onRemove,
 }: {
   draft: CardDraft;
-  onUpdate: (key: string, patch: Partial<CardDraft>) => void;
-  onRemove: (key: string) => void;
+  onEdit: () => void;
+  onRemove: () => void;
+}) {
+  const condLabel =
+    draft.conditionType === "ungraded"
+      ? draft.conditionUngraded || "—"
+      : `${draft.gradingCompany.toUpperCase()} ${draft.grade}`.trim() || "—";
+
+  return (
+    <div className="relative w-16 flex-shrink-0">
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
+      >
+        ×
+      </button>
+      <button type="button" onClick={onEdit} className="w-full text-left">
+        <div className="aspect-[3/4] rounded-lg bg-muted overflow-hidden relative border border-black/10">
+          {draft.card.image_url ? (
+            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="64px" className="object-contain p-0.5" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/30">?</div>
+          )}
+        </div>
+        <p className="text-[9px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
+        <p className="text-[9px] font-semibold">{condLabel}</p>
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Cash chip
+// ---------------------------------------------------------------------------
+
+function CashChip({
+  amount,
+  onEdit,
+  onRemove,
+}: {
+  amount: string;
+  onEdit: () => void;
+  onRemove: () => void;
 }) {
   return (
-    <div className="border rounded-lg p-3 flex flex-col gap-2">
-      <div className="flex items-start gap-2">
-        {draft.card.image_url && (
-          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
-            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="40px" className="object-contain" />
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate">{draft.card.name}</p>
-          <p className="text-xs text-muted-foreground">{draft.card.set_name} · #{draft.card.card_num}</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => onRemove(draft.key)}
-          className="text-muted-foreground hover:text-destructive text-xs shrink-0"
-        >
-          ✕
-        </button>
-      </div>
+    <div className="relative flex-shrink-0 self-center">
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
+      >
+        ×
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="px-3 py-2 rounded-lg border border-black/20 bg-muted/30 text-sm font-semibold min-w-[4.5rem] text-center hover:bg-muted/60 transition-colors"
+      >
+        ${parseFloat(amount).toFixed(2)}
+      </button>
+    </div>
+  );
+}
 
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        {/* Condition type */}
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground">Condition</label>
-          <select
-            value={draft.conditionType}
-            onChange={(e) => onUpdate(draft.key, { conditionType: e.target.value as "ungraded" | "graded" })}
-            className="border rounded px-2 py-1 bg-background text-xs"
+// ---------------------------------------------------------------------------
+// Person row
+// ---------------------------------------------------------------------------
+
+function PersonRow({
+  label,
+  cards,
+  cashValue,
+  menuOpen,
+  onMenuToggle,
+  onAddCard,
+  onAddCash,
+  onEditCard,
+  onRemoveCard,
+  onEditCash,
+  onRemoveCash,
+}: {
+  label: string;
+  cards: CardDraft[];
+  cashValue: string;
+  menuOpen: boolean;
+  onMenuToggle: () => void;
+  onAddCard: () => void;
+  onAddCash: () => void;
+  onEditCard: (draft: CardDraft) => void;
+  onRemoveCard: (key: string) => void;
+  onEditCash: () => void;
+  onRemoveCash: () => void;
+}) {
+  const hasCash = !!cashValue && parseFloat(cashValue) > 0;
+  const isEmpty = cards.length === 0 && !hasCash;
+
+  return (
+    <div className="rounded-xl border border-black/20 p-4 min-h-[7rem]">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{label}</p>
+      <div className="flex flex-wrap gap-3 items-end">
+        {cards.map((draft) => (
+          <CardChip
+            key={draft.key}
+            draft={draft}
+            onEdit={() => onEditCard(draft)}
+            onRemove={() => onRemoveCard(draft.key)}
+          />
+        ))}
+        {hasCash && (
+          <CashChip amount={cashValue} onEdit={onEditCash} onRemove={onRemoveCash} />
+        )}
+        {isEmpty && (
+          <p className="text-xs text-muted-foreground/40 self-center mr-2">Nothing yet</p>
+        )}
+        {/* + menu */}
+        <div className="relative z-20 self-end">
+          <button
+            type="button"
+            onClick={onMenuToggle}
+            className="w-10 h-10 rounded-lg border-2 border-dashed border-black/20 flex items-center justify-center text-lg text-muted-foreground hover:text-foreground hover:border-black/40 transition-colors"
+            aria-label="Add item"
           >
-            <option value="ungraded">Ungraded</option>
-            <option value="graded">Graded</option>
-          </select>
-        </div>
-
-        {draft.conditionType === "ungraded" ? (
-          <div className="flex flex-col gap-1">
-            <label className="text-muted-foreground">Grade</label>
-            <select
-              value={draft.conditionUngraded}
-              onChange={(e) => onUpdate(draft.key, { conditionUngraded: e.target.value })}
-              className="border rounded px-2 py-1 bg-background text-xs"
-            >
-              <option value="">—</option>
-              {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-col gap-1">
-              <label className="text-muted-foreground">Company</label>
-              <select
-                value={draft.gradingCompany}
-                onChange={(e) => onUpdate(draft.key, { gradingCompany: e.target.value })}
-                className="border rounded px-2 py-1 bg-background text-xs"
+            +
+          </button>
+          {menuOpen && (
+            <div className="absolute left-0 bottom-12 bg-background border border-black/20 rounded-lg shadow-lg min-w-[10rem] overflow-hidden">
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted"
+                onClick={onAddCard}
               >
-                <option value="">—</option>
-                {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}
-              </select>
+                Add a card
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted border-t border-black/10"
+                onClick={onAddCash}
+              >
+                Add cash
+              </button>
             </div>
-            <div className="flex flex-col gap-1 col-span-2">
-              <label className="text-muted-foreground">Grade</label>
-              <input
-                type="text"
-                value={draft.grade}
-                onChange={(e) => onUpdate(draft.key, { grade: e.target.value })}
-                placeholder="e.g. 9, 9.5"
-                className="border rounded px-2 py-1 bg-background text-xs"
-              />
-            </div>
-          </>
-        )}
-
-        {/* Value + Qty */}
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground">Est. value ($)</label>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={draft.estimatedValue}
-            onChange={(e) => onUpdate(draft.key, { estimatedValue: e.target.value })}
-            placeholder="0.00"
-            className="border rounded px-2 py-1 bg-background text-xs"
-          />
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-muted-foreground">Qty</label>
-          <input
-            type="number"
-            min="1"
-            value={draft.quantity}
-            onChange={(e) => onUpdate(draft.key, { quantity: Math.max(1, parseInt(e.target.value) || 1) })}
-            className="border rounded px-2 py-1 bg-background text-xs w-16"
-          />
+          )}
         </div>
       </div>
     </div>
   );
 }
 
-function CardPanel({
-  title,
-  direction,
-  cards,
-  onAdd,
-  onUpdate,
-  onRemove,
-  cash,
-  onCashChange,
-  showCash,
+// ---------------------------------------------------------------------------
+// Card edit modal
+// ---------------------------------------------------------------------------
+
+function CardEditModal({
+  draft,
+  onSave,
+  onClose,
 }: {
-  title: string;
-  direction: TransactionDirection;
-  cards: CardDraft[];
-  onAdd: (direction: TransactionDirection) => void;
-  onUpdate: (key: string, patch: Partial<CardDraft>) => void;
-  onRemove: (key: string) => void;
-  cash: string;
-  onCashChange: (v: string) => void;
-  showCash: boolean;
+  draft: CardDraft;
+  onSave: (patch: Partial<CardDraft>) => void;
+  onClose: () => void;
 }) {
-  const panelCards = cards.filter((c) => c.direction === direction);
+  const [conditionType, setConditionType] = useState<"ungraded" | "graded">(draft.conditionType);
+  const [conditionUngraded, setConditionUngraded] = useState(draft.conditionUngraded);
+  const [gradingCompany, setGradingCompany] = useState(draft.gradingCompany);
+  const [grade, setGrade] = useState(draft.grade);
+  const [estimatedValue, setEstimatedValue] = useState(draft.estimatedValue);
+  const [quantity, setQuantity] = useState(draft.quantity);
+
   return (
-    <div className="flex-1 min-w-0 flex flex-col gap-3">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-4 border-b">
+          {draft.card.image_url && (
+            <div className="relative w-10 h-[3.2rem] rounded overflow-hidden bg-muted shrink-0">
+              <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="40px" className="object-contain" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold leading-tight truncate">{draft.card.name}</p>
+            <p className="text-xs text-muted-foreground truncate">{draft.card.set_name}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-xl text-muted-foreground hover:text-foreground shrink-0">×</button>
+        </div>
 
-      {panelCards.map((draft) => (
-        <CardDraftRow key={draft.key} draft={draft} onUpdate={onUpdate} onRemove={onRemove} />
-      ))}
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Condition</label>
+              <select
+                value={conditionType}
+                onChange={(e) => setConditionType(e.target.value as "ungraded" | "graded")}
+                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+              >
+                <option value="ungraded">Ungraded</option>
+                <option value="graded">Graded</option>
+              </select>
+            </div>
+            {conditionType === "ungraded" ? (
+              <div>
+                <label className="text-xs text-muted-foreground">Grade</label>
+                <select
+                  value={conditionUngraded}
+                  onChange={(e) => setConditionUngraded(e.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                >
+                  <option value="">—</option>
+                  {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs text-muted-foreground">Company</label>
+                <select
+                  value={gradingCompany}
+                  onChange={(e) => setGradingCompany(e.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                >
+                  <option value="">—</option>
+                  {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          {conditionType === "graded" && (
+            <div>
+              <label className="text-xs text-muted-foreground">Grade</label>
+              <input
+                type="text"
+                value={grade}
+                onChange={(e) => setGrade(e.target.value)}
+                placeholder="e.g. 9, 9.5"
+                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Est. value</label>
+              <div className="relative mt-1">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border rounded pl-5 pr-2 py-1.5 text-sm bg-background"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Qty</label>
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+              />
+            </div>
+          </div>
+        </div>
 
-      <button
-        type="button"
-        onClick={() => onAdd(direction)}
-        className="border-2 border-dashed rounded-lg py-3 text-sm text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
-      >
-        + Add card
-      </button>
+        <div className="flex justify-end gap-2 px-4 pb-4">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button
+            size="sm"
+            onClick={() => onSave({ conditionType, conditionUngraded, gradingCompany, grade, estimatedValue, quantity })}
+          >
+            Done
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {showCash && (
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">Cash ($)</label>
+// ---------------------------------------------------------------------------
+// Cash modal
+// ---------------------------------------------------------------------------
+
+function CashModal({
+  initialAmount,
+  label,
+  onSave,
+  onClose,
+}: {
+  initialAmount: string;
+  label: string;
+  onSave: (amount: string) => void;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(initialAmount);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-xs overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="p-4">
+          <p className="font-semibold text-sm mb-3">{label}</p>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
             <input
               type="number"
               min="0"
               step="0.01"
-              value={cash}
-              onChange={(e) => onCashChange(e.target.value)}
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="border rounded-md pl-7 pr-3 py-2 text-sm bg-background w-full"
+              className="w-full border rounded-md pl-7 pr-3 py-2 text-sm bg-background"
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              autoFocus
             />
           </div>
         </div>
-      )}
+        <div className="flex gap-2 px-4 pb-4">
+          <Button variant="outline" size="sm" className="flex-1" onClick={onClose}>Cancel</Button>
+          <Button size="sm" className="flex-1" onClick={() => onSave(amount)}>Done</Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -282,7 +436,6 @@ function CardPickerModal({
     try {
       const result = await quickIdentifyCard(file);
       if (result.matched && result.card_id) {
-        // Build a minimal Card from the scan result
         const card: Card = {
           id: result.card_id,
           name: result.name ?? "",
@@ -312,19 +465,18 @@ function CardPickerModal({
       <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">
-            Add card to &quot;{direction === "gained" ? "You Receive" : "You Give"}&quot;
+            Add card — {direction === "lost" ? "You give" : "Other party gives"}
           </h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
 
-        {/* Search */}
         <div className="flex gap-2">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            placeholder="Search by card name..."
+            placeholder="Search by card name…"
             className="flex-1 border rounded-md px-3 py-2 text-sm bg-background"
             autoFocus
           />
@@ -338,7 +490,6 @@ function CardPickerModal({
           </button>
         </div>
 
-        {/* Scan */}
         <div>
           <input
             ref={fileRef}
@@ -358,12 +509,11 @@ function CardPickerModal({
             disabled={scanning}
             className="w-full border rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
           >
-            {scanning ? "Scanning..." : "📷 Scan card instead"}
+            {scanning ? "Scanning…" : "📷 Scan card instead"}
           </button>
           {scanError && <p className="text-xs text-destructive mt-1">{scanError}</p>}
         </div>
 
-        {/* Results */}
         {results.length > 0 && (
           <ul className="divide-y border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
             {results.map((card) => (
@@ -393,7 +543,7 @@ function CardPickerModal({
 }
 
 // ---------------------------------------------------------------------------
-// Acquired price confirmation dialog
+// Acquired price dialog (post-save)
 // ---------------------------------------------------------------------------
 
 interface AcquiredPriceDraft extends EstimatedAcquiredPrice {
@@ -425,11 +575,8 @@ function AcquiredPriceDialog({
       <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-lg mx-4 flex flex-col gap-4">
         <div>
           <h2 className="text-sm font-semibold">Set acquired price?</h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            Set the cost basis for cards you gained. Uncheck any you want to skip.
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">Set the cost basis for cards you gained. Uncheck any you want to skip.</p>
         </div>
-
         <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
           {drafts.map((d) => (
             <div key={d.inventory_item_id} className="flex items-center gap-3 py-1">
@@ -440,10 +587,7 @@ function AcquiredPriceDialog({
                 onChange={() => toggle(d.inventory_item_id)}
                 className="h-4 w-4 shrink-0"
               />
-              <label
-                htmlFor={`ap-${d.inventory_item_id}`}
-                className="flex-1 min-w-0 text-sm truncate cursor-pointer"
-              >
+              <label htmlFor={`ap-${d.inventory_item_id}`} className="flex-1 min-w-0 text-sm truncate cursor-pointer">
                 {d.card_name ?? "Card"}
               </label>
               <div className="relative shrink-0">
@@ -461,7 +605,6 @@ function AcquiredPriceDialog({
             </div>
           ))}
         </div>
-
         <div className="flex gap-3">
           <button
             type="button"
@@ -484,123 +627,67 @@ function AcquiredPriceDialog({
 }
 
 // ---------------------------------------------------------------------------
-// Computed value display
-// ---------------------------------------------------------------------------
-
-function computeValue(
-  cashGained: string,
-  cashLost: string,
-  cards: CardDraft[],
-): number {
-  const cg = parseFloat(cashGained) || 0;
-  const cl = parseFloat(cashLost) || 0;
-  const cardGained = cards
-    .filter((c) => c.direction === "gained")
-    .reduce((sum, c) => sum + (parseFloat(c.estimatedValue) || 0) * c.quantity, 0);
-  const cardLost = cards
-    .filter((c) => c.direction === "lost")
-    .reduce((sum, c) => sum + (parseFloat(c.estimatedValue) || 0) * c.quantity, 0);
-  return Math.round((cg + cardGained - cl - cardLost) * 100) / 100;
-}
-
-// ---------------------------------------------------------------------------
-// Main page
+// Page
 // ---------------------------------------------------------------------------
 
 export default function NewTransactionPage() {
   const router = useRouter();
   const params = useParams<{ profile_id: string }>();
-  const searchParams = useSearchParams();
-  const fromCart = searchParams.get("fromCart") === "true";
-  const cartItems = useTransactionCart((s) => s.items);
-  const clearCart = useTransactionCart((s) => s.clear);
 
-  const [txType, setTxType] = useState<TransactionType>("buy");
-  const [cards, setCards] = useState<CardDraft[]>(() => {
-    if (!fromCart) return [];
-    return cartItems.map((item) => ({
-      key: item.cartId,
-      card: item.card,
-      direction: "gained" as const,
-      conditionType: item.condition_type,
-      conditionUngraded: item.condition_ungraded ?? "NM",
-      gradingCompany: item.grading_company ?? "",
-      grade: item.grade ?? "",
-      estimatedValue: "",
-      quantity: item.quantity,
-    }));
-  });
+  const seed = useTransactionSeed((s) => s.seed);
+  const clearSeed = useTransactionSeed((s) => s.clear);
 
-  useEffect(() => {
-    if (fromCart && cartItems.length > 0 && cards.length === 0) {
-      setCards(
-        cartItems.map((item) => ({
-          key: item.cartId,
-          card: item.card,
-          direction: "gained" as const,
-          conditionType: item.condition_type,
-          conditionUngraded: item.condition_ungraded ?? "NM",
-          gradingCompany: item.grading_company ?? "",
-          grade: item.grade ?? "",
-          estimatedValue: "",
-          quantity: item.quantity,
-        }))
-      );
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const [cashGained, setCashGained] = useState("");
+  const [cards, setCards] = useState<CardDraft[]>([]);
   const [cashLost, setCashLost] = useState("");
-  const [marketplace, setMarketplace] = useState("");
+  const [cashGained, setCashGained] = useState("");
+
   const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [marketplace, setMarketplace] = useState("");
   const [counterpartyName, setCounterpartyName] = useState("");
   const [notes, setNotes] = useState("");
-  const [valueOverride, setValueOverride] = useState("");
-  const [overrideValue, setOverrideValue] = useState(false);
 
   const [pickerDirection, setPickerDirection] = useState<TransactionDirection | null>(null);
+  const [editingDraft, setEditingDraft] = useState<CardDraft | null>(null);
+  const [cashModalDirection, setCashModalDirection] = useState<TransactionDirection | null>(null);
+  const [menuOpen, setMenuOpen] = useState<TransactionDirection | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [acquiredPriceDrafts, setAcquiredPriceDrafts] = useState<AcquiredPriceDraft[] | null>(null);
-  const [savedTxProfileId, setSavedTxProfileId] = useState<string | null>(null);
 
-  // Derived
-  const autoValue = computeValue(cashGained, cashLost, cards);
-  const displayValue = overrideValue ? parseFloat(valueOverride) || 0 : autoValue;
-
-  // Panel visibility by type
-  // buy:   give cash, receive cards
-  // sell:  give cards, receive cash
-  // trade: give cards+cash, receive cards+cash
-  const showLostCards   = txType === "sell" || txType === "trade";
-  const showLostCash    = txType === "buy"  || txType === "trade";
-  const showGainedCash  = txType === "sell" || txType === "trade";
-
-  const openPicker = (direction: TransactionDirection) => setPickerDirection(direction);
-
-  const addCard = useCallback((card: Card, direction: TransactionDirection) => {
-    setCards((prev) => [
-      ...prev,
-      {
-        key: `${card.id}-${Date.now()}`,
-        card,
-        direction,
-        conditionType: "ungraded",
-        conditionUngraded: "NM",
-        gradingCompany: "",
-        grade: "",
+  // Read and consume seed on mount
+  useEffect(() => {
+    if (seed) {
+      setCards([{
+        key: `seed-${Date.now()}`,
+        card: seed.card,
+        direction: "lost",
+        conditionType: seed.conditionType,
+        conditionUngraded: seed.conditionUngraded,
+        gradingCompany: seed.gradingCompany,
+        grade: seed.grade,
         estimatedValue: "",
         quantity: 1,
-      },
-    ]);
+      }]);
+      clearSeed();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateCard = useCallback((key: string, patch: Partial<CardDraft>) => {
-    setCards((prev) => prev.map((c) => c.key === key ? { ...c, ...patch } : c));
-  }, []);
+  const txType = useMemo(() => inferTxType(cards, cashLost, cashGained), [cards, cashLost, cashGained]);
+  const autoValue = computeValue(cashGained, cashLost, cards);
 
-  const removeCard = useCallback((key: string) => {
-    setCards((prev) => prev.filter((c) => c.key !== key));
+  const addCard = useCallback((card: Card, direction: TransactionDirection) => {
+    setCards((prev) => [...prev, {
+      key: `${card.id}-${Date.now()}`,
+      card,
+      direction,
+      conditionType: "ungraded",
+      conditionUngraded: "NM",
+      gradingCompany: "",
+      grade: "",
+      estimatedValue: "",
+      quantity: 1,
+    }]);
   }, []);
 
   async function handleSave() {
@@ -625,17 +712,13 @@ export default function NewTransactionPage() {
         marketplace: marketplace || undefined,
         counterparty_name: counterpartyName || undefined,
         cash_gained: txType !== "buy" ? (parseFloat(cashGained) || undefined) : undefined,
-        cash_lost:   txType !== "sell" ? (parseFloat(cashLost) || undefined) : undefined,
-        transaction_value: overrideValue ? (parseFloat(valueOverride) || undefined) : undefined,
+        cash_lost: txType !== "sell" ? (parseFloat(cashLost) || undefined) : undefined,
         notes: notes || undefined,
         cards: cardPayload,
       });
 
-      if (fromCart) clearCart();
       const estimates = result.estimated_acquired_prices;
       if (estimates && estimates.length > 0) {
-        // Prompt user to confirm acquired prices before navigating away
-        setSavedTxProfileId(params.profile_id);
         setAcquiredPriceDrafts(
           estimates.map((e) => ({
             ...e,
@@ -659,210 +742,168 @@ export default function NewTransactionPage() {
       included.map((d) =>
         patchInventoryItem(d.inventory_item_id, {
           acquired_price: parseFloat(d.editedValue) || undefined,
-        }).catch(() => { /* best-effort */ })
+        }).catch(() => {})
       )
     );
-    router.push(`/transactions/${savedTxProfileId ?? params.profile_id}`);
+    router.push(`/transactions/${params.profile_id}`);
   }
 
   function handleAcquiredPriceSkip() {
-    router.push(`/transactions/${savedTxProfileId ?? params.profile_id}`);
+    router.push(`/transactions/${params.profile_id}`);
   }
 
+  const txTypeLabel: Record<TransactionType, string> = { buy: "BUY", sell: "SELL", trade: "TRADE" };
+
   return (
-    <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-4 mb-6">
-        <Link href={`/transactions/${params.profile_id}`} className="text-sm text-muted-foreground hover:underline">
-          ← Transactions
+    <div className="p-4 max-w-lg mx-auto pb-24">
+      {/* Header */}
+      <div className="flex items-center gap-3 mb-6">
+        <Link href={`/transactions/${params.profile_id}`} className="text-muted-foreground hover:text-foreground">
+          <ArrowLeft size={20} />
         </Link>
         <h1 className="text-xl font-bold">New Transaction</h1>
       </div>
 
-      {fromCart && cards.length > 0 && (
-        <p className="text-xs text-muted-foreground mb-4">
-          {cards.length} card{cards.length !== 1 ? "s" : ""} loaded from cart — set type, adjust conditions, then save.
-        </p>
-      )}
+      {/* Person 1 — You */}
+      <PersonRow
+        label="You"
+        cards={cards.filter((c) => c.direction === "lost")}
+        cashValue={cashLost}
+        menuOpen={menuOpen === "lost"}
+        onMenuToggle={() => setMenuOpen((prev) => prev === "lost" ? null : "lost")}
+        onAddCard={() => { setMenuOpen(null); setPickerDirection("lost"); }}
+        onAddCash={() => { setMenuOpen(null); setCashModalDirection("lost"); }}
+        onEditCard={setEditingDraft}
+        onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
+        onEditCash={() => setCashModalDirection("lost")}
+        onRemoveCash={() => setCashLost("")}
+      />
 
-      {/* Type selector */}
-      <div className="flex gap-3 mb-8">
-        <TypeButton label="Buy" active={txType === "buy"} onClick={() => {
-          setTxType("buy");
-          if (fromCart) setCards((prev) => prev.map((c) => ({ ...c, direction: "gained" as const })));
-          else setCards([]);
-        }} />
-        <TypeButton label="Sell" active={txType === "sell"} onClick={() => {
-          setTxType("sell");
-          if (fromCart) setCards((prev) => prev.map((c) => ({ ...c, direction: "lost" as const })));
-          else setCards([]);
-        }} />
-        <TypeButton label="Trade" active={txType === "trade"} onClick={() => {
-          setTxType("trade");
-          if (!fromCart) setCards([]);
-        }} />
+      {/* Divider + inferred type badge */}
+      <div className="flex items-center gap-3 my-4">
+        <div className="flex-1 h-px bg-border" />
+        <span className="text-[10px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
+          {txTypeLabel[txType]}
+        </span>
+        <div className="flex-1 h-px bg-border" />
       </div>
 
-      {/* Visualization */}
-      <div className="border rounded-xl p-5 mb-6 bg-muted/20">
-        <div className="flex items-start gap-4">
-          {/* Left panel — You Give */}
-          <CardPanel
-            title="You Give"
-            direction="lost"
-            cards={cards}
-            onAdd={openPicker}
-            onUpdate={updateCard}
-            onRemove={removeCard}
-            cash={cashLost}
-            onCashChange={setCashLost}
-            showCash={showLostCash}
-          />
-
-          {/* Arrow */}
-          <div className="flex flex-col items-center justify-center pt-6 shrink-0">
-            {txType === "trade" ? (
-              <span className="text-2xl text-muted-foreground">⇄</span>
-            ) : (
-              <span className="text-2xl text-muted-foreground">→</span>
-            )}
-          </div>
-
-          {/* Right panel — You Receive */}
-          <CardPanel
-            title="You Receive"
-            direction="gained"
-            cards={cards}
-            onAdd={openPicker}
-            onUpdate={updateCard}
-            onRemove={removeCard}
-            cash={cashGained}
-            onCashChange={setCashGained}
-            showCash={showGainedCash}
-          />
-        </div>
-
-        {/* Cards not applicable for this type — filtered at render */}
-        {!showLostCards && cards.filter((c) => c.direction === "lost").length > 0 && (
-          <p className="text-xs text-muted-foreground mt-3">
-            Some cards were removed because they don&apos;t apply to a {txType} transaction.
-          </p>
-        )}
-      </div>
-
-      {/* Transaction value */}
-      <div className="border rounded-lg p-4 mb-5 flex items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium">Transaction value</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Auto-computed from cash and card values
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {overrideValue ? (
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
-              <input
-                type="number"
-                step="0.01"
-                value={valueOverride}
-                onChange={(e) => setValueOverride(e.target.value)}
-                className="border rounded-md pl-7 pr-3 py-1.5 text-sm bg-background w-28"
-                placeholder={String(autoValue)}
-              />
-            </div>
-          ) : (
-            <span className={`text-sm font-semibold ${displayValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
-              {displayValue >= 0 ? "+" : ""}${Math.abs(displayValue).toFixed(2)}
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => { setOverrideValue((o) => !o); setValueOverride(""); }}
-            className="text-xs text-muted-foreground underline hover:text-foreground"
-          >
-            {overrideValue ? "Use auto" : "Override"}
-          </button>
-        </div>
-      </div>
+      {/* Person 2 — Other party */}
+      <PersonRow
+        label="Other party"
+        cards={cards.filter((c) => c.direction === "gained")}
+        cashValue={cashGained}
+        menuOpen={menuOpen === "gained"}
+        onMenuToggle={() => setMenuOpen((prev) => prev === "gained" ? null : "gained")}
+        onAddCard={() => { setMenuOpen(null); setPickerDirection("gained"); }}
+        onAddCash={() => { setMenuOpen(null); setCashModalDirection("gained"); }}
+        onEditCard={setEditingDraft}
+        onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
+        onEditCash={() => setCashModalDirection("gained")}
+        onRemoveCash={() => setCashGained("")}
+      />
 
       {/* Metadata */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">Date</label>
-          <input
-            type="date"
-            value={txDate}
-            onChange={(e) => setTxDate(e.target.value)}
-            className="border rounded-md px-3 py-2 text-sm bg-background"
-          />
+      <div className="mt-6 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-muted-foreground">Date</label>
+            <input
+              type="date"
+              value={txDate}
+              onChange={(e) => setTxDate(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground">Marketplace</label>
+            <select
+              value={marketplace}
+              onChange={(e) => setMarketplace(e.target.value)}
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
+            >
+              <option value="">Select…</option>
+              {MARKETPLACE_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-muted-foreground">Marketplace</label>
-          <select
-            value={marketplace}
-            onChange={(e) => setMarketplace(e.target.value)}
-            className="border rounded-md px-3 py-2 text-sm bg-background"
-          >
-            <option value="">Select...</option>
-            {MARKETPLACE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex flex-col gap-1 sm:col-span-2">
-          <label className="text-xs text-muted-foreground">Other party (name or username)</label>
+        <div>
+          <label className="text-xs text-muted-foreground">Other party name</label>
           <input
             type="text"
             value={counterpartyName}
             onChange={(e) => setCounterpartyName(e.target.value)}
             placeholder="Optional"
-            className="border rounded-md px-3 py-2 text-sm bg-background"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
           />
         </div>
-
-        <div className="flex flex-col gap-1 sm:col-span-2">
+        <div>
           <label className="text-xs text-muted-foreground">Notes</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             rows={2}
             placeholder="Optional"
-            className="border rounded-md px-3 py-2 text-sm bg-background resize-none"
+            className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
           />
         </div>
       </div>
 
-      {saveError && <p className="text-sm text-destructive mb-3">{saveError}</p>}
+      {/* Transaction value */}
+      <div className="mt-4 border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">
+        <span className="text-sm text-muted-foreground">Transaction value</span>
+        <span className={`text-sm font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
+          {autoValue >= 0 ? "+" : ""}${Math.abs(autoValue).toFixed(2)}
+        </span>
+      </div>
 
-      <div className="flex gap-3">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="px-6 py-2 text-sm font-medium rounded-md bg-foreground text-background hover:bg-foreground/80 disabled:opacity-50 transition-colors"
-        >
-          {saving ? "Saving..." : "Save transaction"}
-        </button>
-        <Link
-          href={`/transactions/${params.profile_id}`}
-          className="px-6 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
-        >
-          Cancel
+      {saveError && <p className="text-sm text-destructive mt-3">{saveError}</p>}
+
+      <div className="mt-4 flex gap-3">
+        <Button onClick={handleSave} disabled={saving} className="flex-1">
+          {saving ? "Saving…" : "Save transaction"}
+        </Button>
+        <Link href={`/transactions/${params.profile_id}`}>
+          <Button variant="outline">Cancel</Button>
         </Link>
       </div>
 
-      {/* Card picker modal */}
+      {/* Backdrop to close + menus */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
+      )}
+
       {pickerDirection && (
         <CardPickerModal
           direction={pickerDirection}
-          onSelect={addCard}
+          onSelect={(card, direction) => { addCard(card, direction); setPickerDirection(null); }}
           onClose={() => setPickerDirection(null)}
         />
       )}
-
-      {/* Acquired price confirmation dialog */}
+      {editingDraft && (
+        <CardEditModal
+          draft={editingDraft}
+          onSave={(patch) => {
+            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...patch } : c));
+            setEditingDraft(null);
+          }}
+          onClose={() => setEditingDraft(null)}
+        />
+      )}
+      {cashModalDirection && (
+        <CashModal
+          initialAmount={cashModalDirection === "lost" ? cashLost : cashGained}
+          label={cashModalDirection === "lost" ? "Cash you're giving" : "Cash you're receiving"}
+          onSave={(amount) => {
+            if (cashModalDirection === "lost") setCashLost(amount);
+            else setCashGained(amount);
+            setCashModalDirection(null);
+          }}
+          onClose={() => setCashModalDirection(null)}
+        />
+      )}
       {acquiredPriceDrafts && (
         <AcquiredPriceDialog
           items={acquiredPriceDrafts}

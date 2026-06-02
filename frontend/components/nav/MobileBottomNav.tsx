@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, Camera, CalendarDays, UserCircle } from "lucide-react";
-import { useTransactionCart } from "@/lib/stores/useTransactionCart";
 
 interface TabItemProps {
   href: string;
@@ -35,7 +34,6 @@ interface MobileBottomNavProps {
 
 export function MobileBottomNav({ profileId }: MobileBottomNavProps) {
   const p = profileId ?? "";
-  const cartCount = useTransactionCart((state) => state.items.length);
   const scanHref = p ? `/scan/${p}` : "/login";
 
   const leftTabs = [
@@ -60,16 +58,11 @@ export function MobileBottomNav({ profileId }: MobileBottomNavProps) {
       {/* Center scan button */}
       <div className="flex-1 flex items-center justify-center">
         <Link
-          href={cartCount > 0 ? (p ? `/transactions/${p}/new?fromCart=true` : "/login") : scanHref}
+          href={scanHref}
           className="relative -mt-5 w-14 h-14 rounded-full bg-primary flex flex-col items-center justify-center shadow-lg gap-0.5"
         >
           <Camera size={22} className="text-primary-foreground" />
           <span className="text-[9px] text-primary-foreground/80 leading-none">Scan</span>
-          {cartCount > 0 && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {cartCount > 9 ? "9+" : cartCount}
-            </span>
-          )}
         </Link>
       </div>
 

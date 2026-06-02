@@ -1,11 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ArrowLeft, Loader2, ShoppingCart, Plus, Heart } from "lucide-react";
+import { ArrowLeft, Loader2, ArrowLeftRight, Plus, Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCard,
@@ -18,7 +18,8 @@ import {
   type ScrydexPriceEntry,
   type PricingReady,
 } from "@/lib/api";
-import { useTransactionCart } from "@/lib/stores/useTransactionCart";
+import { getProfile } from "@/lib/api/profiles";
+import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import { supabase } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +113,7 @@ export default function CardDetailPage() {
 
   // Auth
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [profileId, setProfileId] = useState<string | null>(null);
 
   // Add to inventory sheet
   const [addSheetOpen, setAddSheetOpen] = useState(false);
@@ -130,14 +132,21 @@ export default function CardDetailPage() {
   const [wishlistAdded, setWishlistAdded] = useState(false);
   const [wishlistError, setWishlistError] = useState<string | null>(null);
 
-  const { items: cartItems, addItem: addToCart } = useTransactionCart();
+  const setSeed = useTransactionSeed((s) => s.setSeed);
+  const router = useRouter();
 
   // ---------------------------------------------------------------------------
   // Effects
   // ---------------------------------------------------------------------------
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setIsLoggedIn(!!data.session));
+    supabase.auth.getSession().then(({ data }) => {
+      const loggedIn = !!data.session;
+      setIsLoggedIn(loggedIn);
+      if (loggedIn) {
+        getProfile().then((p) => setProfileId(p.id)).catch(() => {});
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -246,11 +255,16 @@ export default function CardDetailPage() {
     }
   }
 
-  function handleAddToCart() {
-    if (!card) return;
+  function handleAddToTransaction() {
+    if (!card || !profileId) return;
     const cond = getConditionParams();
     if (!cond) return;
-    addToCart({ card, quantity: 1, ...cond });
+    if (cond.condition_type === "ungraded") {
+      setSeed({ card, conditionType: "ungraded", conditionUngraded: (cond.condition_ungraded ?? "nm").toUpperCase(), gradingCompany: "", grade: "" });
+    } else {
+      setSeed({ card, conditionType: "graded", conditionUngraded: "", gradingCompany: (cond.grading_company ?? "").toUpperCase(), grade: cond.grade ?? "" });
+    }
+    router.push(`/transactions/${profileId}/new`);
   }
 
   async function handleAddToInventory() {
@@ -557,14 +571,6 @@ export default function CardDetailPage() {
           <ArrowLeft size={20} />
         </button>
         <p className="text-sm font-semibold truncate flex-1">{card.name}</p>
-        {cartItems.length > 0 && (
-          <Link href="/transactions/new" className="relative">
-            <ShoppingCart size={20} className="text-muted-foreground" />
-            <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-orange-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {cartItems.length > 9 ? "9+" : cartItems.length}
-            </span>
-          </Link>
-        )}
       </div>
 
       {/* ── Main layout ── */}
@@ -652,7 +658,7 @@ export default function CardDetailPage() {
         )}
         {!isLoggedIn ? (
           <Link href="/login">
-            <Button className="w-full" variant="outline">Sign in to add to inventory or cart</Button>
+            <Button className="w-full" variant="outline">Sign in to add to inventory or transaction</Button>
           </Link>
         ) : (priceCategory === "RAW" || selectedEntry) ? (
           <div className="space-y-2 max-w-lg mx-auto">
@@ -666,14 +672,9 @@ export default function CardDetailPage() {
                 <Plus size={14} className="mr-1.5" />
                 Add to Inventory
               </Button>
-              <Button className="flex-1" onClick={handleAddToCart}>
-                <ShoppingCart size={14} className="mr-1.5" />
-                Add to Cart
-                {cartItems.length > 0 && (
-                  <span className="ml-1.5 bg-white/20 rounded-full px-1.5 text-[10px] font-bold">
-                    {cartItems.length}
-                  </span>
-                )}
+              <Button className="flex-1" onClick={handleAddToTransaction} disabled={!profileId}>
+                <ArrowLeftRight size={14} className="mr-1.5" />
+                Add to Transaction
               </Button>
             </div>
             <Button
