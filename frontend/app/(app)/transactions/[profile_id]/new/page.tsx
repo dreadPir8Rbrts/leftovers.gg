@@ -188,11 +188,11 @@ function PersonRow({
           <p className="text-xs text-muted-foreground/40 self-center mr-2">Nothing yet</p>
         )}
         {/* + menu */}
-        <div className="relative z-20 self-end">
+        <div className="relative z-20 self-center">
           <button
             type="button"
             onClick={onMenuToggle}
-            className="w-10 h-10 rounded-lg border-2 border-dashed border-black/20 flex items-center justify-center text-lg text-muted-foreground hover:text-foreground hover:border-black/40 transition-colors"
+            className="w-12 h-12 rounded-lg border-2 border-dashed border-black/20 flex items-center justify-center text-4xl text-muted-foreground hover:text-foreground hover:border-black/40 transition-colors"
             aria-label="Add item"
           >
             +
@@ -477,7 +477,7 @@ function CardPickerModal({
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Search by card name…"
-            className="flex-1 border rounded-md px-3 py-2 text-sm bg-background"
+            className="flex-1 border rounded-md px-3 py-2 text-base sm:text-sm bg-background"
             autoFocus
           />
           <button
@@ -805,7 +805,7 @@ export default function NewTransactionPage() {
 
       {/* Metadata */}
       <div className="mt-6 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-[2fr,3fr] gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Date</label>
             <input
