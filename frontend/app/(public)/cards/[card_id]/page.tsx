@@ -25,7 +25,6 @@ import { supabase } from "@/lib/supabase";
 // Constants
 // ---------------------------------------------------------------------------
 
-const RAW_ORDER = ["NM", "LP", "MP", "HP", "DM"];
 const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE", "AGS"];
 const RAW_COND_REVERSE: Record<string, string> = { NM: "nm", LP: "lp", MP: "mp", HP: "hp", DM: "dmg" };
 
