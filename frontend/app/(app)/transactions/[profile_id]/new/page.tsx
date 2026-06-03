@@ -10,7 +10,7 @@ import {
   createTransaction,
   patchInventoryItem,
   searchCards,
-  quickIdentifyCard,
+  quickIdentifyCardV2,
   MARKETPLACE_OPTIONS,
   type TransactionType,
   type TransactionDirection,
@@ -434,7 +434,7 @@ function CardPickerModal({
     setScanning(true);
     setScanError(null);
     try {
-      const result = await quickIdentifyCard(file);
+      const result = await quickIdentifyCardV2(file);
       if (result.matched && result.card_id) {
         const card: Card = {
           id: result.card_id,
