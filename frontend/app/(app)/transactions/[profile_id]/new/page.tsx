@@ -40,6 +40,28 @@ interface CardDraft {
 const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "SGC", "HGA", "other"];
 
+async function compressImage(file: File, maxDimension = 1200, quality = 0.80): Promise<File> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(maxDimension / bitmap.width, maxDimension / bitmap.height, 1);
+  const w = Math.round(bitmap.width * scale);
+  const h = Math.round(bitmap.height * scale);
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close();
+  return new Promise<File>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) { reject(new Error("Canvas toBlob failed")); return; }
+        resolve(new File([blob], file.name.replace(/\.[^.]+$/, ".jpg"), { type: "image/jpeg" }));
+      },
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -434,7 +456,8 @@ function CardPickerModal({
     setScanning(true);
     setScanError(null);
     try {
-      const result = await quickIdentifyCardV2(file);
+      const compressed = await compressImage(file);
+      const result = await quickIdentifyCardV2(compressed);
       if (result.matched && result.card_id) {
         const card: Card = {
           id: result.card_id,
