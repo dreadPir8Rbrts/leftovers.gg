@@ -653,6 +653,7 @@ export default function NewTransactionPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [acquiredPriceDrafts, setAcquiredPriceDrafts] = useState<AcquiredPriceDraft[] | null>(null);
+  const [step, setStep] = useState<1 | 2>(1);
 
   // Read and consume seed on mount
   useEffect(() => {
@@ -755,122 +756,137 @@ export default function NewTransactionPage() {
   const txTypeLabel: Record<TransactionType, string> = { buy: "BUY", sell: "SELL", trade: "TRADE" };
 
   return (
-    <div className="p-4 max-w-lg mx-auto pb-24">
+    <div className="p-4 max-w-lg mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <Link href={`/transactions/${params.profile_id}`} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft size={20} />
-        </Link>
+        {step === 1 ? (
+          <Link href={`/transactions/${params.profile_id}`} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft size={20} />
+          </Link>
+        ) : (
+          <button type="button" onClick={() => setStep(1)} className="text-muted-foreground hover:text-foreground">
+            <ArrowLeft size={20} />
+          </button>
+        )}
         <h1 className="text-xl font-bold">New Transaction</h1>
       </div>
 
-      {/* Person 1 — You */}
-      <PersonRow
-        label="You"
-        cards={cards.filter((c) => c.direction === "lost")}
-        cashValue={cashLost}
-        menuOpen={menuOpen === "lost"}
-        onMenuToggle={() => setMenuOpen((prev) => prev === "lost" ? null : "lost")}
-        onAddCard={() => { setMenuOpen(null); setPickerDirection("lost"); }}
-        onAddCash={() => { setMenuOpen(null); setCashModalDirection("lost"); }}
-        onEditCard={setEditingDraft}
-        onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
-        onEditCash={() => setCashModalDirection("lost")}
-        onRemoveCash={() => setCashLost("")}
-      />
+      {/* ── Step 1: Transaction rows ── */}
+      {step === 1 && (
+        <div className="flex flex-col" style={{ minHeight: "calc(100svh - 8rem)" }}>
+          <div className="flex-1 space-y-4">
+            <PersonRow
+              label="You"
+              cards={cards.filter((c) => c.direction === "lost")}
+              cashValue={cashLost}
+              menuOpen={menuOpen === "lost"}
+              onMenuToggle={() => setMenuOpen((prev) => prev === "lost" ? null : "lost")}
+              onAddCard={() => { setMenuOpen(null); setPickerDirection("lost"); }}
+              onAddCash={() => { setMenuOpen(null); setCashModalDirection("lost"); }}
+              onEditCard={setEditingDraft}
+              onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
+              onEditCash={() => setCashModalDirection("lost")}
+              onRemoveCash={() => setCashLost("")}
+            />
 
-      {/* Divider + inferred type badge */}
-      <div className="flex items-center gap-3 my-4">
-        <div className="flex-1 h-px bg-border" />
-        <span className="text-[10px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
-          {txTypeLabel[txType]}
-        </span>
-        <div className="flex-1 h-px bg-border" />
-      </div>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-border" />
+              <span className="text-[10px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
+                {txTypeLabel[txType]}
+              </span>
+              <div className="flex-1 h-px bg-border" />
+            </div>
 
-      {/* Person 2 — Other party */}
-      <PersonRow
-        label="Other party"
-        cards={cards.filter((c) => c.direction === "gained")}
-        cashValue={cashGained}
-        menuOpen={menuOpen === "gained"}
-        onMenuToggle={() => setMenuOpen((prev) => prev === "gained" ? null : "gained")}
-        onAddCard={() => { setMenuOpen(null); setPickerDirection("gained"); }}
-        onAddCash={() => { setMenuOpen(null); setCashModalDirection("gained"); }}
-        onEditCard={setEditingDraft}
-        onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
-        onEditCash={() => setCashModalDirection("gained")}
-        onRemoveCash={() => setCashGained("")}
-      />
+            <PersonRow
+              label="Other party"
+              cards={cards.filter((c) => c.direction === "gained")}
+              cashValue={cashGained}
+              menuOpen={menuOpen === "gained"}
+              onMenuToggle={() => setMenuOpen((prev) => prev === "gained" ? null : "gained")}
+              onAddCard={() => { setMenuOpen(null); setPickerDirection("gained"); }}
+              onAddCash={() => { setMenuOpen(null); setCashModalDirection("gained"); }}
+              onEditCard={setEditingDraft}
+              onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
+              onEditCash={() => setCashModalDirection("gained")}
+              onRemoveCash={() => setCashGained("")}
+            />
+          </div>
 
-      {/* Metadata */}
-      <div className="mt-6 space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+          <div className="pt-6 pb-8">
+            <Button className="w-full" onClick={() => setStep(2)}>Next</Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step 2: Details + save ── */}
+      {step === 2 && (
+        <div className="space-y-3 pb-24">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={txDate}
+                onChange={(e) => setTxDate(e.target.value)}
+                className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-muted-foreground">Marketplace</label>
+              <select
+                value={marketplace}
+                onChange={(e) => setMarketplace(e.target.value)}
+                className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
+              >
+                <option value="">Select…</option>
+                {MARKETPLACE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
           <div>
-            <label className="text-xs text-muted-foreground">Date</label>
+            <label className="text-xs text-muted-foreground">Other party name</label>
             <input
-              type="date"
-              value={txDate}
-              onChange={(e) => setTxDate(e.target.value)}
-              className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
+              type="text"
+              value={counterpartyName}
+              onChange={(e) => setCounterpartyName(e.target.value)}
+              placeholder="Optional"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Marketplace</label>
-            <select
-              value={marketplace}
-              onChange={(e) => setMarketplace(e.target.value)}
-              className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
-            >
-              <option value="">Select…</option>
-              {MARKETPLACE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <label className="text-xs text-muted-foreground">Notes</label>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Optional"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
+            />
+          </div>
+
+          <div className="border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">
+            <span className="text-sm text-muted-foreground">Transaction value</span>
+            <span className={`text-sm font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
+              {autoValue >= 0 ? "+" : ""}${Math.abs(autoValue).toFixed(2)}
+            </span>
+          </div>
+
+          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+
+          <div className="flex gap-3 pt-1">
+            <Button onClick={handleSave} disabled={saving} className="flex-1">
+              {saving ? "Saving…" : "Save transaction"}
+            </Button>
+            <Link href={`/transactions/${params.profile_id}`}>
+              <Button variant="outline">Cancel</Button>
+            </Link>
           </div>
         </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Other party name</label>
-          <input
-            type="text"
-            value={counterpartyName}
-            onChange={(e) => setCounterpartyName(e.target.value)}
-            placeholder="Optional"
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-muted-foreground">Notes</label>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            placeholder="Optional"
-            className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
-          />
-        </div>
-      </div>
+      )}
 
-      {/* Transaction value */}
-      <div className="mt-4 border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">
-        <span className="text-sm text-muted-foreground">Transaction value</span>
-        <span className={`text-sm font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
-          {autoValue >= 0 ? "+" : ""}${Math.abs(autoValue).toFixed(2)}
-        </span>
-      </div>
-
-      {saveError && <p className="text-sm text-destructive mt-3">{saveError}</p>}
-
-      <div className="mt-4 flex gap-3">
-        <Button onClick={handleSave} disabled={saving} className="flex-1">
-          {saving ? "Saving…" : "Save transaction"}
-        </Button>
-        <Link href={`/transactions/${params.profile_id}`}>
-          <Button variant="outline">Cancel</Button>
-        </Link>
-      </div>
-
-      {/* Backdrop to close + menus */}
+      {/* Backdrop to close menus */}
       {menuOpen && (
         <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(null)} />
       )}
