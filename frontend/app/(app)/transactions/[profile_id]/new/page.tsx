@@ -805,14 +805,14 @@ export default function NewTransactionPage() {
 
       {/* Metadata */}
       <div className="mt-6 space-y-3">
-        <div className="grid grid-cols-[2fr,3fr] gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs text-muted-foreground">Date</label>
             <input
               type="date"
               value={txDate}
               onChange={(e) => setTxDate(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
+              className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
             />
           </div>
           <div>
@@ -820,7 +820,7 @@ export default function NewTransactionPage() {
             <select
               value={marketplace}
               onChange={(e) => setMarketplace(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
+              className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
             >
               <option value="">Select…</option>
               {MARKETPLACE_OPTIONS.map((o) => (
