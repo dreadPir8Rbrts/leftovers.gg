@@ -640,19 +640,19 @@ export default function CardDetailPage() {
           onClick={() => setAddModalOpen(false)}
         >
           <div
-            className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+            className="bg-black rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <p className="font-semibold text-sm">Add to Inventory</p>
-              <button onClick={() => setAddModalOpen(false)} className="text-xl text-muted-foreground hover:text-foreground leading-none">×</button>
+              <p className="font-semibold text-sm text-white">Add to Inventory</p>
+              <button onClick={() => setAddModalOpen(false)} className="text-xl text-white/60 hover:text-white leading-none">×</button>
             </div>
 
             <div className="px-5 pb-5 space-y-4">
               {/* Condition */}
-              <div className="space-y-2">
-                <label className="text-xs text-muted-foreground">Condition</label>
+              <div className="space-y-2 rounded-lg p-3 bg-zinc-800">
+                <label className="text-xs text-white">Condition</label>
                 {/* Raw / Graded toggle */}
                 <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
                   {(["ungraded", "graded"] as const).map((t) => (
@@ -703,8 +703,8 @@ export default function CardDetailPage() {
               </div>
 
               {/* Quantity */}
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Quantity</label>
+              <div className="space-y-1 rounded-lg p-3 bg-zinc-800">
+                <label className="text-xs text-white">Quantity</label>
                 <input
                   type="number" min="1" value={modalQuantity}
                   onChange={(e) => setModalQuantity(e.target.value)}
@@ -713,9 +713,9 @@ export default function CardDetailPage() {
               </div>
 
               {/* Acquired / Asking price */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 rounded-lg p-3 bg-zinc-800">
                 <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">Acquired price</label>
+                  <label className="text-xs text-white">Acquired price</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                     <input
@@ -727,7 +727,7 @@ export default function CardDetailPage() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className={`text-xs ${modalCardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
+                  <label className={`text-xs ${modalCardStatus === "pc" ? "text-white/30" : "text-white"}`}>
                     Asking price
                   </label>
                   <div className="relative">
@@ -746,8 +746,21 @@ export default function CardDetailPage() {
               </div>
 
               {/* Card status */}
-              <div className="space-y-1.5">
-                <label className="text-xs text-muted-foreground">Status</label>
+              <div className="space-y-1.5 rounded-lg p-3 bg-zinc-800">
+                <label className="text-xs text-white flex items-center gap-1">
+                  Status
+                  <span className="relative group cursor-default">
+                    <svg className="w-3.5 h-3.5 text-white/50" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                    <div className="absolute bottom-full left-0 mb-1.5 w-52 bg-popover text-popover-foreground text-xs rounded-md shadow-lg border p-2.5 hidden group-hover:block z-50 space-y-1.5 pointer-events-none">
+                      <p><span className="font-semibold">PC</span> — Personal Collection, not for sale/trade</p>
+                      <p><span className="font-semibold">FS/FT</span> — For sale or for trade</p>
+                      <p><span className="font-semibold">FS</span> — For sale only</p>
+                      <p><span className="font-semibold">FT</span> — For trade only</p>
+                    </div>
+                  </span>
+                </label>
                 <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
                   {([["pc","PC"],["fs_ft","FS/FT"],["fs","FS"],["ft","FT"]] as [CardStatus, string][]).map(([v, l]) => (
                     <button
