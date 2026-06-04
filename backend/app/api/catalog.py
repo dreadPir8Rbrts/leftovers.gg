@@ -8,11 +8,12 @@ Routes:
   GET /expansions/{id} — expansion detail with local card count
 """
 
+import unicodedata
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -115,17 +116,23 @@ def _build_expansion_response(expansion: ExpansionV2) -> dict:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _strip_accents(s: str) -> str:
+    """Normalize diacritics so 'Pokemon' matches 'Pokémon'."""
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+
+
 def _apply_q_tokens(query, q: str):
     """Apply each token in q as a filter against card name / en_name / expansion names."""
     for word in q.strip().split():
+        norm = _strip_accents(word)
         num_stripped = word.lstrip("0") or word
         is_numeric = word.replace("/", "").isdigit()
         conditions = [
-            CardV2.name.ilike(f"%{word}%"),
-            CardV2.en_name.ilike(f"%{word}%"),
-            ExpansionV2.name.ilike(f"%{word}%"),
-            ExpansionV2.name_en.ilike(f"%{word}%"),
-            ExpansionV2.translation.ilike(f"%{word}%"),
+            func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+            func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
+            func.unaccent(ExpansionV2.name).ilike(f"%{norm}%"),
+            func.unaccent(ExpansionV2.name_en).ilike(f"%{norm}%"),
+            func.unaccent(ExpansionV2.translation).ilike(f"%{norm}%"),
         ]
         if is_numeric:
             conditions += [
@@ -274,10 +281,17 @@ def search_cards(
             q = q.filter(CardV2.language_code == _normalize_lang(language_code))
         return q
 
+    def _name_filter(q, name_val: str):
+        norm = _strip_accents(name_val)
+        return q.filter(or_(
+            func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+            func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
+        ))
+
     if broad and name:
         # Strict pass — all supplied params
         strict_q = _base()
-        strict_q = strict_q.filter(CardV2.name.ilike(f"%{name}%"))
+        strict_q = _name_filter(strict_q, name)
         if card_num:
             strict_q = _apply_card_num_filter(strict_q, card_num)
         if set_name:
@@ -290,7 +304,7 @@ def search_cards(
 
         # Broad pass — name only (game + language still applied)
         broad_q = _base()
-        broad_q = broad_q.filter(CardV2.name.ilike(f"%{name}%"))
+        broad_q = _name_filter(broad_q, name)
         broad_q = _common_filters(broad_q)
         broad_rows = broad_q.order_by(CardV2.name).limit(limit).all()
 
@@ -299,7 +313,7 @@ def search_cards(
     else:
         query = _base()
         if name:
-            query = query.filter(CardV2.name.ilike(f"%{name}%"))
+            query = _name_filter(query, name)
         if card_num:
             query = _apply_card_num_filter(query, card_num)
         if set_name:
