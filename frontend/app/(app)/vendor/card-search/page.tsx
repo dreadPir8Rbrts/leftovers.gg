@@ -67,6 +67,8 @@ export default function CardSearchPage() {
       card_num: cardNum.length >= 1 ? cardNum : undefined,
       set_name: setQuery.length >= 2 ? setQuery : undefined,
       series_name: seriesName.length >= 2 ? seriesName : undefined,
+      broad: true,
+      limit: 50,
     };
     const hasQuery = Object.values(params).some(Boolean);
 

@@ -209,6 +209,41 @@ def get_card(card_id: str, db: Session = Depends(get_db)):
     return _build_card_response(card, expansion)
 
 
+def _apply_card_num_filter(query, card_num: str):
+    """Apply card number filter to an existing query, handling slash notation."""
+    if "/" in card_num:
+        parts = card_num.split("/", 1)
+        num_part = parts[0].lstrip("0") or "0"
+        total_str = parts[1].strip()
+        try:
+            total_int = int(total_str)
+            return query.filter(
+                or_(
+                    CardV2.printed_number == card_num,
+                    and_(
+                        CardV2.number == num_part,
+                        ExpansionV2.printed_total == total_int,
+                    ),
+                )
+            )
+        except ValueError:
+            num_stripped = card_num.lstrip("0") or card_num
+            return query.filter(
+                or_(
+                    CardV2.number.ilike(f"%{num_stripped}%"),
+                    CardV2.printed_number.ilike(f"%{card_num}%"),
+                )
+            )
+    else:
+        num_stripped = card_num.lstrip("0") or card_num
+        return query.filter(
+            or_(
+                CardV2.number.ilike(f"%{num_stripped}%"),
+                CardV2.printed_number.ilike(f"%{card_num}%"),
+            )
+        )
+
+
 @router.get("/cards", response_model=List[CardDetailResponse])
 def search_cards(
     name: Optional[str] = Query(None, min_length=2, description="Filter by card name (contains)"),
@@ -216,53 +251,63 @@ def search_cards(
     game: Optional[str] = Query(None, description="Filter by game: pokemon | onepiece"),
     language_code: Optional[str] = Query(None, description="Filter by language code e.g. en, ja"),
     set_name: Optional[str] = Query(None, min_length=2, description="Filter by expansion name (contains)"),
-    limit: int = Query(20, ge=1, le=100),
+    series_name: Optional[str] = Query(None, min_length=2, description="Filter by series name (contains)"),
+    broad: bool = Query(False, description="Return broader results ranked by relevance (requires name)"),
+    limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
     if not any([name, card_num, set_name]):
         raise HTTPException(status_code=422, detail="At least one of name, card_num, or set_name is required.")
 
-    query = (
-        db.query(CardV2, ExpansionV2)
-        .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-    )
-    if name:
-        query = query.filter(CardV2.name.ilike(f"%{name}%"))
-    if card_num:
-        if "/" in card_num:
-            parts = card_num.split("/", 1)
-            num_part = parts[0].lstrip("0") or "0"
-            total_str = parts[1].strip()
-            try:
-                total_int = int(total_str)
-                query = query.filter(
-                    or_(
-                        CardV2.printed_number == card_num,
-                        and_(
-                            CardV2.number == num_part,
-                            ExpansionV2.printed_total == total_int,
-                        ),
-                    )
-                )
-            except ValueError:
-                query = query.filter(CardV2.number.ilike(f"%{card_num}%"))
-        else:
-            num_stripped = card_num.lstrip("0") or card_num
-            query = query.filter(
-                or_(
-                    CardV2.number.ilike(f"%{num_stripped}%"),
-                    CardV2.printed_number.ilike(f"%{card_num}%"),
-                )
-            )
-    if game:
-        query = query.filter(CardV2.game == game)
-    if language_code:
-        query = query.filter(CardV2.language_code == _normalize_lang(language_code))
-    if set_name:
-        query = query.filter(ExpansionV2.name.ilike(f"%{set_name}%"))
+    def _base():
+        return (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        )
 
-    rows = query.order_by(CardV2.name).offset(offset).limit(limit).all()
+    def _common_filters(q):
+        if game:
+            q = q.filter(CardV2.game == game)
+        if language_code:
+            q = q.filter(CardV2.language_code == _normalize_lang(language_code))
+        return q
+
+    if broad and name:
+        # Strict pass — all supplied params
+        strict_q = _base()
+        strict_q = strict_q.filter(CardV2.name.ilike(f"%{name}%"))
+        if card_num:
+            strict_q = _apply_card_num_filter(strict_q, card_num)
+        if set_name:
+            strict_q = strict_q.filter(ExpansionV2.name.ilike(f"%{set_name}%"))
+        if series_name:
+            strict_q = strict_q.filter(ExpansionV2.series.ilike(f"%{series_name}%"))
+        strict_q = _common_filters(strict_q)
+        strict_rows = strict_q.order_by(CardV2.name).limit(limit).all()
+        strict_ids = {str(row[0].id) for row in strict_rows}
+
+        # Broad pass — name only (game + language still applied)
+        broad_q = _base()
+        broad_q = broad_q.filter(CardV2.name.ilike(f"%{name}%"))
+        broad_q = _common_filters(broad_q)
+        broad_rows = broad_q.order_by(CardV2.name).limit(limit).all()
+
+        merged = strict_rows + [row for row in broad_rows if str(row[0].id) not in strict_ids]
+        rows = merged[:limit]
+    else:
+        query = _base()
+        if name:
+            query = query.filter(CardV2.name.ilike(f"%{name}%"))
+        if card_num:
+            query = _apply_card_num_filter(query, card_num)
+        if set_name:
+            query = query.filter(ExpansionV2.name.ilike(f"%{set_name}%"))
+        if series_name:
+            query = query.filter(ExpansionV2.series.ilike(f"%{series_name}%"))
+        query = _common_filters(query)
+        rows = query.order_by(CardV2.name).offset(offset).limit(limit).all()
+
     return [_build_card_response(card, expansion) for card, expansion in rows]
 
 

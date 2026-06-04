@@ -128,6 +128,7 @@ export interface CardSearchParams {
   language_code?: string;
   set_name?: string;
   series_name?: string;
+  broad?: boolean;
   limit?: number;
 }
 
@@ -152,7 +153,7 @@ export async function searchCardsSmart(params: SmartSearchParams): Promise<Card[
   return res.json();
 }
 
-// Search cards — any combination of name, card_num, game, language_code, set_name
+// Search cards — any combination of name, card_num, game, language_code, set_name, series_name
 export async function searchCards(params: CardSearchParams): Promise<Card[]> {
   const qs = new URLSearchParams();
   if (params.name) qs.set("name", params.name);
@@ -160,6 +161,8 @@ export async function searchCards(params: CardSearchParams): Promise<Card[]> {
   if (params.game) qs.set("game", params.game);
   if (params.language_code) qs.set("language_code", params.language_code);
   if (params.set_name) qs.set("set_name", params.set_name);
+  if (params.series_name) qs.set("series_name", params.series_name);
+  if (params.broad) qs.set("broad", "true");
   qs.set("limit", String(params.limit ?? 20));
   const res = await fetch(`${API_URL}/api/v1/cards?${qs.toString()}`, {
     headers: await authHeaders(),

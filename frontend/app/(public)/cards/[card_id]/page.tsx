@@ -671,7 +671,7 @@ export default function CardDetailPage() {
           onClick={() => setAddModalOpen(false)}
         >
           <div
-            className="bg-black rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+            className="bg-zinc-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -682,7 +682,7 @@ export default function CardDetailPage() {
 
             <div className="px-5 pb-5 space-y-4">
               {/* Condition */}
-              <div className="space-y-2 rounded-lg p-3 bg-zinc-800">
+              <div className="space-y-2 rounded-lg p-3 bg-black">
                 <label className="text-xs text-white">Condition</label>
                 {/* Raw / Graded toggle */}
                 <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
@@ -694,7 +694,7 @@ export default function CardDetailPage() {
                       className={`flex-1 py-1.5 font-medium transition-colors ${
                         modalConditionType === t
                           ? "bg-foreground text-background"
-                          : "bg-background hover:bg-muted"
+                          : "bg-zinc-800 hover:bg-zinc-700"
                       }`}
                     >
                       {t === "ungraded" ? "Raw" : "Graded"}
@@ -705,7 +705,7 @@ export default function CardDetailPage() {
                   <select
                     value={modalConditionUngraded}
                     onChange={(e) => setModalConditionUngraded(e.target.value)}
-                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
                   >
                     {[["nm","NM"],["lp","LP"],["mp","MP"],["hp","HP"],["dmg","DMG"]].map(([v, l]) => (
                       <option key={v} value={v}>{l}</option>
@@ -716,7 +716,7 @@ export default function CardDetailPage() {
                     <select
                       value={modalGradingCompany}
                       onChange={(e) => setModalGradingCompany(e.target.value)}
-                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
                     >
                       {[["psa","PSA"],["bgs","BGS"],["cgc","CGC"],["other","Other"]].map(([v, l]) => (
                         <option key={v} value={v}>{l}</option>
@@ -727,24 +727,41 @@ export default function CardDetailPage() {
                       value={modalGrade}
                       onChange={(e) => setModalGrade(e.target.value)}
                       placeholder="Grade (e.g. 10)"
-                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white placeholder:text-zinc-500"
                     />
                   </div>
                 )}
               </div>
 
+              {/* Variant — only shown when card has multiple variants */}
+              {availableVariants.length > 1 && (
+                <div className="space-y-1 rounded-lg p-3 bg-black">
+                  <label className="text-xs text-white">Variant</label>
+                  <select
+                    value={modalVariant ?? ""}
+                    onChange={(e) => setModalVariant(e.target.value || null)}
+                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
+                  >
+                    <option value="">— None —</option>
+                    {availableVariants.map((v) => (
+                      <option key={v} value={v}>{formatVariantName(v)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Quantity */}
-              <div className="space-y-1 rounded-lg p-3 bg-zinc-800">
+              <div className="space-y-1 rounded-lg p-3 bg-black">
                 <label className="text-xs text-white">Quantity</label>
                 <input
                   type="number" min="1" value={modalQuantity}
                   onChange={(e) => setModalQuantity(e.target.value)}
-                  className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                  className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
                 />
               </div>
 
               {/* Acquired / Asking price */}
-              <div className="grid grid-cols-2 gap-3 rounded-lg p-3 bg-zinc-800">
+              <div className="grid grid-cols-2 gap-3 rounded-lg p-3 bg-black">
                 <div className="space-y-1">
                   <label className="text-xs text-white">Acquired price</label>
                   <div className="relative">
@@ -753,7 +770,7 @@ export default function CardDetailPage() {
                       type="number" min="0" step="0.01" value={modalAcquiredPrice}
                       onChange={(e) => setModalAcquiredPrice(e.target.value)}
                       placeholder="0.00"
-                      className="w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background"
+                      className="w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-zinc-800 text-white placeholder:text-zinc-500"
                     />
                   </div>
                 </div>
@@ -768,7 +785,7 @@ export default function CardDetailPage() {
                       onChange={(e) => setModalAskingPrice(e.target.value)}
                       placeholder="0.00"
                       disabled={modalCardStatus === "pc"}
-                      className={`w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background ${
+                      className={`w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-zinc-800 text-white placeholder:text-zinc-500 ${
                         modalCardStatus === "pc" ? "opacity-40 cursor-not-allowed" : ""
                       }`}
                     />
@@ -776,25 +793,8 @@ export default function CardDetailPage() {
                 </div>
               </div>
 
-              {/* Variant — only shown when card has multiple variants */}
-              {availableVariants.length > 1 && (
-                <div className="space-y-1 rounded-lg p-3 bg-zinc-800">
-                  <label className="text-xs text-white">Variant</label>
-                  <select
-                    value={modalVariant ?? ""}
-                    onChange={(e) => setModalVariant(e.target.value || null)}
-                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
-                  >
-                    <option value="">— None —</option>
-                    {availableVariants.map((v) => (
-                      <option key={v} value={v}>{formatVariantName(v)}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
               {/* Card status */}
-              <div className="space-y-1.5 rounded-lg p-3 bg-zinc-800">
+              <div className="space-y-1.5 rounded-lg p-3 bg-black">
                 <label className="text-xs text-white flex items-center gap-1">
                   Status
                   <span className="relative group cursor-default">
@@ -818,7 +818,7 @@ export default function CardDetailPage() {
                       className={`flex-1 py-1.5 font-medium transition-colors border-r border-black/20 last:border-r-0 ${
                         modalCardStatus === v
                           ? "bg-foreground text-background"
-                          : "bg-background hover:bg-muted"
+                          : "bg-zinc-800 hover:bg-zinc-700"
                       }`}
                     >
                       {l}
