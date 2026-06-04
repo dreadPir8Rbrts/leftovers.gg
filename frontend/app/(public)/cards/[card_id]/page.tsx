@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ArrowLeft, Loader2, ArrowLeftRight, Plus, Heart } from "lucide-react";
+import { ArrowLeft, Loader2, ArrowLeftRight, Plus, Heart, ChevronDown, ChevronUp, RotateCcw, Search, LayoutList, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   getCard,
@@ -15,6 +15,7 @@ import {
   addInventoryItem,
   addToWishlist,
   formatVariantName,
+  searchCardsSmart,
   type Card,
   type ScrydexPriceEntry,
   type PricingReady,
@@ -22,6 +23,7 @@ import {
 } from "@/lib/api";
 import { getProfile } from "@/lib/api/profiles";
 import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
+import { useScanContext } from "@/lib/stores/useScanContext";
 import { supabase } from "@/lib/supabase";
 
 // ---------------------------------------------------------------------------
@@ -126,6 +128,15 @@ export default function CardDetailPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
 
+  // Scan context — "Not the right card?" banner
+  const { q: scanContextQ, confidence: scanContextConfidence, clearScanContext } = useScanContext();
+  const [scanQ, setScanQ] = useState<string | null>(null);
+  const [scanConfidence, setScanConfidence] = useState<number | null>(null);
+  const [notRightOpen, setNotRightOpen] = useState(false);
+  const [similarCards, setSimilarCards] = useState<Card[] | null>(null);
+  const [loadingSimilar, setLoadingSimilar] = useState(false);
+  const [reported, setReported] = useState(false);
+
   // Add to inventory modal
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [modalConditionType, setModalConditionType] = useState<"ungraded" | "graded">("ungraded");
@@ -165,6 +176,16 @@ export default function CardDetailPage() {
         getProfile().then((p) => setProfileId(p.id)).catch(() => {});
       }
     });
+  }, []);
+
+  // Consume scan context set by the scan page — read once then clear
+  useEffect(() => {
+    if (scanContextQ) {
+      setScanQ(scanContextQ);
+      setScanConfidence(scanContextConfidence);
+      clearScanContext();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -283,6 +304,20 @@ export default function CardDetailPage() {
       setEbayError("Failed to fetch eBay data.");
     } finally {
       setEbayLoading(false);
+    }
+  }
+
+  async function handleViewSimilar() {
+    if (!scanQ) return;
+    setLoadingSimilar(true);
+    setSimilarCards(null);
+    try {
+      const data = await searchCardsSmart({ q: scanQ, broad: true, limit: 15 });
+      setSimilarCards(data);
+    } catch {
+      setSimilarCards([]);
+    } finally {
+      setLoadingSimilar(false);
     }
   }
 
@@ -892,6 +927,119 @@ export default function CardDetailPage() {
             </Button>
             {wishlistError && (
               <p className="text-xs text-destructive text-center">{wishlistError}</p>
+            )}
+
+            {/* Not the right card? — shown when arriving from scan */}
+            {scanQ && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setNotRightOpen((o) => !o); setSimilarCards(null); setReported(false); }}
+                  className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1.5 transition-colors"
+                >
+                  Not the right card?
+                  {notRightOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+
+                {notRightOpen && (
+                  <div className="space-y-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => profileId && router.push(`/scan/${profileId}`)}
+                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                    >
+                      <RotateCcw className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Try again</p>
+                        <p className="text-xs text-muted-foreground">Go back and scan another photo</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => router.push("/vendor/card-search")}
+                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                    >
+                      <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium">Manual search</p>
+                        <p className="text-xs text-muted-foreground">Search by name, set, or card number</p>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleViewSimilar}
+                      disabled={loadingSimilar}
+                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors disabled:opacity-50"
+                    >
+                      {loadingSimilar
+                        ? <Loader2 className="h-4 w-4 text-muted-foreground shrink-0 animate-spin" />
+                        : <LayoutList className="h-4 w-4 text-muted-foreground shrink-0" />
+                      }
+                      <div>
+                        <p className="text-sm font-medium">View similar results</p>
+                        <p className="text-xs text-muted-foreground">Browse cards that match the scan data</p>
+                      </div>
+                    </button>
+
+                    {reported ? (
+                      <p className="text-xs text-muted-foreground text-center py-2">Thanks — we&apos;ll review this scan.</p>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReported(true)}
+                        className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                      >
+                        <Flag className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Report unidentifiable card</p>
+                          <p className="text-xs text-muted-foreground">Let us know this card couldn&apos;t be identified</p>
+                        </div>
+                      </button>
+                    )}
+
+                    {/* Similar results list */}
+                    {(loadingSimilar || similarCards !== null) && (
+                      <div className="rounded-lg border overflow-hidden">
+                        {loadingSimilar && (
+                          <div className="flex items-center justify-center py-6">
+                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                          </div>
+                        )}
+                        {!loadingSimilar && similarCards !== null && (
+                          <>
+                            <p className="text-xs font-medium px-3 py-2 border-b text-muted-foreground">
+                              {similarCards.length > 0
+                                ? `${similarCards.length} similar card${similarCards.length !== 1 ? "s" : ""}`
+                                : "No similar cards found"}
+                            </p>
+                            {similarCards.map((c) => (
+                              <button
+                                key={c.id}
+                                onClick={() => router.push(`/cards/${c.id}`)}
+                                className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                              >
+                                {c.image_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={c.image_url} alt={c.name} className="h-14 w-10 rounded object-cover shrink-0" />
+                                ) : (
+                                  <div className="h-14 w-10 rounded bg-muted shrink-0" />
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium truncate">{c.name}</p>
+                                  <p className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</p>
+                                  <p className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</p>
+                                </div>
+                              </button>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         ) : (
