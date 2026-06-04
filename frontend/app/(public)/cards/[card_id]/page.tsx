@@ -129,9 +129,8 @@ export default function CardDetailPage() {
   const [profileId, setProfileId] = useState<string | null>(null);
 
   // Scan context — "Not the right card?" banner
-  const { q: scanContextQ, confidence: scanContextConfidence, clearScanContext } = useScanContext();
+  const { q: scanContextQ, clearScanContext } = useScanContext();
   const [scanQ, setScanQ] = useState<string | null>(null);
-  const [scanConfidence, setScanConfidence] = useState<number | null>(null);
   const [notRightOpen, setNotRightOpen] = useState(false);
   const [similarCards, setSimilarCards] = useState<Card[] | null>(null);
   const [loadingSimilar, setLoadingSimilar] = useState(false);
@@ -182,7 +181,6 @@ export default function CardDetailPage() {
   useEffect(() => {
     if (scanContextQ) {
       setScanQ(scanContextQ);
-      setScanConfidence(scanContextConfidence);
       clearScanContext();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -938,15 +936,6 @@ export default function CardDetailPage() {
                   className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1.5 transition-colors"
                 >
                   Not the right card?
-                  {scanConfidence != null && (
-                    <span className={`ml-1 px-1.5 py-0.5 rounded-full font-medium ${
-                      scanConfidence >= 0.85 ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" :
-                      scanConfidence >= 0.60 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
-                      "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                    }`}>
-                      {Math.round(scanConfidence * 100)}%
-                    </span>
-                  )}
                   {notRightOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                 </button>
 
@@ -1018,30 +1007,41 @@ export default function CardDetailPage() {
                         )}
                         {!loadingSimilar && similarCards !== null && (
                           <>
-                            <p className="text-xs font-medium px-3 py-2 border-b text-muted-foreground">
-                              {similarCards.length > 0
-                                ? `${similarCards.length} similar card${similarCards.length !== 1 ? "s" : ""}`
-                                : "No similar cards found"}
-                            </p>
-                            {similarCards.map((c) => (
+                            <div className="flex items-center justify-between px-3 py-2 border-b">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                {similarCards.length > 0
+                                  ? `${similarCards.length} similar card${similarCards.length !== 1 ? "s" : ""}`
+                                  : "No similar cards found"}
+                              </p>
                               <button
-                                key={c.id}
-                                onClick={() => router.push(`/cards/${c.id}`)}
-                                className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                                type="button"
+                                onClick={() => setSimilarCards(null)}
+                                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                               >
-                                {c.image_url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={c.image_url} alt={c.name} className="h-14 w-10 rounded object-cover shrink-0" />
-                                ) : (
-                                  <div className="h-14 w-10 rounded bg-muted shrink-0" />
-                                )}
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium truncate">{c.name}</p>
-                                  <p className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</p>
-                                  <p className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</p>
-                                </div>
+                                ✕ Close
                               </button>
-                            ))}
+                            </div>
+                            <div className="max-h-72 overflow-y-auto">
+                              {similarCards.map((c) => (
+                                <button
+                                  key={c.id}
+                                  onClick={() => router.push(`/cards/${c.id}`)}
+                                  className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
+                                >
+                                  {c.image_url ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={c.image_url} alt={c.name} className="h-14 w-10 rounded object-cover shrink-0" />
+                                  ) : (
+                                    <div className="h-14 w-10 rounded bg-muted shrink-0" />
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium truncate">{c.name}</p>
+                                    <p className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</p>
+                                    <p className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           </>
                         )}
                       </div>
