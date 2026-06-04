@@ -31,6 +31,14 @@ import { supabase } from "@/lib/supabase";
 const COMPANY_ORDER = ["PSA", "BGS", "CGC", "TAG", "SGC", "ACE", "AGS"];
 const RAW_COND_REVERSE: Record<string, string> = { NM: "nm", LP: "lp", MP: "mp", HP: "hp", DM: "dmg" };
 
+const HALF_GRADES = ["10","9.5","9","8.5","8","7.5","7","6.5","6","5.5","5","4.5","4","3.5","3","2.5","2","1.5","1"];
+const GRADE_OPTIONS: Record<string, string[]> = {
+  psa:   ["10","9","8","7","6","5","4","3","2","1"],
+  bgs:   HALF_GRADES,
+  cgc:   [...HALF_GRADES, "0.5"],
+  other: ["10","9","8","7","6","5","4","3","2","1"],
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -123,7 +131,7 @@ export default function CardDetailPage() {
   const [modalConditionType, setModalConditionType] = useState<"ungraded" | "graded">("ungraded");
   const [modalConditionUngraded, setModalConditionUngraded] = useState("nm");
   const [modalGradingCompany, setModalGradingCompany] = useState("psa");
-  const [modalGrade, setModalGrade] = useState("");
+  const [modalGrade, setModalGrade] = useState("10");
   const [modalQuantity, setModalQuantity] = useState("1");
   const [modalAcquiredPrice, setModalAcquiredPrice] = useState("");
   const [modalAskingPrice, setModalAskingPrice] = useState("");
@@ -298,7 +306,7 @@ export default function CardDetailPage() {
     } else if (selectedEntry) {
       setModalConditionType("graded");
       setModalGradingCompany(priceCategory.toLowerCase());
-      setModalGrade(selectedEntry.grade ?? "");
+      setModalGrade(selectedEntry.grade ?? "10");
     } else {
       setModalConditionType("ungraded");
       setModalConditionUngraded("nm");
@@ -715,20 +723,26 @@ export default function CardDetailPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <select
                       value={modalGradingCompany}
-                      onChange={(e) => setModalGradingCompany(e.target.value)}
+                      onChange={(e) => {
+                        const co = e.target.value;
+                        setModalGradingCompany(co);
+                        setModalGrade((GRADE_OPTIONS[co] ?? GRADE_OPTIONS.other)[0]);
+                      }}
                       className="border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
                     >
                       {[["psa","PSA"],["bgs","BGS"],["cgc","CGC"],["other","Other"]].map(([v, l]) => (
                         <option key={v} value={v}>{l}</option>
                       ))}
                     </select>
-                    <input
-                      type="text"
+                    <select
                       value={modalGrade}
                       onChange={(e) => setModalGrade(e.target.value)}
-                      placeholder="Grade (e.g. 10)"
-                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white placeholder:text-zinc-500"
-                    />
+                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
+                    >
+                      {(GRADE_OPTIONS[modalGradingCompany] ?? GRADE_OPTIONS.other).map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
