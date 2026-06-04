@@ -7,9 +7,7 @@ import { RotateCcw, Search, LayoutList, Flag, ChevronDown, ChevronUp, Loader2 } 
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import {
-  identifyCard,
   quickIdentifyCard,
   quickIdentifyCardV2,
   searchCardsSmart,
@@ -48,8 +46,6 @@ async function compressImage(file: File, maxDimension = 1400, quality = 0.85): P
 
 type ScanState =
   | { step: "idle" }
-  | { step: "uploading"; progress: number }
-  | { step: "scanning" }
   | { step: "result" }
   | { step: "error"; message: string };
 
@@ -83,20 +79,6 @@ export default function ScanPage() {
     setFile(f);
     setPreview(URL.createObjectURL(f));
     setState({ step: "idle" });
-  }
-
-  async function handleScan() {
-    if (!file) return;
-    try {
-      setState({ step: "uploading", progress: 20 });
-      const compressed = await compressImage(file);
-      setPreview(URL.createObjectURL(compressed));
-      setState({ step: "scanning" });
-      const result = await identifyCard(compressed);
-      router.push(`/cards/${result.id}`);
-    } catch (err) {
-      setState({ step: "error", message: err instanceof Error ? err.message : "Could not identify card — please search manually." });
-    }
   }
 
   async function handleQuickScan() {
@@ -216,25 +198,6 @@ export default function ScanPage() {
           )}
         </CardContent>
       </Card>
-
-      {/* Upload / scan progress */}
-      {state.step === "uploading" && (
-        <Card className="mb-4">
-          <CardContent className="pt-6 space-y-2">
-            <p className="text-sm text-muted-foreground">Uploading...</p>
-            <Progress value={state.progress} />
-          </CardContent>
-        </Card>
-      )}
-
-      {state.step === "scanning" && (
-        <Card className="mb-4">
-          <CardContent className="pt-6 space-y-2">
-            <p className="text-sm text-muted-foreground">Identifying card with Claude Vision...</p>
-            <Progress value={100} className="animate-pulse" />
-          </CardContent>
-        </Card>
-      )}
 
       {/* Scan buttons */}
       {file && state.step === "idle" && (
