@@ -53,6 +53,7 @@ export interface InventoryItemCreate {
   acquired_price?: string;
   asking_price?: string;
   card_status: CardStatus;
+  variant?: string | null;
   quantity: number;
   notes?: string;
 }
@@ -61,6 +62,7 @@ export interface InventoryItemPatch {
   acquired_price?: number;
   asking_price?: number;
   card_status?: CardStatus;
+  variant?: string | null;
   is_public?: boolean;
   notes?: string;
 }
@@ -200,6 +202,7 @@ export interface InventoryItemWithCard {
   acquired_price?: number;
   asking_price?: number;
   card_status: CardStatus;
+  variant?: string | null;
   is_public: boolean;
   notes?: string;
   created_at: string;
@@ -1026,11 +1029,18 @@ export interface ScrydexTrend {
   percent_change: number;
 }
 
+export function formatVariantName(name: string): string {
+  const words = name.replace(/([A-Z])/g, " $1").trim().toLowerCase().split(" ");
+  if (words[0] === "first") words[0] = "1st";
+  return words.map((w) => (w === "1st" ? "1st" : w.charAt(0).toUpperCase() + w.slice(1))).join(" ");
+}
+
 export interface ScrydexPriceEntry {
   type: "raw" | "graded";
   condition?: string;       // raw only: NM, LP, MP, HP, DM
   company?: string;         // graded only: PSA, BGS, CGC, etc.
   grade?: string;           // graded only: "10", "9.5", etc.
+  variant?: string;         // scrydex variant name e.g. "firstEditionHolofoil"
   is_perfect?: boolean;
   is_signed?: boolean;
   is_error?: boolean;

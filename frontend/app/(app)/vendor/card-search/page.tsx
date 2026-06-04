@@ -7,7 +7,7 @@ import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
-import { searchCards, addInventoryItem, type Card, type CardSearchParams } from "@/lib/api";
+import { searchCards, addInventoryItem, getCardScrydexPrices, formatVariantName, type Card, type CardSearchParams } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card as UICard, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,12 @@ export default function CardSearchPage() {
   const [added, setAdded] = useState<Set<string>>(new Set());
   const [condition, setCondition] = useState("raw_nm");
   const [askingPrice, setAskingPrice] = useState("");
+
+  // Variant picker modal
+  const [variantCard, setVariantCard] = useState<Card | null>(null);
+  const [variantOptions, setVariantOptions] = useState<string[]>([]);
+  const [selectedVariant, setSelectedVariant] = useState<string>("");
+  const [variantAdding, setVariantAdding] = useState(false);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -89,11 +95,21 @@ export default function CardSearchPage() {
   async function handleAdd(card: Card) {
     setAdding(card.id);
     try {
+      const { prices } = await getCardScrydexPrices(card.id);
+      const variants = Array.from(new Set(prices.filter((p) => p.variant).map((p) => p.variant as string)));
+      if (variants.length > 1) {
+        setVariantCard(card);
+        setVariantOptions(variants);
+        setSelectedVariant(variants[0]);
+        setAdding(null);
+        return;
+      }
       await addInventoryItem({
         card_id: card.id,
         condition,
         asking_price: askingPrice || undefined,
         card_status: "pc",
+        variant: variants[0] ?? null,
         quantity: 1,
       });
       setAdded((prev) => new Set(prev).add(card.id));
@@ -104,9 +120,64 @@ export default function CardSearchPage() {
     }
   }
 
+  async function confirmVariantAdd() {
+    if (!variantCard) return;
+    setVariantAdding(true);
+    try {
+      await addInventoryItem({
+        card_id: variantCard.id,
+        condition,
+        asking_price: askingPrice || undefined,
+        card_status: "pc",
+        variant: selectedVariant || null,
+        quantity: 1,
+      });
+      setAdded((prev) => new Set(prev).add(variantCard.id));
+      setVariantCard(null);
+    } catch {
+      setError(`Failed to add ${variantCard.name} to inventory.`);
+    } finally {
+      setVariantAdding(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Card Search</h1>
+
+      {/* Variant picker modal */}
+      {variantCard && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setVariantCard(null)}
+        >
+          <div
+            className="bg-background rounded-xl shadow-xl w-full max-w-xs p-5 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="font-semibold text-sm">Select Variant</p>
+            <p className="text-xs text-muted-foreground">{variantCard.name}</p>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Variant</label>
+              <select
+                value={selectedVariant}
+                onChange={(e) => setSelectedVariant(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              >
+                {variantOptions.map((v) => (
+                  <option key={v} value={v}>{formatVariantName(v)}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setVariantCard(null)}>Cancel</Button>
+              <Button size="sm" onClick={confirmVariantAdd} disabled={variantAdding}>
+                {variantAdding ? "Adding…" : "Add"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Search fields */}
       <UICard className="mb-4">

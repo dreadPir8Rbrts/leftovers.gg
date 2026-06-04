@@ -129,6 +129,7 @@ def add_inventory_item(
         acquired_price=body.acquired_price,
         asking_price=body.asking_price,
         card_status=body.card_status,
+        variant=body.variant,
         notes=body.notes,
     )
     db.add(item)
@@ -157,6 +158,7 @@ def add_inventory_item(
         "acquired_price": item.acquired_price,
         "asking_price": item.asking_price,
         "card_status": item.card_status,
+        "variant": item.variant,
         "notes": item.notes,
         "photo_url": item.photo_url,
         "created_at": item.created_at,
@@ -262,6 +264,7 @@ def list_inventory(
             item.condition_ungraded,
             item.grading_company,
             item.grade,
+            item.variant,
         )
         result.append({
             "id": item.id,
@@ -275,6 +278,7 @@ def list_inventory(
             "acquired_price": item.acquired_price,
             "asking_price": item.asking_price,
             "card_status": item.card_status,
+            "variant": item.variant,
             "is_public": item.is_public,
             "notes": item.notes,
             "created_at": item.created_at,
@@ -315,6 +319,8 @@ def patch_inventory_item(
         item.asking_price = body.asking_price
     if body.card_status is not None:
         item.card_status = body.card_status
+    if body.variant is not None:
+        item.variant = body.variant
     if body.is_public is not None:
         item.is_public = body.is_public
     if body.notes is not None:
@@ -336,6 +342,7 @@ def patch_inventory_item(
         "acquired_price": item.acquired_price,
         "asking_price": item.asking_price,
         "card_status": item.card_status,
+        "variant": item.variant,
         "is_public": item.is_public,
         "notes": item.notes,
         "photo_url": item.photo_url,

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   patchInventoryItem,
   deleteInventoryItem,
+  getCardScrydexPrices,
+  formatVariantName,
   type InventoryItemWithCard,
   type CardStatus,
 } from "@/lib/api";
@@ -24,7 +26,19 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
     item.asking_price != null ? String(item.asking_price) : ""
   );
   const [cardStatus, setCardStatus] = useState<CardStatus>(item.card_status ?? "pc");
+  const [variant, setVariant] = useState<string>(item.variant ?? "");
+  const [availableVariants, setAvailableVariants] = useState<string[]>([]);
   const [notes, setNotes] = useState(item.notes ?? "");
+
+  useEffect(() => {
+    getCardScrydexPrices(item.card_id)
+      .then(({ prices }) => {
+        const variants = Array.from(new Set(prices.filter((p) => p.variant).map((p) => p.variant as string)));
+        setAvailableVariants(variants);
+        if (!item.variant && variants.length === 1) setVariant(variants[0]);
+      })
+      .catch(() => {});
+  }, [item.card_id, item.variant]);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -37,6 +51,7 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
     try {
       const patch: Parameters<typeof patchInventoryItem>[1] = {
         card_status: cardStatus,
+        variant: variant || null,
         notes,
       };
       if (acquiredPrice !== "") patch.acquired_price = parseFloat(acquiredPrice);
@@ -46,6 +61,7 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
         acquired_price: acquiredPrice !== "" ? parseFloat(acquiredPrice) : undefined,
         asking_price: askingPrice !== "" && cardStatus !== "pc" ? parseFloat(askingPrice) : undefined,
         card_status: cardStatus,
+        variant: variant || null,
         notes,
       });
     } catch {
@@ -121,6 +137,23 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
           ))}
         </div>
       </div>
+
+      {/* Variant */}
+      {availableVariants.length > 1 && (
+        <div className="space-y-1">
+          <label className="text-xs text-muted-foreground">Variant</label>
+          <select
+            value={variant}
+            onChange={(e) => setVariant(e.target.value)}
+            className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+          >
+            <option value="">— None —</option>
+            {availableVariants.map((v) => (
+              <option key={v} value={v}>{formatVariantName(v)}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Notes */}
       <div className="space-y-1">

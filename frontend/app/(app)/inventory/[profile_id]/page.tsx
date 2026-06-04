@@ -6,6 +6,8 @@ import {
   getInventory,
   patchInventoryItem,
   deleteInventoryItem,
+  getCardScrydexPrices,
+  formatVariantName,
   type InventoryItemWithCard,
   type InventoryItemPatch,
   type CardStatus,
@@ -83,7 +85,12 @@ function InventoryCard({
         </p>
         <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
 
-        <Badge variant="secondary" className="text-xs w-fit px-1.5 py-0">{formatCondition(item)}</Badge>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <Badge variant="secondary" className="text-xs w-fit px-1.5 py-0">{formatCondition(item)}</Badge>
+          {item.variant && (
+            <span className="text-xs text-muted-foreground">{formatVariantName(item.variant)}</span>
+          )}
+        </div>
 
         <div className="flex flex-col gap-0.5">
           {item.estimated_value != null && (
@@ -188,10 +195,22 @@ function InventoryEditModal({
     item.asking_price != null ? String(item.asking_price) : ""
   );
   const [cardStatus, setCardStatus] = useState<CardStatus>(item.card_status ?? "pc");
+  const [variant, setVariant] = useState<string>(item.variant ?? "");
+  const [availableVariants, setAvailableVariants] = useState<string[]>([]);
   const [isPublic, setIsPublic] = useState(item.is_public ?? false);
   const [notes, setNotes] = useState(item.notes ?? "");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCardScrydexPrices(item.card_id)
+      .then(({ prices }) => {
+        const variants = Array.from(new Set(prices.filter((p) => p.variant).map((p) => p.variant as string)));
+        setAvailableVariants(variants);
+        if (!item.variant && variants.length === 1) setVariant(variants[0]);
+      })
+      .catch(() => {});
+  }, [item.card_id, item.variant]);
 
   async function handleSave() {
     setSaving(true);
@@ -199,6 +218,7 @@ function InventoryEditModal({
     try {
       const patch: InventoryItemPatch = {
         card_status: cardStatus,
+        variant: variant || null,
         is_public: isPublic,
         notes,
       };
@@ -209,6 +229,7 @@ function InventoryEditModal({
         acquired_price: acquiredPrice !== "" ? parseFloat(acquiredPrice) : undefined,
         asking_price: askingPrice !== "" && cardStatus !== "pc" ? parseFloat(askingPrice) : undefined,
         card_status: cardStatus,
+        variant: variant || null,
         is_public: isPublic,
         notes,
       });
@@ -316,6 +337,22 @@ function InventoryEditModal({
               ))}
             </div>
           </div>
+
+          {availableVariants.length > 1 && (
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Variant</label>
+              <select
+                value={variant}
+                onChange={(e) => setVariant(e.target.value)}
+                className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+              >
+                <option value="">— None —</option>
+                {availableVariants.map((v) => (
+                  <option key={v} value={v}>{formatVariantName(v)}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="rounded" />

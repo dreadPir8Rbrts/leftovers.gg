@@ -14,6 +14,7 @@ import {
   getCardPricing,
   addInventoryItem,
   addToWishlist,
+  formatVariantName,
   type Card,
   type ScrydexPriceEntry,
   type PricingReady,
@@ -105,6 +106,7 @@ export default function CardDetailPage() {
   const [scrydexError, setScrydexError] = useState<string | null>(null);
   const [priceCategory, setPriceCategory] = useState("RAW");
   const [selectedEntryIdx, setSelectedEntryIdx] = useState(0);
+  const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
 
   // eBay estimated value
   const [ebayValue, setEbayValue] = useState<number | null>(null);
@@ -126,6 +128,7 @@ export default function CardDetailPage() {
   const [modalAcquiredPrice, setModalAcquiredPrice] = useState("");
   const [modalAskingPrice, setModalAskingPrice] = useState("");
   const [modalCardStatus, setModalCardStatus] = useState<CardStatus>("pc");
+  const [modalVariant, setModalVariant] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -169,6 +172,9 @@ export default function CardDetailPage() {
     getCardScrydexPrices(cardId)
       .then((res) => {
         setScrydexPrices(res.prices);
+        // Auto-select first variant
+        const firstVariant = res.prices.find((p) => p.variant)?.variant ?? null;
+        setSelectedVariant(firstVariant);
         // Default to PSA if available, else first graded company, else RAW
         const graded = res.prices.filter((p) => p.type === "graded" && !p.is_signed && !p.is_error);
         if (graded.length > 0) {
@@ -222,10 +228,20 @@ export default function CardDetailPage() {
     companies.filter((c) => !COMPANY_ORDER.includes(c)).forEach((c) => availableCategories.push(c));
   }
 
+  // Unique variants across all graded Scrydex entries
+  const availableVariants: string[] = scrydexPrices
+    ? Array.from(new Set(scrydexPrices.filter((p) => p.variant).map((p) => p.variant as string)))
+    : [];
+
   // RAW tab is served by TCGPlayer — Scrydex only provides graded entries
   const currentEntries: ScrydexPriceEntry[] = scrydexPrices && priceCategory !== "RAW"
     ? scrydexPrices
-        .filter((p) => p.type === "graded" && p.company?.toUpperCase() === priceCategory && !p.is_signed && !p.is_error)
+        .filter((p) =>
+          p.type === "graded" &&
+          p.company?.toUpperCase() === priceCategory &&
+          !p.is_signed && !p.is_error &&
+          (availableVariants.length <= 1 || p.variant === selectedVariant)
+        )
         .sort((a, b) => parseFloat(b.grade ?? "0") - parseFloat(a.grade ?? "0"))
     : [];
 
@@ -291,6 +307,7 @@ export default function CardDetailPage() {
     setModalAcquiredPrice("");
     setModalAskingPrice("");
     setModalCardStatus("pc");
+    setModalVariant(selectedVariant);
     setAddError(null);
     setAddModalOpen(true);
     setAddSuccess(false);
@@ -311,6 +328,7 @@ export default function CardDetailPage() {
         acquired_price: modalAcquiredPrice || undefined,
         asking_price: modalCardStatus !== "pc" ? (modalAskingPrice || undefined) : undefined,
         card_status: modalCardStatus,
+        variant: modalVariant || null,
       });
       setAddSuccess(true);
       setAddModalOpen(false);
@@ -412,19 +430,32 @@ export default function CardDetailPage() {
 
   const marketPriceSection = (
     <div className="border border-black/20 rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Market Price</p>
-        {availableCategories.length > 0 && (
-          <select
-            value={priceCategory}
-            onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
-            className="border border-black/20 rounded px-2 py-0.5 text-xs bg-background"
-          >
-            {availableCategories.map((cat) => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-        )}
+        <div className="flex items-center gap-2">
+          {priceCategory !== "RAW" && availableVariants.length > 1 && (
+            <select
+              value={selectedVariant ?? ""}
+              onChange={(e) => { setSelectedVariant(e.target.value); setSelectedEntryIdx(0); }}
+              className="border border-black/20 rounded px-2 py-0.5 text-xs bg-background"
+            >
+              {availableVariants.map((v) => (
+                <option key={v} value={v}>{formatVariantName(v)}</option>
+              ))}
+            </select>
+          )}
+          {availableCategories.length > 0 && (
+            <select
+              value={priceCategory}
+              onChange={(e) => { setPriceCategory(e.target.value); setSelectedEntryIdx(0); }}
+              className="border border-black/20 rounded px-2 py-0.5 text-xs bg-background"
+            >
+              {availableCategories.map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          )}
+        </div>
       </div>
 
       {/* RAW tab — TCGPlayer pricing */}
@@ -744,6 +775,23 @@ export default function CardDetailPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Variant — only shown when card has multiple variants */}
+              {availableVariants.length > 1 && (
+                <div className="space-y-1 rounded-lg p-3 bg-zinc-800">
+                  <label className="text-xs text-white">Variant</label>
+                  <select
+                    value={modalVariant ?? ""}
+                    onChange={(e) => setModalVariant(e.target.value || null)}
+                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                  >
+                    <option value="">— None —</option>
+                    {availableVariants.map((v) => (
+                      <option key={v} value={v}>{formatVariantName(v)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Card status */}
               <div className="space-y-1.5 rounded-lg p-3 bg-zinc-800">

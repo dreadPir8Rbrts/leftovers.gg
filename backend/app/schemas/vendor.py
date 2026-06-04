@@ -33,6 +33,7 @@ class InventoryItemCreate(BaseModel):
     acquired_price: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
     card_status: str = "pc"
+    variant: Optional[str] = None
     notes: Optional[str] = None
 
     @field_validator("card_status")
@@ -78,6 +79,7 @@ class InventoryItemResponse(BaseModel):
     acquired_price: Optional[Decimal]
     asking_price: Optional[Decimal]
     card_status: str
+    variant: Optional[str] = None
     notes: Optional[str]
     photo_url: Optional[str]
     created_at: datetime
@@ -98,6 +100,7 @@ class InventoryItemWithCardResponse(BaseModel):
     acquired_price: Optional[Decimal]
     asking_price: Optional[Decimal]
     card_status: str
+    variant: Optional[str] = None
     is_public: bool = True
     notes: Optional[str]
     created_at: datetime
@@ -121,6 +124,7 @@ class InventoryItemPatch(BaseModel):
     acquired_price: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
     card_status: Optional[str] = None
+    variant: Optional[str] = None
     is_public: Optional[bool] = None
     notes: Optional[str] = None
 

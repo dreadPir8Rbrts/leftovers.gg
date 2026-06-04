@@ -116,7 +116,9 @@ def fetch_scrydex_prices(external_id: str) -> Optional[List[Dict[str, Any]]]:
         data = resp.json()["data"]
         prices: List[Dict[str, Any]] = []
         for variant in data.get("variants", []):
-            prices.extend(variant.get("prices", []))
+            variant_name = variant.get("name", "")
+            for price in variant.get("prices", []):
+                prices.append({**price, "variant": variant_name})
         return _to_usd(prices)
     except Exception as exc:
         logger.error("Scrydex fetch failed for %s: %s", external_id, exc)
@@ -161,19 +163,23 @@ def lookup_market_price(
     condition_ungraded: Optional[str],
     grading_company: Optional[str],
     grade: Optional[str],
+    variant: Optional[str] = None,
 ) -> Optional[float]:
     """Return the Scrydex market price for the given inventory item condition.
 
+    When variant is provided, only entries matching that variant are considered.
     Returns None if no matching price entry is found.
     """
     if not prices:
         return None
 
+    candidates = [p for p in prices if variant is None or p.get("variant") == variant]
+
     if condition_type == "ungraded" and condition_ungraded:
         target = _CONDITION_MAP.get(condition_ungraded.lower())
         if not target:
             return None
-        for p in prices:
+        for p in candidates:
             if p.get("type") == "raw" and p.get("condition") == target:
                 market = p.get("market")
                 return float(market) if market is not None else None
@@ -181,7 +187,7 @@ def lookup_market_price(
     elif condition_type == "graded" and grading_company and grade:
         target_company = grading_company.upper()
         target_grade, target_perfect = _normalize_grade(grade)
-        for p in prices:
+        for p in candidates:
             if (
                 p.get("type") == "graded"
                 and p.get("company", "").upper() == target_company
