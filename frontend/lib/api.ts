@@ -136,6 +136,7 @@ export interface SmartSearchParams {
   q?: string;
   card_num?: string;
   language_code?: string;
+  broad?: boolean;
   limit?: number;
 }
 
@@ -145,6 +146,7 @@ export async function searchCardsSmart(params: SmartSearchParams): Promise<Card[
   if (params.q) qs.set("q", params.q);
   if (params.card_num) qs.set("card_num", params.card_num);
   if (params.language_code) qs.set("language_code", params.language_code);
+  if (params.broad) qs.set("broad", "true");
   qs.set("limit", String(params.limit ?? 20));
   const res = await fetch(`${API_URL}/api/v1/cards/search?${qs.toString()}`, {
     headers: await authHeaders(),

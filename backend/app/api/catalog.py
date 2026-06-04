@@ -115,12 +115,34 @@ def _build_expansion_response(expansion: ExpansionV2) -> dict:
 # Endpoints
 # ---------------------------------------------------------------------------
 
+def _apply_q_tokens(query, q: str):
+    """Apply each token in q as a filter against card name / en_name / expansion names."""
+    for word in q.strip().split():
+        num_stripped = word.lstrip("0") or word
+        is_numeric = word.replace("/", "").isdigit()
+        conditions = [
+            CardV2.name.ilike(f"%{word}%"),
+            CardV2.en_name.ilike(f"%{word}%"),
+            ExpansionV2.name.ilike(f"%{word}%"),
+            ExpansionV2.name_en.ilike(f"%{word}%"),
+            ExpansionV2.translation.ilike(f"%{word}%"),
+        ]
+        if is_numeric:
+            conditions += [
+                CardV2.number == num_stripped,
+                CardV2.printed_number.ilike(f"%{word}%"),
+            ]
+        query = query.filter(or_(*conditions))
+    return query
+
+
 @router.get("/cards/search", response_model=List[CardDetailResponse])
 def smart_search_cards(
     q: Optional[str] = Query(None, min_length=2, description="Free-text: each word matched against card name or expansion name"),
     card_num: Optional[str] = Query(None, description="Card number — supports leading zeros and printed format (e.g. 034, 170/165)"),
     language_code: Optional[str] = Query(None, description="Language code e.g. en, ja"),
-    limit: int = Query(20, ge=1, le=100),
+    broad: bool = Query(False, description="Return broader results ranked by relevance (strict match first, then name-only matches)"),
+    limit: int = Query(20, ge=1, le=200),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
 ):
@@ -129,69 +151,48 @@ def smart_search_cards(
     Designed for free-text inventory lookups like 'jolteon prismatic' or
     'charizard ex scarlet violet'. card_num is extracted separately so
     'squirtle 170 ja' becomes q=squirtle, card_num=170, language_code=ja.
+
+    With broad=true: returns the strict match first, then all cards matching
+    q tokens only (without card_num restriction), ordered by name.
     """
     if not any([q, card_num]):
         raise HTTPException(status_code=422, detail="At least one of q or card_num is required.")
 
-    query = (
-        db.query(CardV2, ExpansionV2)
-        .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-    )
+    def _base():
+        return (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        )
 
-    if q:
-        for word in q.strip().split():
-            num_stripped = word.lstrip("0") or word
-            is_numeric = word.replace("/", "").isdigit()
-            name_conditions = [
-                CardV2.name.ilike(f"%{word}%"),
-                CardV2.en_name.ilike(f"%{word}%"),
-                ExpansionV2.name.ilike(f"%{word}%"),
-                ExpansionV2.name_en.ilike(f"%{word}%"),
-                ExpansionV2.translation.ilike(f"%{word}%"),
-            ]
-            if is_numeric:
-                name_conditions += [
-                    CardV2.number == num_stripped,
-                    CardV2.printed_number.ilike(f"%{word}%"),
-                ]
-            query = query.filter(or_(*name_conditions))
+    if broad and q and card_num:
+        # Strict pass — q tokens + card_num
+        strict_q = _base()
+        strict_q = _apply_q_tokens(strict_q, q)
+        strict_q = _apply_card_num_filter(strict_q, card_num)
+        if language_code:
+            strict_q = strict_q.filter(CardV2.language_code == _normalize_lang(language_code))
+        strict_rows = strict_q.order_by(CardV2.name).limit(limit).all()
+        strict_ids = {str(row[0].id) for row in strict_rows}
 
-    if card_num:
-        if "/" in card_num:
-            parts = card_num.split("/", 1)
-            num_part = parts[0].lstrip("0") or "0"
-            try:
-                total_int = int(parts[1].strip())
-                query = query.filter(
-                    or_(
-                        CardV2.printed_number == card_num,
-                        and_(
-                            CardV2.number == num_part,
-                            ExpansionV2.printed_total == total_int,
-                        ),
-                    )
-                )
-            except ValueError:
-                num_stripped = card_num.lstrip("0") or card_num
-                query = query.filter(
-                    or_(
-                        CardV2.number.ilike(f"%{num_stripped}%"),
-                        CardV2.printed_number.ilike(f"%{card_num}%"),
-                    )
-                )
-        else:
-            num_stripped = card_num.lstrip("0") or card_num
-            query = query.filter(
-                or_(
-                    CardV2.number.ilike(f"%{num_stripped}%"),
-                    CardV2.printed_number.ilike(f"%{card_num}%"),
-                )
-            )
+        # Broad pass — q tokens only, no card_num
+        broad_q = _base()
+        broad_q = _apply_q_tokens(broad_q, q)
+        if language_code:
+            broad_q = broad_q.filter(CardV2.language_code == _normalize_lang(language_code))
+        broad_rows = broad_q.order_by(CardV2.name).limit(limit).all()
 
-    if language_code:
-        query = query.filter(CardV2.language_code == _normalize_lang(language_code))
+        merged = strict_rows + [row for row in broad_rows if str(row[0].id) not in strict_ids]
+        rows = merged[:limit]
+    else:
+        query = _base()
+        if q:
+            query = _apply_q_tokens(query, q)
+        if card_num:
+            query = _apply_card_num_filter(query, card_num)
+        if language_code:
+            query = query.filter(CardV2.language_code == _normalize_lang(language_code))
+        rows = query.order_by(CardV2.name).offset(offset).limit(limit).all()
 
-    rows = query.order_by(CardV2.name).offset(offset).limit(limit).all()
     return [_build_card_response(card, expansion) for card, expansion in rows]
 
 

@@ -116,7 +116,7 @@ function SearchPageContent() {
     setSearched(false);
     setSearchedQ(q.trim());
     try {
-      const data = await searchCardsSmart({ ...parseSearchQuery(q), limit: 50 });
+      const data = await searchCardsSmart({ ...parseSearchQuery(q), limit: 50, broad: true });
       setResults(data);
     } catch {
       setResults([]);
