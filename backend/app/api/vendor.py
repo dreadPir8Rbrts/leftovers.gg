@@ -128,8 +128,7 @@ def add_inventory_item(
         quantity=body.quantity,
         acquired_price=body.acquired_price,
         asking_price=body.asking_price,
-        is_for_sale=body.is_for_sale,
-        is_for_trade=body.is_for_trade,
+        card_status=body.card_status,
         notes=body.notes,
     )
     db.add(item)
@@ -157,8 +156,7 @@ def add_inventory_item(
         "quantity": item.quantity,
         "acquired_price": item.acquired_price,
         "asking_price": item.asking_price,
-        "is_for_sale": item.is_for_sale,
-        "is_for_trade": item.is_for_trade,
+        "card_status": item.card_status,
         "notes": item.notes,
         "photo_url": item.photo_url,
         "created_at": item.created_at,
@@ -196,8 +194,7 @@ def list_inventory(
     background_tasks: BackgroundTasks,
     condition_type: Optional[str] = Query(None),
     card_id: Optional[str] = Query(None),
-    is_for_sale: Optional[bool] = Query(None),
-    is_for_trade: Optional[bool] = Query(None),
+    card_status: Optional[str] = Query(None),
     limit: int = Query(200, ge=1, le=500),
     offset: int = Query(0, ge=0),
     profile: Profile = Depends(get_current_profile),
@@ -217,10 +214,8 @@ def list_inventory(
         query = query.filter(Inventory.condition_type == condition_type)
     if card_id:
         query = query.filter(Inventory.card_v2_id == card_id)
-    if is_for_sale is not None:
-        query = query.filter(Inventory.is_for_sale == is_for_sale)
-    if is_for_trade is not None:
-        query = query.filter(Inventory.is_for_trade == is_for_trade)
+    if card_status:
+        query = query.filter(Inventory.card_status == card_status)
 
     rows = query.order_by(Inventory.created_at.desc()).offset(offset).limit(limit).all()
 
@@ -279,8 +274,7 @@ def list_inventory(
             "quantity": item.quantity,
             "acquired_price": item.acquired_price,
             "asking_price": item.asking_price,
-            "is_for_sale": item.is_for_sale,
-            "is_for_trade": item.is_for_trade,
+            "card_status": item.card_status,
             "is_public": item.is_public,
             "notes": item.notes,
             "created_at": item.created_at,
@@ -319,10 +313,8 @@ def patch_inventory_item(
         item.acquired_price = body.acquired_price
     if body.asking_price is not None:
         item.asking_price = body.asking_price
-    if body.is_for_sale is not None:
-        item.is_for_sale = body.is_for_sale
-    if body.is_for_trade is not None:
-        item.is_for_trade = body.is_for_trade
+    if body.card_status is not None:
+        item.card_status = body.card_status
     if body.is_public is not None:
         item.is_public = body.is_public
     if body.notes is not None:
@@ -343,8 +335,7 @@ def patch_inventory_item(
         "quantity": item.quantity,
         "acquired_price": item.acquired_price,
         "asking_price": item.asking_price,
-        "is_for_sale": item.is_for_sale,
-        "is_for_trade": item.is_for_trade,
+        "card_status": item.card_status,
         "is_public": item.is_public,
         "notes": item.notes,
         "photo_url": item.photo_url,

@@ -4,8 +4,7 @@ SQLAlchemy model for unified inventory table.
 Table: inventory
 Replaces vendor_inventory + collector_inventory.
 All users (vendor or collector) store cards here.
-Vendor-specific fields (asking_price, is_for_sale, is_for_trade, photo_url)
-are nullable/false by default — meaningful only when the owner wants to sell/trade.
+card_status: 'pc' | 'fs' | 'ft' | 'fs_ft' — personal collection or sale/trade intent
 status: 'active' (owned) | 'sold' (sold via transaction) | 'traded' (traded away)
 """
 
@@ -42,8 +41,7 @@ class Inventory(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     acquired_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     asking_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
-    is_for_sale: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    is_for_trade: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    card_status: Mapped[str] = mapped_column(String(10), nullable=False, default="pc")
     is_public: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     photo_url: Mapped[Optional[str]] = mapped_column(String, nullable=True)

@@ -333,8 +333,7 @@ function PriceEstimatorContent() {
         grading_company: invConditionType === "graded" ? invGradingCompany : undefined,
         grade: invConditionType === "graded" ? invGrade : undefined,
         asking_price: invAskingPrice ? invAskingPrice : undefined,
-        is_for_sale: true,
-        is_for_trade: false,
+        card_status: "pc",
         quantity: 1,
       });
       setActionStatus("success");

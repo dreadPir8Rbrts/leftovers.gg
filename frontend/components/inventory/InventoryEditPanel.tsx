@@ -1,20 +1,11 @@
 "use client";
 
-/**
- * InventoryEditPanel — inline edit form for an existing inventory item.
- *
- * Handles: acquired_price, asking_price, is_for_sale, is_for_trade, notes,
- * and soft-delete (remove from inventory).
- *
- * Calls patchInventoryItem / deleteInventoryItem directly; fires callbacks
- * on success so the parent can update local state.
- */
-
 import { useState } from "react";
 import {
   patchInventoryItem,
   deleteInventoryItem,
   type InventoryItemWithCard,
+  type CardStatus,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -32,8 +23,7 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
   const [askingPrice, setAskingPrice] = useState(
     item.asking_price != null ? String(item.asking_price) : ""
   );
-  const [isForSale, setIsForSale] = useState(item.is_for_sale ?? false);
-  const [isForTrade, setIsForTrade] = useState(item.is_for_trade ?? false);
+  const [cardStatus, setCardStatus] = useState<CardStatus>(item.card_status ?? "pc");
   const [notes, setNotes] = useState(item.notes ?? "");
 
   const [saving, setSaving] = useState(false);
@@ -46,18 +36,16 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
     setSaveError(null);
     try {
       const patch: Parameters<typeof patchInventoryItem>[1] = {
-        is_for_sale: isForSale,
-        is_for_trade: isForTrade,
+        card_status: cardStatus,
         notes,
       };
       if (acquiredPrice !== "") patch.acquired_price = parseFloat(acquiredPrice);
-      if (askingPrice !== "") patch.asking_price = parseFloat(askingPrice);
+      if (askingPrice !== "" && cardStatus !== "pc") patch.asking_price = parseFloat(askingPrice);
       await patchInventoryItem(item.id, patch);
       onSaved({
         acquired_price: acquiredPrice !== "" ? parseFloat(acquiredPrice) : undefined,
-        asking_price: askingPrice !== "" ? parseFloat(askingPrice) : undefined,
-        is_for_sale: isForSale,
-        is_for_trade: isForTrade,
+        asking_price: askingPrice !== "" && cardStatus !== "pc" ? parseFloat(askingPrice) : undefined,
+        card_status: cardStatus,
         notes,
       });
     } catch {
@@ -115,26 +103,23 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
         </div>
       </div>
 
-      {/* Toggles */}
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isForSale}
-            onChange={(e) => setIsForSale(e.target.checked)}
-            className="rounded"
-          />
-          For sale
-        </label>
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={isForTrade}
-            onChange={(e) => setIsForTrade(e.target.checked)}
-            className="rounded"
-          />
-          For trade
-        </label>
+      {/* Status */}
+      <div className="space-y-1">
+        <label className="text-xs text-muted-foreground">Status</label>
+        <div className="flex rounded-md border overflow-hidden text-xs">
+          {([["pc","PC"],["fs_ft","FS/FT"],["fs","FS"],["ft","FT"]] as [CardStatus, string][]).map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setCardStatus(v)}
+              className={`flex-1 py-1.5 font-medium transition-colors border-r last:border-r-0 ${
+                cardStatus === v ? "bg-foreground text-background" : "bg-background hover:bg-muted"
+              }`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Notes */}

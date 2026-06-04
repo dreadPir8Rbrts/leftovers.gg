@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional, List, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 VALID_UNGRADED = {"nm", "lp", "mp", "hp", "dmg"}
 VALID_COMPANIES = {"psa", "bgs", "cgc", "other"}
+VALID_CARD_STATUSES = {"pc", "fs", "ft", "fs_ft"}
 
 
 # ---------------------------------------------------------------------------
@@ -31,9 +32,15 @@ class InventoryItemCreate(BaseModel):
     quantity: int = Field(1, ge=1)
     acquired_price: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
-    is_for_sale: bool = True
-    is_for_trade: bool = False
+    card_status: str = "pc"
     notes: Optional[str] = None
+
+    @field_validator("card_status")
+    @classmethod
+    def validate_card_status(cls, v: str) -> str:
+        if v not in VALID_CARD_STATUSES:
+            raise ValueError(f"card_status must be one of {sorted(VALID_CARD_STATUSES)}")
+        return v
 
     @model_validator(mode="after")
     def validate_condition(self) -> "InventoryItemCreate":
@@ -70,8 +77,7 @@ class InventoryItemResponse(BaseModel):
     quantity: int
     acquired_price: Optional[Decimal]
     asking_price: Optional[Decimal]
-    is_for_sale: bool
-    is_for_trade: bool
+    card_status: str
     notes: Optional[str]
     photo_url: Optional[str]
     created_at: datetime
@@ -91,8 +97,7 @@ class InventoryItemWithCardResponse(BaseModel):
     quantity: int
     acquired_price: Optional[Decimal]
     asking_price: Optional[Decimal]
-    is_for_sale: bool
-    is_for_trade: bool
+    card_status: str
     is_public: bool = True
     notes: Optional[str]
     created_at: datetime
@@ -115,7 +120,13 @@ class InventoryItemWithCardResponse(BaseModel):
 class InventoryItemPatch(BaseModel):
     acquired_price: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
-    is_for_sale: Optional[bool] = None
-    is_for_trade: Optional[bool] = None
+    card_status: Optional[str] = None
     is_public: Optional[bool] = None
     notes: Optional[str] = None
+
+    @field_validator("card_status")
+    @classmethod
+    def validate_card_status(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v not in VALID_CARD_STATUSES:
+            raise ValueError(f"card_status must be one of {sorted(VALID_CARD_STATUSES)}")
+        return v

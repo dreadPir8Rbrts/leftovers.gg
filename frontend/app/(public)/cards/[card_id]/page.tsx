@@ -17,6 +17,7 @@ import {
   type Card,
   type ScrydexPriceEntry,
   type PricingReady,
+  type CardStatus,
 } from "@/lib/api";
 import { getProfile } from "@/lib/api/profiles";
 import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
@@ -115,10 +116,16 @@ export default function CardDetailPage() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
 
-  // Add to inventory sheet
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [addQuantity, setAddQuantity] = useState("1");
-  const [addAskingPrice, setAddAskingPrice] = useState("");
+  // Add to inventory modal
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [modalConditionType, setModalConditionType] = useState<"ungraded" | "graded">("ungraded");
+  const [modalConditionUngraded, setModalConditionUngraded] = useState("nm");
+  const [modalGradingCompany, setModalGradingCompany] = useState("psa");
+  const [modalGrade, setModalGrade] = useState("");
+  const [modalQuantity, setModalQuantity] = useState("1");
+  const [modalAcquiredPrice, setModalAcquiredPrice] = useState("");
+  const [modalAskingPrice, setModalAskingPrice] = useState("");
+  const [modalCardStatus, setModalCardStatus] = useState<CardStatus>("pc");
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -267,26 +274,46 @@ export default function CardDetailPage() {
     router.push(`/transactions/${profileId}/new`);
   }
 
+  function openAddModal() {
+    // Pre-fill condition from the active tab/selection
+    if (priceCategory === "RAW") {
+      setModalConditionType("ungraded");
+      setModalConditionUngraded("nm");
+    } else if (selectedEntry) {
+      setModalConditionType("graded");
+      setModalGradingCompany(priceCategory.toLowerCase());
+      setModalGrade(selectedEntry.grade ?? "");
+    } else {
+      setModalConditionType("ungraded");
+      setModalConditionUngraded("nm");
+    }
+    setModalQuantity("1");
+    setModalAcquiredPrice("");
+    setModalAskingPrice("");
+    setModalCardStatus("pc");
+    setAddError(null);
+    setAddModalOpen(true);
+    setAddSuccess(false);
+  }
+
   async function handleAddToInventory() {
     if (!card) return;
-    const cond = getConditionParams();
-    if (!cond) return;
     setAdding(true);
     setAddError(null);
-    setAddSuccess(false);
     try {
+      const condParams = modalConditionType === "ungraded"
+        ? { condition_type: "ungraded" as const, condition_ungraded: modalConditionUngraded }
+        : { condition_type: "graded" as const, grading_company: modalGradingCompany, grade: modalGrade };
       await addInventoryItem({
         card_id: card.id,
-        ...cond,
-        quantity: parseInt(addQuantity) || 1,
-        asking_price: addAskingPrice || undefined,
-        is_for_sale: true,
-        is_for_trade: false,
+        ...condParams,
+        quantity: parseInt(modalQuantity) || 1,
+        acquired_price: modalAcquiredPrice || undefined,
+        asking_price: modalCardStatus !== "pc" ? (modalAskingPrice || undefined) : undefined,
+        card_status: modalCardStatus,
       });
       setAddSuccess(true);
-      setAddSheetOpen(false);
-      setAddAskingPrice("");
-      setAddQuantity("1");
+      setAddModalOpen(false);
     } catch {
       setAddError("Failed to add to inventory.");
     } finally {
@@ -606,44 +633,145 @@ export default function CardDetailPage() {
         </div>
       </div>
 
-      {/* ── Add to Inventory sheet (overlay) ── */}
-      {addSheetOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setAddSheetOpen(false)} />
-          <div className="relative bg-background rounded-t-2xl p-5 space-y-4 max-w-lg mx-auto w-full">
-            <div className="flex items-center justify-between">
+      {/* ── Add to Inventory modal ── */}
+      {addModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setAddModalOpen(false)}
+        >
+          <div
+            className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <p className="font-semibold text-sm">Add to Inventory</p>
-              <button onClick={() => setAddSheetOpen(false)} className="text-muted-foreground text-xs">✕</button>
+              <button onClick={() => setAddModalOpen(false)} className="text-xl text-muted-foreground hover:text-foreground leading-none">×</button>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {card.name} · {selectedConditionLabel()}
-            </p>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div className="px-5 pb-5 space-y-4">
+              {/* Condition */}
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Condition</label>
+                {/* Raw / Graded toggle */}
+                <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                  {(["ungraded", "graded"] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setModalConditionType(t)}
+                      className={`flex-1 py-1.5 font-medium transition-colors ${
+                        modalConditionType === t
+                          ? "bg-foreground text-background"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {t === "ungraded" ? "Raw" : "Graded"}
+                    </button>
+                  ))}
+                </div>
+                {modalConditionType === "ungraded" ? (
+                  <select
+                    value={modalConditionUngraded}
+                    onChange={(e) => setModalConditionUngraded(e.target.value)}
+                    className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                  >
+                    {[["nm","NM"],["lp","LP"],["mp","MP"],["hp","HP"],["dmg","DMG"]].map(([v, l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={modalGradingCompany}
+                      onChange={(e) => setModalGradingCompany(e.target.value)}
+                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                    >
+                      {[["psa","PSA"],["bgs","BGS"],["cgc","CGC"],["other","Other"]].map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={modalGrade}
+                      onChange={(e) => setModalGrade(e.target.value)}
+                      placeholder="Grade (e.g. 10)"
+                      className="border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Quantity */}
               <div className="space-y-1">
                 <label className="text-xs text-muted-foreground">Quantity</label>
                 <input
-                  type="number" min="1" value={addQuantity}
-                  onChange={(e) => setAddQuantity(e.target.value)}
+                  type="number" min="1" value={modalQuantity}
+                  onChange={(e) => setModalQuantity(e.target.value)}
                   className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-background"
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Asking price (optional)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
-                  <input
-                    type="number" min="0" step="0.01" value={addAskingPrice}
-                    onChange={(e) => setAddAskingPrice(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background"
-                  />
+
+              {/* Acquired / Asking price */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Acquired price</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                    <input
+                      type="number" min="0" step="0.01" value={modalAcquiredPrice}
+                      onChange={(e) => setModalAcquiredPrice(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className={`text-xs ${modalCardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
+                    Asking price
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                    <input
+                      type="number" min="0" step="0.01" value={modalAskingPrice}
+                      onChange={(e) => setModalAskingPrice(e.target.value)}
+                      placeholder="0.00"
+                      disabled={modalCardStatus === "pc"}
+                      className={`w-full border border-black/20 rounded-md pl-6 pr-3 py-2 text-sm bg-background ${
+                        modalCardStatus === "pc" ? "opacity-40 cursor-not-allowed" : ""
+                      }`}
+                    />
+                  </div>
                 </div>
               </div>
+
+              {/* Card status */}
+              <div className="space-y-1.5">
+                <label className="text-xs text-muted-foreground">Status</label>
+                <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                  {([["pc","PC"],["fs_ft","FS/FT"],["fs","FS"],["ft","FT"]] as [CardStatus, string][]).map(([v, l]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setModalCardStatus(v)}
+                      className={`flex-1 py-1.5 font-medium transition-colors border-r border-black/20 last:border-r-0 ${
+                        modalCardStatus === v
+                          ? "bg-foreground text-background"
+                          : "bg-background hover:bg-muted"
+                      }`}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {addError && <p className="text-xs text-destructive">{addError}</p>}
+
+              <Button className="w-full" onClick={handleAddToInventory} disabled={adding}>
+                {adding ? "Adding…" : "Add to Inventory"}
+              </Button>
             </div>
-            {addError && <p className="text-xs text-destructive">{addError}</p>}
-            <Button className="w-full" onClick={handleAddToInventory} disabled={adding}>
-              {adding ? "Adding…" : "Add to Inventory"}
-            </Button>
           </div>
         </div>
       )}
@@ -667,7 +795,7 @@ export default function CardDetailPage() {
               <Button
                 variant="outline"
                 className="flex-1"
-                onClick={() => { setAddSheetOpen(true); setAddSuccess(false); }}
+                onClick={openAddModal}
               >
                 <Plus size={14} className="mr-1.5" />
                 Add to Inventory

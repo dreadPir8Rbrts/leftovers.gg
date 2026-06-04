@@ -93,8 +93,7 @@ export default function CardSearchPage() {
         card_id: card.id,
         condition,
         asking_price: askingPrice || undefined,
-        is_for_sale: true,
-        is_for_trade: false,
+        card_status: "pc",
         quantity: 1,
       });
       setAdded((prev) => new Set(prev).add(card.id));

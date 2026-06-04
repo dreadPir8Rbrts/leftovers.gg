@@ -8,6 +8,7 @@ import {
   deleteInventoryItem,
   type InventoryItemWithCard,
   type InventoryItemPatch,
+  type CardStatus,
 } from "@/lib/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,17 +94,12 @@ function InventoryCard({
           )}
         </div>
 
-        {/* Sale / Trade / Public + edit icon */}
+        {/* Status badge + Public + edit icon */}
         <div className="mt-auto pt-1.5 flex items-center justify-between gap-1">
-          <div className="flex gap-2">
-            <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
-              <input type="checkbox" checked={item.is_for_sale} readOnly className="rounded w-3 h-3" />
-              Sale
-            </label>
-            <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
-              <input type="checkbox" checked={item.is_for_trade} readOnly className="rounded w-3 h-3" />
-              Trade
-            </label>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium px-1.5 py-0.5 rounded border border-black/20 bg-muted uppercase">
+              {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
+            </span>
             <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
               <input type="checkbox" checked={item.is_public} readOnly className="rounded w-3 h-3" />
               Public
@@ -191,8 +187,7 @@ function InventoryEditModal({
   const [askingPrice, setAskingPrice] = useState(
     item.asking_price != null ? String(item.asking_price) : ""
   );
-  const [isForSale, setIsForSale] = useState(item.is_for_sale ?? false);
-  const [isForTrade, setIsForTrade] = useState(item.is_for_trade ?? false);
+  const [cardStatus, setCardStatus] = useState<CardStatus>(item.card_status ?? "pc");
   const [isPublic, setIsPublic] = useState(item.is_public ?? false);
   const [notes, setNotes] = useState(item.notes ?? "");
   const [saving, setSaving] = useState(false);
@@ -203,19 +198,17 @@ function InventoryEditModal({
     setSaveError(null);
     try {
       const patch: InventoryItemPatch = {
-        is_for_sale: isForSale,
-        is_for_trade: isForTrade,
+        card_status: cardStatus,
         is_public: isPublic,
         notes,
       };
       if (acquiredPrice !== "") patch.acquired_price = parseFloat(acquiredPrice);
-      if (askingPrice !== "") patch.asking_price = parseFloat(askingPrice);
+      if (askingPrice !== "" && cardStatus !== "pc") patch.asking_price = parseFloat(askingPrice);
       await patchInventoryItem(item.id, patch);
       onSaved({
         acquired_price: acquiredPrice !== "" ? parseFloat(acquiredPrice) : undefined,
-        asking_price: askingPrice !== "" ? parseFloat(askingPrice) : undefined,
-        is_for_sale: isForSale,
-        is_for_trade: isForTrade,
+        asking_price: askingPrice !== "" && cardStatus !== "pc" ? parseFloat(askingPrice) : undefined,
+        card_status: cardStatus,
         is_public: isPublic,
         notes,
       });
@@ -282,7 +275,9 @@ function InventoryEditModal({
               </div>
             </div>
             <div className="space-y-1">
-              <label className="text-xs text-muted-foreground">Asking price</label>
+              <label className={`text-xs ${cardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
+                Asking price
+              </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                 <input
@@ -292,26 +287,40 @@ function InventoryEditModal({
                   value={askingPrice}
                   onChange={(e) => setAskingPrice(e.target.value)}
                   placeholder="0.00"
-                  className="w-full border rounded-md pl-6 pr-3 py-1.5 text-sm bg-background"
+                  disabled={cardStatus === "pc"}
+                  className={`w-full border rounded-md pl-6 pr-3 py-1.5 text-sm bg-background ${
+                    cardStatus === "pc" ? "opacity-40 cursor-not-allowed" : ""
+                  }`}
                 />
               </div>
             </div>
           </div>
 
-          <div className="flex gap-4">
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={isForSale} onChange={(e) => setIsForSale(e.target.checked)} className="rounded" />
-              For sale
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={isForTrade} onChange={(e) => setIsForTrade(e.target.checked)} className="rounded" />
-              For trade
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="rounded" />
-              Public
-            </label>
+          {/* Card status */}
+          <div className="space-y-1.5">
+            <label className="text-xs text-muted-foreground">Status</label>
+            <div className="flex rounded-md border overflow-hidden text-xs">
+              {([["pc","PC"],["fs_ft","FS/FT"],["fs","FS"],["ft","FT"]] as [CardStatus, string][]).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setCardStatus(v)}
+                  className={`flex-1 py-1.5 font-medium transition-colors border-r last:border-r-0 ${
+                    cardStatus === v
+                      ? "bg-foreground text-background"
+                      : "bg-background hover:bg-muted"
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} className="rounded" />
+            Public
+          </label>
 
           <div className="space-y-1">
             <label className="text-xs text-muted-foreground">Notes</label>
@@ -453,9 +462,7 @@ export default function InventoryPage() {
     if (filterLanguage) result = result.filter((i) => i.language_code === filterLanguage);
     if (filterVisibility === "public") result = result.filter((i) => i.is_public);
     if (filterVisibility === "private") result = result.filter((i) => !i.is_public);
-    if (filterStatus === "sale") result = result.filter((i) => i.is_for_sale);
-    if (filterStatus === "trade") result = result.filter((i) => i.is_for_trade);
-    if (filterStatus === "either") result = result.filter((i) => i.is_for_sale || i.is_for_trade);
+    if (filterStatus) result = result.filter((i) => i.card_status === filterStatus);
     if (filterSet) result = result.filter((i) => i.set_name === filterSet);
     if (filterHasAskingPrice === "yes") result = result.filter((i) => i.asking_price != null);
     if (filterHasAskingPrice === "no") result = result.filter((i) => i.asking_price == null);
@@ -600,9 +607,10 @@ export default function InventoryPage() {
               value={filterStatus}
               onChange={setFilterStatus}
               options={[
-                { value: "sale", label: "For sale" },
-                { value: "trade", label: "For trade" },
-                { value: "either", label: "Sale or trade" },
+                { value: "pc", label: "PC" },
+                { value: "fs_ft", label: "FS/FT" },
+                { value: "fs", label: "FS" },
+                { value: "ft", label: "FT" },
               ]}
             />
             <FilterSelect

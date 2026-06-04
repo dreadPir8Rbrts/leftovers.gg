@@ -86,8 +86,7 @@ def _inventory_item_response(inv: Inventory, card: Optional[CardV2], expansion: 
         "grading_company_other": inv.grading_company_other,
         "quantity": inv.quantity,
         "asking_price": float(inv.asking_price) if inv.asking_price is not None else None,
-        "is_for_sale": inv.is_for_sale,
-        "is_for_trade": inv.is_for_trade,
+        "card_status": inv.card_status,
         "notes": inv.notes,
         "photo_url": inv.photo_url,
     }
@@ -278,7 +277,7 @@ def get_public_profile_inventory(
             Inventory.status == "active",
             Inventory.deleted_at.is_(None),
             Inventory.is_public.is_(True),
-            (Inventory.is_for_sale.is_(True)) | (Inventory.is_for_trade.is_(True)),
+            Inventory.card_status != "pc",
         )
         .all()
     )

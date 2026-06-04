@@ -282,7 +282,7 @@ def get_show_inventory(
             ProfileShowRegistration.show_discovery.is_(True),
             Inventory.status == "active",
             Inventory.deleted_at.is_(None),
-            (Inventory.is_for_sale.is_(True)) | (Inventory.is_for_trade.is_(True)),
+            Inventory.card_status != "pc",
         )
         .order_by(CardV2.name.asc().nulls_last())
         .limit(500)
@@ -310,8 +310,7 @@ def get_show_inventory(
             "grade": inv.grade,
             "grading_company_other": inv.grading_company_other,
             "asking_price": float(inv.asking_price) if inv.asking_price is not None else None,
-            "is_for_sale": inv.is_for_sale,
-            "is_for_trade": inv.is_for_trade,
+            "card_status": inv.card_status,
             "quantity": inv.quantity,
             "notes": inv.notes,
         }

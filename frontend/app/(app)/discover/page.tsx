@@ -226,10 +226,9 @@ function CardDiscoverTab() {
                     {s.asking_price != null && (
                       <p className="text-sm font-medium">${s.asking_price.toFixed(2)}</p>
                     )}
-                    <div className="flex gap-1 justify-end">
-                      {s.is_for_sale && <span className="text-xs text-muted-foreground">Sale</span>}
-                      {s.is_for_trade && <span className="text-xs text-muted-foreground">Trade</span>}
-                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {s.card_status === "fs_ft" ? "FS/FT" : s.card_status.toUpperCase()}
+                    </span>
                   </div>
                 </Link>
               ))}
@@ -505,9 +504,10 @@ function ShowDiscoverTab() {
                       {item.asking_price != null && (
                         <p className="text-sm font-medium">${item.asking_price.toFixed(2)}</p>
                       )}
-                      <div className="flex gap-1 justify-end mt-0.5">
-                        {item.is_for_sale && <span className="text-xs text-muted-foreground">Sale</span>}
-                        {item.is_for_trade && <span className="text-xs text-muted-foreground">Trade</span>}
+                      <div className="mt-0.5">
+                        <span className="text-xs text-muted-foreground">
+                          {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
+                        </span>
                       </div>
                       <Link href={`/profile/${item.profile_id}`} className="text-xs text-muted-foreground hover:text-foreground truncate block mt-0.5">
                         {item.display_name ?? "Unknown"}

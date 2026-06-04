@@ -585,8 +585,9 @@ export default function ProfilePage() {
                           <p className="text-xs text-muted-foreground">cost ${Number(item.acquired_price).toFixed(2)}</p>
                         )}
                         <div className="flex gap-1 mt-1 justify-end items-center">
-                          {item.is_for_sale && <span className="text-xs text-muted-foreground">Sale</span>}
-                          {item.is_for_trade && <span className="text-xs text-muted-foreground">Trade</span>}
+                          <span className="text-xs text-muted-foreground">
+                            {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
+                          </span>
                           {isOwner && (
                             <>
                               <label className="flex items-center gap-1 cursor-pointer ml-1">

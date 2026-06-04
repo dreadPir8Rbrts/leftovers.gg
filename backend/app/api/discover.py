@@ -49,7 +49,7 @@ def get_card_sellers(
             Inventory.card_v2_id == card_id,
             Inventory.status == "active",
             Inventory.deleted_at.is_(None),
-            (Inventory.is_for_sale.is_(True)) | (Inventory.is_for_trade.is_(True)),
+            Inventory.card_status != "pc",
             Profile.is_public.is_(True),
         )
         .order_by(Inventory.asking_price.asc().nulls_last())
@@ -66,8 +66,7 @@ def get_card_sellers(
             "grade": inv.grade,
             "grading_company_other": inv.grading_company_other,
             "asking_price": float(inv.asking_price) if inv.asking_price is not None else None,
-            "is_for_sale": inv.is_for_sale,
-            "is_for_trade": inv.is_for_trade,
+            "card_status": inv.card_status,
             "quantity": inv.quantity,
             "notes": inv.notes,
             "photo_url": inv.photo_url,

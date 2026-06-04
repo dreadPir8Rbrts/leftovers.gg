@@ -40,6 +40,8 @@ export interface Card {
   variants?: string[];
 }
 
+export type CardStatus = "pc" | "fs" | "ft" | "fs_ft";
+
 export interface InventoryItemCreate {
   card_id: string;
   condition?: string;
@@ -50,8 +52,7 @@ export interface InventoryItemCreate {
   grading_company_other?: string;
   acquired_price?: string;
   asking_price?: string;
-  is_for_sale: boolean;
-  is_for_trade: boolean;
+  card_status: CardStatus;
   quantity: number;
   notes?: string;
 }
@@ -59,8 +60,7 @@ export interface InventoryItemCreate {
 export interface InventoryItemPatch {
   acquired_price?: number;
   asking_price?: number;
-  is_for_sale?: boolean;
-  is_for_trade?: boolean;
+  card_status?: CardStatus;
   is_public?: boolean;
   notes?: string;
 }
@@ -199,8 +199,7 @@ export interface InventoryItemWithCard {
   quantity: number;
   acquired_price?: number;
   asking_price?: number;
-  is_for_sale: boolean;
-  is_for_trade: boolean;
+  card_status: CardStatus;
   is_public: boolean;
   notes?: string;
   created_at: string;
@@ -506,8 +505,7 @@ export interface DiscoverSeller {
   grade: string | null;
   grading_company_other: string | null;
   asking_price: number | null;
-  is_for_sale: boolean;
-  is_for_trade: boolean;
+  card_status: CardStatus;
   quantity: number;
   notes: string | null;
   photo_url: string | null;
@@ -557,8 +555,7 @@ export interface ShowInventoryItem {
   grade: string | null;
   grading_company_other: string | null;
   asking_price: number | null;
-  is_for_sale: boolean;
-  is_for_trade: boolean;
+  card_status: CardStatus;
   quantity: number;
   notes: string | null;
 }
