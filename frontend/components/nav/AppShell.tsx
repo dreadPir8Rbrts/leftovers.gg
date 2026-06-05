@@ -27,6 +27,7 @@ import { useProfile } from "@/lib/hooks/useProfile";
 import { TopNav } from "./TopNav";
 import { VendorSidebar } from "./VendorSidebar";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { GlobalSearch } from "./GlobalSearch";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -77,7 +78,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <TopNav profile={profile ?? null} />
-      <div className="flex flex-1 overflow-hidden" style={{ height: "calc(100vh - 3.5rem)" }}>
+      {/* Mobile-only search bar — sits directly below TopNav, hidden on md+ where GlobalSearch is in TopNav */}
+      <div className="md:hidden shrink-0 bg-black border-b border-white/10 px-4 py-2">
+        <GlobalSearch />
+      </div>
+      {/* Content area: on desktop subtract only TopNav (3.5rem); on mobile subtract TopNav + search bar (~3rem) */}
+      <div className="flex flex-1 overflow-hidden md:h-[calc(100vh-3.5rem)] h-[calc(100vh-6.5rem)]">
         <VendorSidebar profileId={profile?.id} />
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{children}</main>
       </div>
