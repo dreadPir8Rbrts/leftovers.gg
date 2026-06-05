@@ -154,15 +154,50 @@ export default function ScanPage() {
     }
   }, [cameraStatus]);
 
-  // Grab a single frame from the video and move to "captured" state
+  // Grab a single frame from the video, cropped to exactly the guide rectangle.
+  //
+  // The video uses object-cover inside its container, so the native frame is
+  // larger than what's displayed — we must reverse that transform to find which
+  // native pixels sit behind the guide box before cropping.
   function captureFrame() {
     const video = videoRef.current;
     if (!video || !video.videoWidth) return;
 
+    const V_w = video.videoWidth;
+    const V_h = video.videoHeight;
+
+    // Rendered size of the video element (same as the container with object-cover)
+    const { width: C_w, height: C_h } = video.getBoundingClientRect();
+
+    // object-cover scale: the larger factor fills the container; the other axis overflows
+    const s = Math.max(C_w / V_w, C_h / V_h);
+    // How many display-pixels the scaled video is offset from the container edge
+    // (negative = the video extends beyond the container on that axis)
+    const offset_x = (C_w - V_w * s) / 2;
+    const offset_y = (C_h - V_h * s) / 2;
+
+    // Guide rectangle in display coords — must exactly match the CSS values
+    const gw = 0.62 * C_w;       // width: "62%"
+    const gh = gw * (7 / 5);     // aspectRatio: "5/7"  → h = w * 7/5
+    const g_x = (C_w - gw) / 2;  // centered horizontally
+    const g_y = (C_h - gh) / 2;  // centered vertically
+
+    // Map guide rectangle to native video pixel coordinates
+    const crop_x = Math.round((g_x - offset_x) / s);
+    const crop_y = Math.round((g_y - offset_y) / s);
+    const crop_w = Math.round(gw / s);
+    const crop_h = Math.round(gh / s);
+
+    // Clamp to video bounds
+    const sx = Math.max(0, crop_x);
+    const sy = Math.max(0, crop_y);
+    const sw = Math.min(crop_w, V_w - sx);
+    const sh = Math.min(crop_h, V_h - sy);
+
     const canvas = document.createElement("canvas");
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d")!.drawImage(video, 0, 0);
+    canvas.width = sw;
+    canvas.height = sh;
+    canvas.getContext("2d")!.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
 
     // Stop stream to save battery while user decides on scan method
     streamRef.current?.getTracks().forEach((t) => t.stop());
