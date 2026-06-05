@@ -57,6 +57,10 @@ export default function PublicLayout({
           )}
         </nav>
       </header>
+      {/* Mobile-only search bar — hidden on md+ where GlobalSearch lives in the header */}
+      <div className="md:hidden bg-black border-b border-white/10 px-4 py-2">
+        <GlobalSearch />
+      </div>
       <main className="flex-1">{children}</main>
     </div>
   );

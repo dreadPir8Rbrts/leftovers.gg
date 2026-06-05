@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+@keyframes search-border-spin {
+  to { transform: rotate(360deg); }
+}
+
 @layer base {
   :root {
     --background: 0 0% 0%;
