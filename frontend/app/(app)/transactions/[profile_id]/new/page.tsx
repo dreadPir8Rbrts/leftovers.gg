@@ -11,6 +11,8 @@ import {
   patchInventoryItem,
   searchCardsSmart,
   quickIdentifyCardV2,
+  getCardPricing,
+  getCardScrydexPrices,
   MARKETPLACE_OPTIONS,
   type TransactionType,
   type TransactionDirection,
@@ -49,6 +51,13 @@ interface CardDraft {
 
 const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "SGC", "HGA", "other"];
+const HALF_GRADES = ["10","9.5","9","8.5","8","7.5","7","6.5","6","5.5","5","4.5","4","3.5","3","2.5","2","1.5","1"];
+const GRADE_OPTIONS: Record<string, string[]> = {
+  psa:   ["10","9","8","7","6","5","4","3","2","1"],
+  bgs:   HALF_GRADES,
+  cgc:   [...HALF_GRADES, "0.5"],
+  other: ["10","9","8","7","6","5","4","3","2","1"],
+};
 
 async function compressImage(file: File, maxDimension = 1200, quality = 0.80): Promise<File> {
   const bitmap = await createImageBitmap(file);
@@ -70,6 +79,61 @@ async function compressImage(file: File, maxDimension = 1200, quality = 0.80): P
       quality
     );
   });
+}
+
+// ---------------------------------------------------------------------------
+// Pricing helper
+// ---------------------------------------------------------------------------
+
+// Fetches the current estimated value for a card at the given condition/grade,
+// then calls the setter to patch that draft in state.
+// Ungraded → TCGPlayer condition estimate. Graded → Scrydex market price.
+// Fails silently so the user can always enter the value manually.
+async function fetchEstimatedValue(
+  key: string,
+  cardId: string,
+  conditionType: "ungraded" | "graded",
+  conditionUngraded: string,
+  gradingCompany: string,
+  grade: string,
+  setCards: React.Dispatch<React.SetStateAction<CardDraft[]>>,
+): Promise<void> {
+  try {
+    let value = "";
+
+    if (conditionType === "ungraded" && conditionUngraded) {
+      const { data } = await getCardPricing(cardId);
+      if (data.status === "ready") {
+        const est = data.condition_estimates.find(
+          (e) => e.condition.toUpperCase() === conditionUngraded.toUpperCase()
+        );
+        if (est?.estimated_price != null) {
+          value = est.estimated_price.toFixed(2);
+        }
+      }
+    } else if (conditionType === "graded" && gradingCompany && grade) {
+      const { prices } = await getCardScrydexPrices(cardId);
+      const entry = prices.find(
+        (p) =>
+          p.type === "graded" &&
+          p.company?.toUpperCase() === gradingCompany.toUpperCase() &&
+          p.grade === grade &&
+          !p.is_signed &&
+          !p.is_error
+      );
+      if (entry?.market != null) {
+        value = entry.market.toFixed(2);
+      }
+    }
+
+    if (value) {
+      setCards((prev) =>
+        prev.map((c) => c.key === key ? { ...c, estimatedValue: value } : c)
+      );
+    }
+  } catch {
+    // silently fail — user can enter value manually via card chip edit
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -277,10 +341,16 @@ function CardEditModal({
   onSave: (patch: Partial<CardDraft>) => void;
   onClose: () => void;
 }) {
+  const getGradeOpts = (company: string) =>
+    GRADE_OPTIONS[company.toLowerCase()] ?? GRADE_OPTIONS.other;
+
   const [conditionType, setConditionType] = useState<"ungraded" | "graded">(draft.conditionType);
   const [conditionUngraded, setConditionUngraded] = useState(draft.conditionUngraded);
   const [gradingCompany, setGradingCompany] = useState(draft.gradingCompany);
-  const [grade, setGrade] = useState(draft.grade);
+  const [grade, setGrade] = useState(() => {
+    const opts = getGradeOpts(draft.gradingCompany);
+    return opts.includes(draft.grade) ? draft.grade : opts[0];
+  });
   const [estimatedValue, setEstimatedValue] = useState(draft.estimatedValue);
   const [quantity, setQuantity] = useState(draft.quantity);
 
@@ -330,7 +400,11 @@ function CardEditModal({
                 <label className="text-xs text-muted-foreground">Company</label>
                 <select
                   value={gradingCompany}
-                  onChange={(e) => setGradingCompany(e.target.value)}
+                  onChange={(e) => {
+                    const co = e.target.value;
+                    setGradingCompany(co);
+                    setGrade(getGradeOpts(co)[0]);
+                  }}
                   className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
                 >
                   <option value="">—</option>
@@ -342,13 +416,15 @@ function CardEditModal({
           {conditionType === "graded" && (
             <div>
               <label className="text-xs text-muted-foreground">Grade</label>
-              <input
-                type="text"
+              <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                placeholder="e.g. 9, 9.5"
                 className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
-              />
+              >
+                {getGradeOpts(gradingCompany).map((g) => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -956,8 +1032,9 @@ export default function NewTransactionPage() {
   // Read and consume seed on mount
   useEffect(() => {
     if (seed) {
+      const key = `seed-${Date.now()}`;
       setCards([{
-        key: `seed-${Date.now()}`,
+        key,
         card: seed.card,
         direction: "lost",
         conditionType: seed.conditionType,
@@ -967,6 +1044,12 @@ export default function NewTransactionPage() {
         estimatedValue: "",
         quantity: 1,
       }]);
+      fetchEstimatedValue(
+        key, seed.card.id,
+        seed.conditionType, seed.conditionUngraded ?? "",
+        seed.gradingCompany ?? "", seed.grade ?? "",
+        setCards,
+      );
       clearSeed();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -976,8 +1059,9 @@ export default function NewTransactionPage() {
   const autoValue = computeValue(cashGained, cashLost, cards);
 
   const addCard = useCallback((card: Card, direction: TransactionDirection) => {
+    const key = `${card.id}-${Date.now()}`;
     setCards((prev) => [...prev, {
-      key: `${card.id}-${Date.now()}`,
+      key,
       card,
       direction,
       conditionType: "ungraded",
@@ -987,6 +1071,8 @@ export default function NewTransactionPage() {
       estimatedValue: "",
       quantity: 1,
     }]);
+    // Default condition is NM ungraded — fetch TCGPlayer NM estimate immediately
+    fetchEstimatedValue(key, card.id, "ungraded", "NM", "", "", setCards);
   }, []);
 
   async function handleSave() {
