@@ -54,7 +54,8 @@ export default function ScanPage() {
   const [state, setState] = useState<ScanState>({ step: "idle" });
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [smartScanLoading, setSmartScanLoading] = useState(false);
-  const [quickScanNoMatch, setQuickScanNoMatch] = useState<QuickScanResult | null>(null);
+  const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
+  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
 
   const { setScanContext } = useScanContext();
@@ -76,7 +77,8 @@ export default function ScanPage() {
   async function handleQuickScan() {
     if (!file) return;
     setQuickScanLoading(true);
-    setQuickScanNoMatch(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
     setScanCandidates(null);
     setState({ step: "idle" });
     try {
@@ -89,7 +91,8 @@ export default function ScanPage() {
       } else if (result.ambiguous && result.candidates?.length) {
         setScanCandidates(result.candidates);
       } else {
-        setQuickScanNoMatch(result);
+        setNoMatchResult(result);
+        setNoMatchMethod("quick");
       }
     } catch (err) {
       setState({ step: "error", message: err instanceof Error ? err.message : "Quick Scan failed — please try again." });
@@ -101,7 +104,8 @@ export default function ScanPage() {
   async function handleSmartScan() {
     if (!file) return;
     setSmartScanLoading(true);
-    setQuickScanNoMatch(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
     setScanCandidates(null);
     setState({ step: "idle" });
     try {
@@ -114,7 +118,8 @@ export default function ScanPage() {
       } else if (result.ambiguous && result.candidates?.length) {
         setScanCandidates(result.candidates);
       } else {
-        setQuickScanNoMatch(result);
+        setNoMatchResult(result);
+        setNoMatchMethod("smart");
       }
     } catch (err) {
       setState({ step: "error", message: err instanceof Error ? err.message : "Smart Scan failed — please try again." });
@@ -127,7 +132,8 @@ export default function ScanPage() {
     setState({ step: "idle" });
     setPreview(null);
     setFile(null);
-    setQuickScanNoMatch(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
     setScanCandidates(null);
     setSmartScanLoading(false);
     if (fileRef.current) fileRef.current.value = "";
@@ -203,18 +209,22 @@ export default function ScanPage() {
         </Card>
       )}
 
-      {/* Quick Scan — no match feedback */}
-      {quickScanNoMatch && !quickScanNoMatch.matched && (
+      {/* No match feedback */}
+      {noMatchResult && !noMatchResult.matched && (
         <Card className="mb-4 border-muted">
           <CardContent className="pt-6 space-y-2">
-            <p className="text-sm font-medium">Quick Scan — no match found</p>
-            {quickScanNoMatch.ocr.name && (
-              <p className="text-xs text-muted-foreground">OCR detected: &ldquo;{quickScanNoMatch.ocr.name}&rdquo;{quickScanNoMatch.ocr.set_number ? ` · ${quickScanNoMatch.ocr.set_number}` : ""}</p>
+            <p className="text-sm font-medium">
+              {noMatchMethod === "smart" ? "Smart Scan (v2)" : "Quick Scan"} — no match found
+            </p>
+            {noMatchResult.ocr.name && (
+              <p className="text-xs text-muted-foreground">OCR detected: &ldquo;{noMatchResult.ocr.name}&rdquo;{noMatchResult.ocr.set_number ? ` · ${noMatchResult.ocr.set_number}` : ""}</p>
             )}
-            {(quickScanNoMatch.ocr.ocr_num1 || quickScanNoMatch.ocr.ocr_num2) && (
-              <p className="text-xs text-muted-foreground">Numbers: num1={quickScanNoMatch.ocr.ocr_num1 ?? "—"} · num2={quickScanNoMatch.ocr.ocr_num2 ?? "—"}</p>
+            {(noMatchResult.ocr.ocr_num1 || noMatchResult.ocr.ocr_num2) && (
+              <p className="text-xs text-muted-foreground">Numbers: num1={noMatchResult.ocr.ocr_num1 ?? "—"} · num2={noMatchResult.ocr.ocr_num2 ?? "—"}</p>
             )}
-            <p className="text-xs text-muted-foreground">Try &ldquo;Smart Scan (v2)&rdquo; for better identification.</p>
+            {noMatchMethod === "quick" && (
+              <p className="text-xs text-muted-foreground">Try &ldquo;Smart Scan (v2)&rdquo; for better identification.</p>
+            )}
           </CardContent>
         </Card>
       )}
