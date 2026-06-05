@@ -1,11 +1,34 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+/*
+ * ============================================================
+ * V1 CAMERA APPROACH — FILE INPUT (disabled, not deleted)
+ * ============================================================
+ * The original scan page used <input type="file" capture="environment">.
+ * Tapping the button opened the OS native camera app (or file picker).
+ * After selecting/taking a photo, the user returned to the page with a
+ * preview and manually chose "Quick Scan" or "Smart Scan (v2)".
+ *
+ * To restore V1, look for the blocks labelled:
+ *   [V1 TYPES]    — ScanState discriminated union
+ *   [V1 STATE]    — fileRef, preview, file, state vars
+ *   [V1 HANDLERS] — handleFileChange, handleReset
+ *   [V1 RETURN]   — the original JSX tree
+ *
+ * Steps to revert:
+ *   1. Restore the imports (no getUserMedia-related hooks needed)
+ *   2. Uncomment the [V1 STATE] and [V1 HANDLERS] blocks
+ *   3. Replace the current return statement with the [V1 RETURN] block
+ *   4. Remove the V2 camera state, refs, and effects below
+ * ============================================================
+ */
+
+import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Camera } from "lucide-react";
 import {
   quickIdentifyCard,
   quickIdentifyCardV2,
@@ -15,21 +38,18 @@ import {
 import { useScanContext } from "@/lib/stores/useScanContext";
 
 // Resize + compress an image client-side before upload.
-// maxDimension and quality can be tuned per scan mode:
-//   Quick Scan OCR: 800px, 0.70 quality — text is readable at lower res/quality
-//   Smart Scan v2: 1200px, 0.80 quality
+// Quick Scan OCR: 1200px, 0.70 — text is readable at lower quality
+// Smart Scan v2:  1200px, 0.80
 async function compressImage(file: File, maxDimension = 1400, quality = 0.85): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(maxDimension / bitmap.width, maxDimension / bitmap.height, 1);
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
-
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
-
   return new Promise<File>((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -42,16 +62,44 @@ async function compressImage(file: File, maxDimension = 1400, quality = 0.85): P
   });
 }
 
-type ScanState =
-  | { step: "idle" }
-  | { step: "error"; message: string };
+// ── [V1 TYPES] ─────────────────────────────────────────────
+// type ScanState =
+//   | { step: "idle" }
+//   | { step: "error"; message: string };
+// ───────────────────────────────────────────────────────────
+
+// V2 camera lifecycle states
+type CameraStatus =
+  | "requesting"   // getUserMedia in progress
+  | "live"         // stream active, viewfinder shown
+  | "captured"     // frame grabbed, preview shown, ready to scan
+  | "scanning"     // scan API call in progress
+  | "denied"       // camera permission denied by user
+  | "unavailable"  // getUserMedia not supported — fall back to file input
+  | "error";       // unexpected camera error
 
 export default function ScanPage() {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [preview, setPreview] = useState<string | null>(null);
-  const [file, setFile] = useState<File | null>(null);
-  const [state, setState] = useState<ScanState>({ step: "idle" });
+
+  // ── V2 camera refs + state ────────────────────────────────
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("requesting");
+  const [cameraError, setCameraError] = useState("");
+  const [capturedFile, setCapturedFile] = useState<File | null>(null);
+  const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
+
+  // ── [V1 STATE] ─────────────────────────────────────────────
+  // const fileRef = useRef<HTMLInputElement>(null);
+  // const [preview, setPreview] = useState<string | null>(null);
+  // const [file, setFile] = useState<File | null>(null);
+  // const [state, setState] = useState<ScanState>({ step: "idle" });
+  // ───────────────────────────────────────────────────────────
+
+  // Fallback file input for "unavailable" (getUserMedia not in browser)
+  const fallbackFileRef = useRef<HTMLInputElement>(null);
+
+  // Scan result state — shared between V1 and V2
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [smartScanLoading, setSmartScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
@@ -60,184 +108,443 @@ export default function ScanPage() {
 
   const { setScanContext } = useScanContext();
 
+  // Auth guard (AppShell also redirects, this is belt-and-suspenders)
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) router.replace("/login");
     });
   }, [router]);
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-    setState({ step: "idle" });
+  // Start the rear camera stream
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus("unavailable");
+      return;
+    }
+    setCameraStatus("requesting");
+    setCameraError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      setCameraStatus("live"); // triggers the wire-up effect below
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setCameraStatus("denied");
+      } else {
+        setCameraStatus("error");
+        setCameraError(err instanceof Error ? err.message : "Camera unavailable.");
+      }
+    }
+  }, []);
+
+  // Mount: start camera; unmount: stop all tracks
+  useEffect(() => {
+    startCamera();
+    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, [startCamera]);
+
+  // Wire stream → video element after "live" transition (ensures DOM is ready)
+  useEffect(() => {
+    if (cameraStatus === "live" && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {/* muted autoplay blocked — unlikely */});
+    }
+  }, [cameraStatus]);
+
+  // Grab a single frame from the video and move to "captured" state
+  function captureFrame() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d")!.drawImage(video, 0, 0);
+
+    // Stop stream to save battery while user decides on scan method
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const f = new File([blob], "scan.jpg", { type: "image/jpeg" });
+        setCapturedFile(f);
+        setCapturedPreview(URL.createObjectURL(blob));
+        setCameraStatus("captured");
+      },
+      "image/jpeg",
+      0.95
+    );
   }
 
+  // Reset all state and restart the camera viewfinder
+  function resetScan() {
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    setCapturedFile(null);
+    setCapturedPreview(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
+    setScanCandidates(null);
+    setQuickScanLoading(false);
+    setSmartScanLoading(false);
+    setCameraError("");
+    startCamera();
+  }
+
+  // File input change handler for the "unavailable" fallback path
+  function handleFallbackFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setCapturedFile(f);
+    setCapturedPreview(URL.createObjectURL(f));
+    setScanCandidates(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
+    setCameraStatus("captured");
+  }
+
+  // ── [V1 HANDLERS] ──────────────────────────────────────────
+  // function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+  //   const f = e.target.files?.[0];
+  //   if (!f) return;
+  //   setFile(f);
+  //   setPreview(URL.createObjectURL(f));
+  //   setState({ step: "idle" });
+  // }
+  //
+  // function handleReset() {
+  //   setState({ step: "idle" });
+  //   setPreview(null);
+  //   setFile(null);
+  //   setNoMatchResult(null);
+  //   setNoMatchMethod(null);
+  //   setScanCandidates(null);
+  //   setSmartScanLoading(false);
+  //   if (fileRef.current) fileRef.current.value = "";
+  // }
+  // ───────────────────────────────────────────────────────────
+
   async function handleQuickScan() {
-    if (!file) return;
+    if (!capturedFile) return;
     setQuickScanLoading(true);
     setNoMatchResult(null);
     setNoMatchMethod(null);
     setScanCandidates(null);
-    setState({ step: "idle" });
+    setCameraError("");
+    setCameraStatus("scanning");
     try {
-      const compressed = await compressImage(file, 1200, 0.70);
-      setPreview(URL.createObjectURL(compressed));
+      const compressed = await compressImage(capturedFile, 1200, 0.70);
       const result = await quickIdentifyCard(compressed);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
         router.push(`/cards/${result.card_id}`);
       } else if (result.ambiguous && result.candidates?.length) {
         setScanCandidates(result.candidates);
+        setCameraStatus("captured");
       } else {
         setNoMatchResult(result);
         setNoMatchMethod("quick");
+        setCameraStatus("captured");
       }
     } catch (err) {
-      setState({ step: "error", message: err instanceof Error ? err.message : "Quick Scan failed — please try again." });
+      setCameraError(err instanceof Error ? err.message : "Quick Scan failed — please try again.");
+      setCameraStatus("captured");
     } finally {
       setQuickScanLoading(false);
     }
   }
 
   async function handleSmartScan() {
-    if (!file) return;
+    if (!capturedFile) return;
     setSmartScanLoading(true);
     setNoMatchResult(null);
     setNoMatchMethod(null);
     setScanCandidates(null);
-    setState({ step: "idle" });
+    setCameraError("");
+    setCameraStatus("scanning");
     try {
-      const compressed = await compressImage(file, 1200, 0.80);
-      setPreview(URL.createObjectURL(compressed));
+      const compressed = await compressImage(capturedFile, 1200, 0.80);
       const result = await quickIdentifyCardV2(compressed);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
         router.push(`/cards/${result.card_id}`);
       } else if (result.ambiguous && result.candidates?.length) {
         setScanCandidates(result.candidates);
+        setCameraStatus("captured");
       } else {
         setNoMatchResult(result);
         setNoMatchMethod("smart");
+        setCameraStatus("captured");
       }
     } catch (err) {
-      setState({ step: "error", message: err instanceof Error ? err.message : "Smart Scan failed — please try again." });
+      setCameraError(err instanceof Error ? err.message : "Smart Scan failed — please try again.");
+      setCameraStatus("captured");
     } finally {
       setSmartScanLoading(false);
     }
   }
 
-  function handleReset() {
-    setState({ step: "idle" });
-    setPreview(null);
-    setFile(null);
-    setNoMatchResult(null);
-    setNoMatchMethod(null);
-    setScanCandidates(null);
-    setSmartScanLoading(false);
-    if (fileRef.current) fileRef.current.value = "";
-  }
+  const isScanning = quickScanLoading || smartScanLoading;
+
+  // ── [V1 RETURN] ────────────────────────────────────────────
+  // return (
+  //   <main className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
+  //     <h1 className="text-2xl font-bold mb-6">Scan Card</h1>
+  //     <Card className="mb-4">
+  //       <CardContent className="pt-6">
+  //         <input ref={fileRef} type="file" accept="image/*" capture="environment"
+  //           onChange={handleFileChange} className="hidden" />
+  //         <Button variant="outline" className="w-full" onClick={() => fileRef.current?.click()}>
+  //           {preview ? "Choose different photo" : "Take photo or choose file"}
+  //         </Button>
+  //         {preview && (
+  //           <div className="mt-4 relative w-full aspect-[3/4] rounded-lg overflow-hidden border">
+  //             <Image src={preview} alt="Card preview" fill sizes="100vw" className="object-contain" />
+  //           </div>
+  //         )}
+  //       </CardContent>
+  //     </Card>
+  //     {file && state.step === "idle" && (
+  //       <div className="flex gap-2 mb-4">
+  //         <Button variant="secondary" className="flex-1" onClick={handleQuickScan} disabled={quickScanLoading}>
+  //           {quickScanLoading ? "Scanning..." : "Quick Scan"}
+  //         </Button>
+  //         <Button className="flex-1" onClick={handleSmartScan} disabled={smartScanLoading}>
+  //           {smartScanLoading ? "Scanning..." : "Smart Scan (v2)"}
+  //         </Button>
+  //       </div>
+  //     )}
+  //     {/* ambiguous candidates, no-match feedback, and error card were also here */}
+  //   </main>
+  // );
+  // ───────────────────────────────────────────────────────────
 
   return (
-    <main className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Scan Card</h1>
+    <div className="flex flex-col bg-background">
 
-      {/* File picker */}
-      <Card className="mb-4">
-        <CardContent className="pt-6">
+      {/* ── VIEWFINDER (requesting + live) ─────────────────── */}
+      {(cameraStatus === "requesting" || cameraStatus === "live") && (
+        <>
+          {/* Camera viewport — 3:4 aspect, capped so it fits on small screens */}
+          <div
+            className="relative w-full bg-black overflow-hidden"
+            style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
+          >
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+
+            {/* Semi-transparent overlay with card-shaped cutout.
+                The box-shadow extends outside the guide div, masked by
+                overflow-hidden on the parent → dark surround, clear centre. */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="relative"
+                style={{
+                  width: "62%",
+                  aspectRatio: "5/7",
+                  boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
+                }}
+              >
+                {/* Corner bracket — top left */}
+                <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
+                {/* Corner bracket — top right */}
+                <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
+                {/* Corner bracket — bottom left */}
+                <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
+                {/* Corner bracket — bottom right */}
+                <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+              </div>
+            </div>
+
+            {/* Instruction hint */}
+            <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
+              Line up the card within the guides
+            </p>
+
+            {/* "Opening camera…" overlay while getUserMedia resolves */}
+            {cameraStatus === "requesting" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                <p className="text-white/80 text-sm">Opening camera…</p>
+              </div>
+            )}
+          </div>
+
+          {/* Shutter button */}
+          <div className="flex items-center justify-center py-6 bg-black">
+            <button
+              onClick={captureFrame}
+              disabled={cameraStatus !== "live"}
+              aria-label="Capture photo"
+              className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── CAPTURED / SCANNING ────────────────────────────── */}
+      {(cameraStatus === "captured" || cameraStatus === "scanning") && capturedPreview && (
+        <div className="flex flex-col gap-4 p-4">
+          {/* Captured frame preview */}
+          <div
+            className="relative w-full rounded-xl overflow-hidden border bg-black"
+            style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
+          >
+            <Image
+              src={capturedPreview}
+              alt="Captured card"
+              fill
+              unoptimized
+              sizes="100vw"
+              className="object-contain"
+            />
+            {cameraStatus === "scanning" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                <p className="text-white text-sm font-medium tracking-wide">Scanning…</p>
+              </div>
+            )}
+          </div>
+
+          {/* Scan buttons — hidden while a scan is running */}
+          {cameraStatus === "captured" && !scanCandidates && (
+            <div className="flex gap-2">
+              <Button
+                variant="secondary"
+                className="flex-1"
+                onClick={handleQuickScan}
+                disabled={isScanning}
+              >
+                {quickScanLoading ? "Scanning…" : "Quick Scan"}
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleSmartScan}
+                disabled={isScanning}
+              >
+                {smartScanLoading ? "Scanning…" : "Smart Scan (v2)"}
+              </Button>
+            </div>
+          )}
+
+          {/* Ambiguous — let user pick the right card */}
+          {scanCandidates && scanCandidates.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Multiple matches — which card is this?</p>
+              <div className="flex flex-col gap-2">
+                {scanCandidates.map((c) => (
+                  <button
+                    key={c.card_id}
+                    onClick={() => router.push(`/cards/${c.card_id}`)}
+                    className="flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                  >
+                    {c.image_url && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={c.image_url} alt={c.name} className="h-16 w-11 rounded object-cover shrink-0" />
+                    )}
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium truncate">{c.name}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {c.language_code === "JA" ? "Japanese" : "English"}
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* No match feedback */}
+          {noMatchResult && !noMatchResult.matched && (
+            <div className="rounded-lg border border-muted p-4 space-y-1">
+              <p className="text-sm font-medium">
+                {noMatchMethod === "smart" ? "Smart Scan (v2)" : "Quick Scan"} — no match found
+              </p>
+              {noMatchResult.ocr.name && (
+                <p className="text-xs text-muted-foreground">
+                  OCR: &ldquo;{noMatchResult.ocr.name}&rdquo;
+                  {noMatchResult.ocr.set_number ? ` · ${noMatchResult.ocr.set_number}` : ""}
+                </p>
+              )}
+              {(noMatchResult.ocr.ocr_num1 || noMatchResult.ocr.ocr_num2) && (
+                <p className="text-xs text-muted-foreground">
+                  Numbers: num1={noMatchResult.ocr.ocr_num1 ?? "—"} · num2={noMatchResult.ocr.ocr_num2 ?? "—"}
+                </p>
+              )}
+              {noMatchMethod === "quick" && (
+                <p className="text-xs text-muted-foreground">
+                  Try &ldquo;Smart Scan (v2)&rdquo; for better identification.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Scan/camera error */}
+          {cameraError && (
+            <p className="text-sm text-destructive">{cameraError}</p>
+          )}
+
+          {/* Retake — restarts the live viewfinder */}
+          <Button variant="outline" onClick={resetScan} className="w-full">
+            Retake photo
+          </Button>
+        </div>
+      )}
+
+      {/* ── PERMISSION DENIED ──────────────────────────────── */}
+      {cameraStatus === "denied" && (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 gap-4 text-center">
+          <Camera className="w-12 h-12 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">
+            Camera access was denied. Allow camera access in your browser settings and try again.
+          </p>
+          <Button variant="outline" onClick={startCamera}>Try again</Button>
+        </div>
+      )}
+
+      {/* ── UNAVAILABLE — file input fallback ──────────────── */}
+      {/* getUserMedia not supported (older browser/WebView). Falls back to the
+          V1 file-input approach: OS camera or file picker, then same scan flow. */}
+      {cameraStatus === "unavailable" && (
+        <div className="flex flex-col gap-4 p-6 max-w-2xl mx-auto w-full">
+          <p className="text-sm text-muted-foreground text-center">
+            Live camera isn&apos;t available in this browser. Use the file picker instead.
+          </p>
           <input
-            ref={fileRef}
+            ref={fallbackFileRef}
             type="file"
             accept="image/*"
             capture="environment"
-            onChange={handleFileChange}
+            onChange={handleFallbackFileChange}
             className="hidden"
           />
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => fileRef.current?.click()}
+            onClick={() => fallbackFileRef.current?.click()}
           >
-            {preview ? "Choose different photo" : "Take photo or choose file"}
-          </Button>
-          {preview && (
-            <div className="mt-4 relative w-full aspect-[3/4] rounded-lg overflow-hidden border">
-              <Image src={preview} alt="Card preview" fill sizes="100vw" className="object-contain" />
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Scan buttons */}
-      {file && state.step === "idle" && (
-        <div className="flex gap-2 mb-4">
-          <Button variant="secondary" className="flex-1" onClick={handleQuickScan} disabled={quickScanLoading}>
-            {quickScanLoading ? "Scanning..." : "Quick Scan"}
-          </Button>
-          <Button className="flex-1" onClick={handleSmartScan} disabled={smartScanLoading}>
-            {smartScanLoading ? "Scanning..." : "Smart Scan (v2)"}
+            Take photo or choose file
           </Button>
         </div>
       )}
 
-      {/* Ambiguous — let user pick the right card */}
-      {scanCandidates && scanCandidates.length > 0 && (
-        <Card className="mb-4">
-          <CardContent className="pt-6 space-y-3">
-            <p className="text-sm font-medium">Multiple matches found — which card is this?</p>
-            <div className="flex flex-col gap-2">
-              {scanCandidates.map((c) => (
-                <button
-                  key={c.card_id}
-                  onClick={() => router.push(`/cards/${c.card_id}`)}
-                  className="flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
-                >
-                  {c.image_url && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.image_url} alt={c.name} className="h-16 w-11 rounded object-cover shrink-0" />
-                  )}
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">{c.name}</div>
-                    <div className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</div>
-                    <div className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      {/* ── CAMERA ERROR ───────────────────────────────────── */}
+      {cameraStatus === "error" && (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 gap-4 text-center">
+          <Camera className="w-12 h-12 text-muted-foreground" />
+          <p className="text-sm text-destructive">{cameraError || "Camera error — please try again."}</p>
+          <Button variant="outline" onClick={startCamera}>Try again</Button>
+        </div>
       )}
-
-      {/* No match feedback */}
-      {noMatchResult && !noMatchResult.matched && (
-        <Card className="mb-4 border-muted">
-          <CardContent className="pt-6 space-y-2">
-            <p className="text-sm font-medium">
-              {noMatchMethod === "smart" ? "Smart Scan (v2)" : "Quick Scan"} — no match found
-            </p>
-            {noMatchResult.ocr.name && (
-              <p className="text-xs text-muted-foreground">OCR detected: &ldquo;{noMatchResult.ocr.name}&rdquo;{noMatchResult.ocr.set_number ? ` · ${noMatchResult.ocr.set_number}` : ""}</p>
-            )}
-            {(noMatchResult.ocr.ocr_num1 || noMatchResult.ocr.ocr_num2) && (
-              <p className="text-xs text-muted-foreground">Numbers: num1={noMatchResult.ocr.ocr_num1 ?? "—"} · num2={noMatchResult.ocr.ocr_num2 ?? "—"}</p>
-            )}
-            {noMatchMethod === "quick" && (
-              <p className="text-xs text-muted-foreground">Try &ldquo;Smart Scan (v2)&rdquo; for better identification.</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Error */}
-      {state.step === "error" && (
-        <Card className="mb-4 border-destructive">
-          <CardContent className="pt-6 space-y-3">
-            <p className="text-sm text-destructive">{state.message}</p>
-            <Button variant="outline" onClick={handleReset}>Try again</Button>
-          </CardContent>
-        </Card>
-      )}
-    </main>
+    </div>
   );
 }
