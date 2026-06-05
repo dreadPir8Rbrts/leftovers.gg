@@ -679,11 +679,11 @@ export default function CardDetailPage() {
           {/* ── Left: large card image ── */}
           <div className="md:sticky md:top-20 md:self-start">
             {card.image_url ? (
-              <div className="relative w-full max-w-xs mx-auto md:max-w-none aspect-[3/4] rounded-xl overflow-hidden border border-black/20">
-                <Image src={card.image_url} alt={card.name} fill sizes="(max-width: 768px) 80vw, 40vw" className="object-contain" />
+              <div className="relative w-full max-w-[14rem] mx-auto md:max-w-none aspect-[3/4] rounded-xl overflow-hidden border border-black/20">
+                <Image src={card.image_url} alt={card.name} fill sizes="(max-width: 768px) 56vw, 40vw" className="object-contain" />
               </div>
             ) : (
-              <div className="w-full max-w-xs mx-auto md:max-w-none aspect-[3/4] rounded-xl border border-black/20 bg-muted" />
+              <div className="w-full max-w-[14rem] mx-auto md:max-w-none aspect-[3/4] rounded-xl border border-black/20 bg-muted" />
             )}
             {/* Mobile card info below image */}
             <div className="md:hidden mt-4">
