@@ -24,6 +24,16 @@ import { Button } from "@/components/ui/button";
 // Types
 // ---------------------------------------------------------------------------
 
+// Live camera lifecycle states (used by CardPickerModal scan mode)
+type CameraStatus =
+  | "requesting"   // getUserMedia in progress
+  | "live"         // stream active, viewfinder shown
+  | "captured"     // frame grabbed, preview shown
+  | "scanning"     // scan API call in progress
+  | "denied"       // camera permission denied
+  | "unavailable"  // getUserMedia not supported
+  | "error";       // unexpected camera error
+
 interface CardDraft {
   key: string;
   card: Card;
@@ -432,31 +442,154 @@ function CardPickerModal({
   onSelect: (card: Card, direction: TransactionDirection) => void;
   onClose: () => void;
 }) {
+  // ── Search state ──────────────────────────────────────────
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Card[]>([]);
   const [searching, setSearching] = useState(false);
-  const [scanning, setScanning] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
+  // ── Camera state ──────────────────────────────────────────
+  const [cameraMode, setCameraMode] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("requesting");
+  const [cameraError, setCameraError] = useState("");
+  const [capturedFile, setCapturedFile] = useState<File | null>(null);
+  const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+
+  // Stop stream whenever the modal closes or camera mode exits
+  useEffect(() => {
+    return () => streamRef.current?.getTracks().forEach((t) => t.stop());
+  }, []);
+
+  // Wire stream → video element after "live" transition
+  useEffect(() => {
+    if (cameraStatus === "live" && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(() => {});
+    }
+  }, [cameraStatus]);
+
+  const startCamera = useCallback(async () => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraStatus("unavailable");
+      return;
+    }
+    setCameraStatus("requesting");
+    setCameraError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      setCameraStatus("live");
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setCameraStatus("denied");
+      } else {
+        setCameraStatus("error");
+        setCameraError(err instanceof Error ? err.message : "Camera unavailable.");
+      }
+    }
+  }, []);
+
+  function openCameraMode() {
+    setCameraMode(true);
+    setScanError(null);
+    setCapturedFile(null);
+    setCapturedPreview(null);
+    startCamera();
+  }
+
+  function exitCameraMode() {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    setCameraMode(false);
+    setCapturedFile(null);
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    setCapturedPreview(null);
+    setScanError(null);
+  }
+
+  // Crop the captured frame to the guide rectangle (same math as /scan page)
+  function captureFrame() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+
+    const V_w = video.videoWidth;
+    const V_h = video.videoHeight;
+    const { width: C_w, height: C_h } = video.getBoundingClientRect();
+
+    const s = Math.max(C_w / V_w, C_h / V_h);
+    const offset_x = (C_w - V_w * s) / 2;
+    const offset_y = (C_h - V_h * s) / 2;
+
+    const gw = 0.62 * C_w;
+    const gh = gw * (7 / 5);
+    const g_x = (C_w - gw) / 2;
+    const g_y = (C_h - gh) / 2;
+
+    const crop_x = Math.round((g_x - offset_x) / s);
+    const crop_y = Math.round((g_y - offset_y) / s);
+    const crop_w = Math.round(gw / s);
+    const crop_h = Math.round(gh / s);
+
+    const sx = Math.max(0, crop_x);
+    const sy = Math.max(0, crop_y);
+    const sw = Math.min(crop_w, V_w - sx);
+    const sh = Math.min(crop_h, V_h - sy);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = sw;
+    canvas.height = sh;
+    canvas.getContext("2d")!.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const f = new File([blob], "scan.jpg", { type: "image/jpeg" });
+        setCapturedFile(f);
+        setCapturedPreview(URL.createObjectURL(blob));
+        setCameraStatus("captured");
+      },
+      "image/jpeg",
+      0.95
+    );
+  }
+
+  function resetCapture() {
+    if (capturedPreview) URL.revokeObjectURL(capturedPreview);
+    setCapturedFile(null);
+    setCapturedPreview(null);
+    setScanError(null);
+    setCameraError("");
+    startCamera();
+  }
 
   async function handleSearch() {
     if (!query.trim()) return;
     setSearching(true);
+    setSearchError(null);
     try {
       const res = await searchCards({ name: query.trim(), limit: 10 });
       setResults(res);
+      if (res.length === 0) setSearchError("No cards found — try a different name.");
     } catch {
-      /* ignore */
+      setSearchError("Search failed. Please try again.");
     } finally {
       setSearching(false);
     }
   }
 
-  async function handleScan(file: File) {
-    setScanning(true);
+  async function handleScanCapture() {
+    if (!capturedFile) return;
+    setCameraStatus("scanning");
     setScanError(null);
     try {
-      const compressed = await compressImage(file);
+      const compressed = await compressImage(capturedFile);
       const result = await quickIdentifyCardV2(compressed);
       if (result.matched && result.card_id) {
         const card: Card = {
@@ -474,15 +607,140 @@ function CardPickerModal({
         onSelect(card, direction);
         onClose();
       } else {
-        setScanError("Card not recognised — try searching by name instead.");
+        setScanError("Card not recognised — retake or search by name.");
+        setCameraStatus("captured");
       }
     } catch {
       setScanError("Scan failed. Try again or search by name.");
-    } finally {
-      setScanning(false);
+      setCameraStatus("captured");
     }
   }
 
+  // ── Camera mode — full-screen viewfinder ──────────────────
+  if (cameraMode) {
+    return (
+      <div className="fixed inset-0 z-50 flex flex-col bg-background">
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
+          <button
+            onClick={exitCameraMode}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            ← Back
+          </button>
+          <h2 className="text-sm font-semibold">
+            Scan card — {direction === "lost" ? "You give" : "Other party gives"}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
+        </div>
+
+        {/* Viewfinder */}
+        {(cameraStatus === "requesting" || cameraStatus === "live") && (
+          <>
+            <div
+              className="relative flex-1 bg-black overflow-hidden"
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className="relative"
+                  style={{
+                    width: "62%",
+                    aspectRatio: "5/7",
+                    boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
+                  }}
+                >
+                  <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
+                  <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
+                  <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
+                  <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+                </div>
+              </div>
+              <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
+                Line up the card within the guides
+              </p>
+              {cameraStatus === "requesting" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+                  <p className="text-white/80 text-sm">Opening camera…</p>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-center py-6 bg-black shrink-0">
+              <button
+                onClick={captureFrame}
+                disabled={cameraStatus !== "live"}
+                aria-label="Capture photo"
+                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Captured / scanning */}
+        {(cameraStatus === "captured" || cameraStatus === "scanning") && capturedPreview && (
+          <div className="flex flex-col gap-4 p-4 flex-1 overflow-y-auto">
+            <div
+              className="relative w-full rounded-xl overflow-hidden border bg-black"
+              style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
+            >
+              <Image
+                src={capturedPreview}
+                alt="Captured card"
+                fill
+                unoptimized
+                sizes="100vw"
+                className="object-contain"
+              />
+              {cameraStatus === "scanning" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                  <p className="text-white text-sm font-medium">Scanning…</p>
+                </div>
+              )}
+            </div>
+            {scanError && <p className="text-sm text-destructive">{scanError}</p>}
+            {cameraStatus === "captured" && (
+              <div className="flex flex-col gap-2">
+                <Button onClick={handleScanCapture} className="w-full">Scan card</Button>
+                <Button variant="outline" onClick={resetCapture} className="w-full">Retake photo</Button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Denied */}
+        {cameraStatus === "denied" && (
+          <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              Camera access was denied. Allow camera access in your browser settings and try again.
+            </p>
+            <Button variant="outline" onClick={startCamera}>Try again</Button>
+          </div>
+        )}
+
+        {/* Error / unavailable */}
+        {(cameraStatus === "error" || cameraStatus === "unavailable") && (
+          <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
+            <p className="text-sm text-muted-foreground">
+              {cameraStatus === "unavailable"
+                ? "Live camera isn't available in this browser."
+                : (cameraError || "Camera error — please try again.")}
+            </p>
+            {cameraStatus === "error" && (
+              <Button variant="outline" onClick={startCamera}>Try again</Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Search mode (default) ─────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4">
@@ -513,29 +771,15 @@ function CardPickerModal({
           </button>
         </div>
 
-        <div>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            capture="environment"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleScan(f);
-              e.target.value = "";
-            }}
-          />
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            disabled={scanning}
-            className="w-full border rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
-          >
-            {scanning ? "Scanning…" : "📷 Scan card instead"}
-          </button>
-          {scanError && <p className="text-xs text-destructive mt-1">{scanError}</p>}
-        </div>
+        <button
+          type="button"
+          onClick={openCameraMode}
+          className="w-full border rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          📷 Scan card instead
+        </button>
+
+        {searchError && <p className="text-xs text-destructive">{searchError}</p>}
 
         {results.length > 0 && (
           <ul className="divide-y border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
