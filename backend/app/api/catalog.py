@@ -13,7 +13,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, case, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -121,6 +121,28 @@ def _strip_accents(s: str) -> str:
     return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
+def _q_relevance_order(q: str):
+    """Return a sort expression that ranks cards where every search token appears
+    in card name / en_name above cards that only matched via expansion name.
+
+    Tier 0 (first): ALL non-numeric tokens appear in card.name or card.en_name.
+    Tier 1 (second): matched via expansion name — still valid, just deprioritised.
+    Secondary sort is always CardV2.name alphabetically.
+    """
+    words = [w for w in q.strip().split() if not w.replace("/", "").isdigit()]
+    if not words:
+        return None
+    per_token = [
+        or_(
+            func.unaccent(CardV2.name).ilike(f"%{_strip_accents(w)}%"),
+            func.unaccent(CardV2.en_name).ilike(f"%{_strip_accents(w)}%"),
+        )
+        for w in words
+    ]
+    all_in_card_name = and_(*per_token) if len(per_token) > 1 else per_token[0]
+    return case((all_in_card_name, 0), else_=1)
+
+
 def _apply_q_tokens(query, q: str):
     """Apply each token in q as a filter against card name / en_name / expansion names."""
     for word in q.strip().split():
@@ -171,6 +193,8 @@ def smart_search_cards(
             .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
         )
 
+    rel = _q_relevance_order(q) if q else None
+
     if broad and q and card_num:
         # Strict pass — q tokens + card_num
         strict_q = _base()
@@ -178,7 +202,8 @@ def smart_search_cards(
         strict_q = _apply_card_num_filter(strict_q, card_num)
         if language_code:
             strict_q = strict_q.filter(CardV2.language_code == _normalize_lang(language_code))
-        strict_rows = strict_q.order_by(CardV2.name).limit(limit).all()
+        order = (rel, CardV2.name) if rel is not None else (CardV2.name,)
+        strict_rows = strict_q.order_by(*order).limit(limit).all()
         strict_ids = {str(row[0].id) for row in strict_rows}
 
         # Broad pass — q tokens only, no card_num
@@ -186,7 +211,7 @@ def smart_search_cards(
         broad_q = _apply_q_tokens(broad_q, q)
         if language_code:
             broad_q = broad_q.filter(CardV2.language_code == _normalize_lang(language_code))
-        broad_rows = broad_q.order_by(CardV2.name).limit(limit).all()
+        broad_rows = broad_q.order_by(*order).limit(limit).all()
 
         merged = strict_rows + [row for row in broad_rows if str(row[0].id) not in strict_ids]
         rows = merged[:limit]
@@ -198,7 +223,8 @@ def smart_search_cards(
             query = _apply_card_num_filter(query, card_num)
         if language_code:
             query = query.filter(CardV2.language_code == _normalize_lang(language_code))
-        rows = query.order_by(CardV2.name).offset(offset).limit(limit).all()
+        order = (rel, CardV2.name) if rel is not None else (CardV2.name,)
+        rows = query.order_by(*order).offset(offset).limit(limit).all()
 
     return [_build_card_response(card, expansion) for card, expansion in rows]
 
