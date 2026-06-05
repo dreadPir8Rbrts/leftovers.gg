@@ -2,8 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Animatable CSS custom property — lets us rotate a conic-gradient start angle */
+@property --search-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
 @keyframes search-border-spin {
-  to { transform: rotate(360deg); }
+  to { --search-angle: 360deg; }
+}
+
+/* Full-perimeter 3-color spinning border.
+   Uses background-clip: border-box so the conic-gradient paints directly
+   onto the border area — guaranteed 100% coverage, no transparent gaps. */
+.search-spinning-border {
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(#000, #000) padding-box,
+    conic-gradient(
+      from var(--search-angle),
+      rgba(255, 255, 255, 0.75) 0deg 120deg,
+      #BF40BF                  120deg 240deg,
+      #FF00FF                  240deg 360deg
+    ) border-box;
+  animation: search-border-spin 4s linear infinite;
 }
 
 @layer base {

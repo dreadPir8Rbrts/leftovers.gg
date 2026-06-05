@@ -88,27 +88,17 @@ export function GlobalSearch() {
 
   return (
     <div ref={containerRef} className="relative w-full max-w-sm">
-      {/* Spinning purple border — conic gradient rotates clockwise behind the input */}
-      <div className="relative rounded-full p-[1.5px] overflow-hidden">
-        <div
-          className="absolute inset-[-100%]"
-          style={{
-            animation: "search-border-spin 3s linear infinite",
-            background: "conic-gradient(from 0deg, transparent 0%, transparent 65%, rgba(191,64,191,0.25) 75%, #BF40BF 82%, rgba(191,64,191,0.25) 89%, transparent 95%, transparent 100%)",
-          }}
+      <div className="relative search-spinning-border rounded-full">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          placeholder="Search cards..."
+          className="w-full bg-transparent rounded-full pl-9 pr-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:outline-none"
         />
-        <div className="relative rounded-full bg-black">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onFocus={() => results.length > 0 && setOpen(true)}
-            placeholder="Search cards..."
-            className="w-full bg-transparent rounded-full pl-9 pr-3 py-1.5 text-sm text-white placeholder:text-white/40 focus:outline-none"
-          />
-        </div>
       </div>
 
       {open && (
