@@ -201,9 +201,20 @@ function PersonRow({
   const hasCash = !!cashValue && parseFloat(cashValue) > 0;
   const isEmpty = cards.length === 0 && !hasCash;
 
+  const cardTotal = cards.reduce((sum, d) => sum + (parseFloat(d.estimatedValue) || 0) * d.quantity, 0);
+  const cashTotal = parseFloat(cashValue) || 0;
+  const sideTotal = cardTotal + cashTotal;
+
   return (
     <div className="rounded-xl border border-black/20 p-4 min-h-[7rem]">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">{label}</p>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+        {sideTotal > 0 && (
+          <p className="text-xs text-muted-foreground">
+            ~<span className="font-medium text-foreground">${sideTotal.toFixed(2)}</span>
+          </p>
+        )}
+      </div>
       <div className="flex flex-wrap gap-3 items-end">
         {cards.map((draft) => (
           <CardChip
@@ -1089,7 +1100,7 @@ export default function NewTransactionPage() {
       {step === 2 && (
         <div className="space-y-3 pb-24">
           <div className="grid grid-cols-2 gap-3">
-            <div>
+            <div className="min-w-0">
               <label className="text-xs text-muted-foreground">Date</label>
               <input
                 type="date"
@@ -1098,7 +1109,7 @@ export default function NewTransactionPage() {
                 className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="text-xs text-muted-foreground">Marketplace</label>
               <select
                 value={marketplace}
@@ -1134,7 +1145,7 @@ export default function NewTransactionPage() {
           </div>
 
           <div className="border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Transaction value</span>
+            <span className="text-sm text-muted-foreground">Your est. gain/loss</span>
             <span className={`text-sm font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
               {autoValue >= 0 ? "+" : ""}${Math.abs(autoValue).toFixed(2)}
             </span>

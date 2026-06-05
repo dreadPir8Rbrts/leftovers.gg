@@ -84,6 +84,7 @@ class TransactionCard(Base):
     grade: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     grading_company_other: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     estimated_value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    variant: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
 

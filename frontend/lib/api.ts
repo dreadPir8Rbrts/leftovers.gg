@@ -748,6 +748,7 @@ export interface TransactionCardIn {
   grade?: string;
   grading_company_other?: string;
   estimated_value?: number;
+  variant?: string;
   quantity: number;
 }
 
@@ -780,6 +781,7 @@ export interface TransactionCardOut {
   grade?: string | null;
   grading_company_other?: string | null;
   estimated_value?: number | null;
+  variant?: string | null;
   quantity: number;
 }
 
@@ -845,6 +847,21 @@ export async function deleteTransaction(id: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to delete transaction: ${res.status}`);
+}
+
+export interface LiveDelta {
+  transaction_id: string;
+  live_delta: number;
+  cards_priced: number;
+  cards_total: number;
+}
+
+export async function getTransactionLiveDeltas(): Promise<LiveDelta[]> {
+  const res = await fetch(`${API_URL}/api/v1/transactions/live-deltas`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load live deltas: ${res.status}`);
+  return res.json();
 }
 
 // ---------------------------------------------------------------------------

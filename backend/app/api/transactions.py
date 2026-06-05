@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.pricing import (
-    _aggregate_prices,
     _effective_multipliers,
     _get_or_create_preferences,
     _is_pricing_fresh,
@@ -25,12 +24,14 @@ from app.api.pricing import (
 )
 from app.db.session import get_db
 from app.dependencies import get_current_profile
-from app.models.catalog import PriceSnapshot, SoldComp
+from app.models.catalog import PriceSnapshot
 from app.models.catalog_v2 import CardV2
 from app.models.inventory import Inventory
 from app.models.pricing_preferences import PricingPreferences
 from app.models.profiles import Profile
+from app.models.scrydex_prices import ScrydexPrice
 from app.models.transactions import Transaction, TransactionCard
+from app.services.scrydex import fetch_scrydex_prices, lookup_market_price
 
 router = APIRouter(tags=["transactions"])
 
@@ -53,6 +54,7 @@ class TransactionCardIn(BaseModel):
     grade: Optional[str] = None
     grading_company_other: Optional[str] = None
     estimated_value: Optional[float] = None
+    variant: Optional[str] = None
     quantity: int = 1
 
 
@@ -85,6 +87,7 @@ class TransactionCardOut(BaseModel):
     grade: Optional[str] = None
     grading_company_other: Optional[str] = None
     estimated_value: Optional[float] = None
+    variant: Optional[str] = None
     quantity: int
 
 
@@ -151,6 +154,7 @@ def _build_card_out(tc: TransactionCard, card: Optional[CardV2]) -> dict:
         "grade": tc.grade,
         "grading_company_other": tc.grading_company_other,
         "estimated_value": float(tc.estimated_value) if tc.estimated_value is not None else None,
+        "variant": tc.variant,
         "quantity": tc.quantity,
     }
 
@@ -180,6 +184,36 @@ def _build_transaction_out(tx: Transaction, db: Session) -> dict:
     }
 
 
+_SCRYDEX_CACHE_TTL_HOURS = 24
+
+
+def _get_scrydex_prices(db: Session, card_v2_id: str) -> List[Any]:
+    """Return cached Scrydex prices for a card, refreshing if stale. Returns [] on failure."""
+    stale_cutoff = datetime.utcnow() - timedelta(hours=_SCRYDEX_CACHE_TTL_HOURS)
+    card = db.get(CardV2, card_v2_id)
+    if not card:
+        return []
+
+    cached = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
+    if cached and cached.fetched_at >= stale_cutoff:
+        return cached.prices_json or []
+
+    if not card.external_id or card.game != "pokemon":
+        return cached.prices_json if cached else []
+
+    prices = fetch_scrydex_prices(card.external_id)
+    if prices is None:
+        return cached.prices_json if cached else []
+
+    if cached:
+        cached.prices_json = prices
+        cached.fetched_at = datetime.utcnow()
+    else:
+        db.add(ScrydexPrice(card_v2_id=card_v2_id, prices_json=prices, fetched_at=datetime.utcnow()))
+    db.commit()
+    return prices
+
+
 def _estimate_for_card(
     db: Session,
     prefs: PricingPreferences,
@@ -188,8 +222,13 @@ def _estimate_for_card(
     condition_ungraded: Optional[str],
     grading_company: Optional[str],
     grade: Optional[str],
+    variant: Optional[str] = None,
 ) -> Optional[float]:
-    """Compute an estimated value for a single inventory card using the user's pricing preferences."""
+    """Estimate current market value for a card at a given condition/grade.
+
+    Ungraded: TCGPlayer NM price × condition multiplier (user's pricing prefs).
+    Graded:   Scrydex market price for the matching company/grade/variant.
+    """
     if condition_type == "ungraded" and condition_ungraded:
         snapshots = (
             db.query(PriceSnapshot)
@@ -215,23 +254,15 @@ def _estimate_for_card(
         return _price_estimate(nm_price, multipliers.get(condition_ungraded, 1.0))
 
     if condition_type == "graded" and grading_company and grade:
-        sold_cutoff = datetime.utcnow() - timedelta(days=prefs.graded_comp_window_days)
-        comps = (
-            db.query(SoldComp)
-            .filter(
-                SoldComp.card_v2_id == card_v2_id,
-                SoldComp.condition_type == "graded",
-                SoldComp.grading_company == grading_company,
-                SoldComp.grade == grade,
-                SoldComp.sold_date >= sold_cutoff,
-                SoldComp.price.isnot(None),
-            )
-            .order_by(SoldComp.sold_date.desc().nullslast())
-            .all()
+        prices = _get_scrydex_prices(db, card_v2_id)
+        return lookup_market_price(
+            prices,
+            condition_type=condition_type,
+            condition_ungraded=None,
+            grading_company=grading_company,
+            grade=grade,
+            variant=variant,
         )
-        if not comps:
-            return None
-        return _aggregate_prices([float(c.price) for c in comps], prefs.graded_aggregation)
 
     return None
 
@@ -328,6 +359,7 @@ def create_transaction(
             grade=c.grade,
             grading_company_other=c.grading_company_other,
             estimated_value=c.estimated_value,
+            variant=c.variant,
             quantity=c.quantity,
         )
         db.add(tc)
@@ -369,6 +401,7 @@ def create_transaction(
                 c.condition_ungraded,
                 c.grading_company,
                 c.grade,
+                variant=c.variant,
             )
             estimates.append({
                 "inventory_item_id": c.inventory_item_id,
@@ -378,6 +411,72 @@ def create_transaction(
         out["estimated_acquired_prices"] = estimates
 
     return out
+
+
+@router.get("/transactions/live-deltas")
+def get_live_deltas(
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """
+    Recompute the value delta for every non-deleted transaction at current market prices.
+
+    For each transaction:
+      live_delta = (cash_gained + Σ current_value(gained cards × qty))
+                 − (cash_lost  + Σ current_value(lost  cards × qty))
+
+    Cards whose current price cannot be fetched contribute 0 to the delta.
+    `cards_priced` / `cards_total` let the frontend indicate pricing confidence.
+    """
+    txs = (
+        db.query(Transaction)
+        .filter(
+            Transaction.profile_id == profile.id,
+            Transaction.deleted_at.is_(None),
+        )
+        .all()
+    )
+
+    prefs = _get_or_create_preferences(db, profile.id)
+    result = []
+
+    for tx in txs:
+        card_rows = (
+            db.query(TransactionCard)
+            .filter(TransactionCard.transaction_id == tx.id)
+            .all()
+        )
+
+        gained = float(tx.cash_gained) if tx.cash_gained is not None else 0.0
+        lost = float(tx.cash_lost) if tx.cash_lost is not None else 0.0
+        cards_priced = 0
+
+        for tc in card_rows:
+            val = _estimate_for_card(
+                db,
+                prefs,
+                tc.card_v2_id,
+                tc.condition_type,
+                tc.condition_ungraded,
+                tc.grading_company,
+                tc.grade,
+                variant=tc.variant,
+            )
+            if val is not None:
+                cards_priced += 1
+                if tc.direction == "gained":
+                    gained += val * tc.quantity
+                else:
+                    lost += val * tc.quantity
+
+        result.append({
+            "transaction_id": tx.id,
+            "live_delta": round(gained - lost, 2),
+            "cards_priced": cards_priced,
+            "cards_total": len(card_rows),
+        })
+
+    return result
 
 
 @router.get("/transactions/{transaction_id}", response_model=TransactionOut)

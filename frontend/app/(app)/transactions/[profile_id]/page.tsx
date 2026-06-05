@@ -2,7 +2,11 @@
 
 /**
  * Transactions list page — shared by vendors and collectors.
- * Route: /transactions
+ * Route: /transactions/[profile_id]
+ *
+ * Live deltas load asynchronously after the transaction list renders.
+ * Each row shows the at-time transaction_value and the current live delta
+ * (recomputed from Scrydex / TCGPlayer prices at read time).
  */
 
 import { useEffect, useState, useCallback } from "react";
@@ -10,10 +14,12 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   getTransactions,
+  getTransactionLiveDeltas,
   deleteTransaction,
   MARKETPLACE_OPTIONS,
   type TransactionOut,
   type TransactionType,
+  type LiveDelta,
 } from "@/lib/api";
 
 function formatDate(dateStr: string): string {
@@ -50,16 +56,51 @@ function ValueDisplay({ value }: { value: number | null | undefined }) {
   );
 }
 
+// Live delta with ~ prefix and (X/Y) note when not all cards could be priced
+function LiveDeltaDisplay({ delta }: { delta: LiveDelta }) {
+  const val = delta.live_delta;
+  const isPositive = val >= 0;
+  const isPartial = delta.cards_total > 0 && delta.cards_priced < delta.cards_total;
+  return (
+    <span className={isPositive ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}>
+      {isPartial ? "~" : ""}{isPositive ? "+" : ""}${Math.abs(val).toFixed(2)}
+      {isPartial && (
+        <span className="text-xs text-muted-foreground ml-1">
+          ({delta.cards_priced}/{delta.cards_total})
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function TransactionsPage() {
   const params = useParams<{ profile_id: string }>();
   const [transactions, setTransactions] = useState<TransactionOut[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [liveDeltaMap, setLiveDeltaMap] = useState<Record<string, LiveDelta>>({});
+  const [liveDeltasLoading, setLiveDeltasLoading] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
+    setError(null);
+    setLiveDeltaMap({});
     getTransactions({ limit: 100 })
-      .then(setTransactions)
+      .then((txs) => {
+        setTransactions(txs);
+        // Kick off live-delta fetch after the list is visible
+        if (txs.length > 0) {
+          setLiveDeltasLoading(true);
+          getTransactionLiveDeltas()
+            .then((deltas) => {
+              setLiveDeltaMap(
+                Object.fromEntries(deltas.map((d) => [d.transaction_id, d]))
+              );
+            })
+            .catch(() => {/* live deltas are best-effort — fail silently */})
+            .finally(() => setLiveDeltasLoading(false));
+        }
+      })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
@@ -71,6 +112,11 @@ export default function TransactionsPage() {
     try {
       await deleteTransaction(id);
       setTransactions((prev) => prev.filter((t) => t.id !== id));
+      setLiveDeltaMap((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
     } catch {
       alert("Failed to delete transaction.");
     }
@@ -109,6 +155,7 @@ export default function TransactionsPage() {
             const gained = tx.cards.filter((c) => c.direction === "gained");
             const lost = tx.cards.filter((c) => c.direction === "lost");
             const counterparty = tx.counterparty_name ?? "—";
+            const liveData = liveDeltaMap[tx.id];
 
             return (
               <div
@@ -134,11 +181,9 @@ export default function TransactionsPage() {
                     {tx.cash_lost != null && (
                       <span className="text-muted-foreground">${tx.cash_lost.toFixed(2)}</span>
                     )}
-
                     {(lost.length > 0 || tx.cash_lost != null) && (
                       <span className="text-muted-foreground">→</span>
                     )}
-
                     {/* Gained side */}
                     {gained.length > 0 && (
                       <span>
@@ -156,9 +201,24 @@ export default function TransactionsPage() {
                   </div>
                 </div>
 
-                {/* Value */}
-                <div className="shrink-0 text-sm font-medium">
-                  <ValueDisplay value={tx.transaction_value} />
+                {/* Value column: at-time on top, live delta below */}
+                <div className="shrink-0 flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <span>at time</span>
+                    <span className="font-medium">
+                      <ValueDisplay value={tx.transaction_value} />
+                    </span>
+                  </div>
+                  <div className="text-sm font-semibold">
+                    {liveDeltasLoading && !liveData ? (
+                      <span className="text-xs text-muted-foreground">loading…</span>
+                    ) : liveData ? (
+                      <LiveDeltaDisplay delta={liveData} />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">live</span>
                 </div>
 
                 {/* Actions */}
