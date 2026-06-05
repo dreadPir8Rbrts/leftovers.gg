@@ -137,13 +137,17 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
         if len(rows) > 1:
             tier2_candidates = rows
 
-    # Tier 4: fuzzy name match
+    # Tier 4: fuzzy name match — unaccent on both sides so "POKEMON MACHINE" finds "Pokémon Machine"
     if name and len(name) >= 3:
+        norm_name = _strip_accents(name)
         rows = (
             db.query(CardV2, ExpansionV2)
             .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
             .filter(
-                CardV2.name.ilike(f"%{name}%"),
+                or_(
+                    func.unaccent(CardV2.name).ilike(f"%{norm_name}%"),
+                    func.unaccent(CardV2.en_name).ilike(f"%{norm_name}%"),
+                ),
                 CardV2.game == "pokemon",
             )
             .limit(50)
