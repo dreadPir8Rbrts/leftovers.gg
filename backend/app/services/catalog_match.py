@@ -272,6 +272,27 @@ _SCORE_WEIGHTS: Dict[str, int] = {
 }
 
 
+def _max_possible_score_v2(card: CardV2) -> float:
+    """Upper bound on _score_candidate_v2 for a card — reflects which metadata fields are populated.
+    Used to normalise thresholds for sparse cards (e.g. vending Trainers with no number/HP/artist)
+    that can never reach a fixed absolute threshold even with a perfect name match.
+    """
+    pts = float(_SCORE_WEIGHTS["name"])  # name always present
+    if card.number:
+        pts += _SCORE_WEIGHTS["number"]
+    if card.hp:
+        pts += _SCORE_WEIGHTS["hp"]
+    if card.artist:
+        pts += _SCORE_WEIGHTS["artist"]
+    if card.attacks:
+        pts += _SCORE_WEIGHTS["attacks"]
+    if card.flavor_text:
+        pts += _SCORE_WEIGHTS["flavor_text"]
+    if card.rarity_code:
+        pts += _SCORE_WEIGHTS["rarity_symbol"]
+    return pts
+
+
 def _normalize_number_for_scoring(raw: Optional[str]) -> str:
     """Normalize any printed card number to a bare card ID for equality comparison.
     '029/131' -> '29', 'No.150' -> '150', 'No. 150' -> '150', 'TG15/TG30' -> 'TG15'
@@ -489,12 +510,15 @@ def match_card_from_claude_extract(
             "candidates": [{"card": row[0], "expansion": row[1]} for row in top],
         }
 
-    # Below minimum threshold — no usable match
-    if best_score < 50:
+    # Below minimum threshold — no usable match.
+    # Use 75% of the card's achievable max so sparse cards (no number/HP/artist in DB)
+    # aren't unfairly penalised — a near-perfect name match alone is still a good hit.
+    max_possible = _max_possible_score_v2(best_row[0])
+    if best_score < 0.75 * max_possible:
         return None
 
-    # Ambiguous: top-2 within 10 points and neither is clearly dominant (< 90)
-    if len(scored) >= 2 and (scored[0][1] - scored[1][1]) < 10 and best_score < 90:
+    # Ambiguous: top-2 within 10 points and neither is clearly dominant (< 90% of max)
+    if len(scored) >= 2 and (scored[0][1] - scored[1][1]) < 10 and best_score < 0.90 * max_possible:
         top = [(row, s) for row, s in scored if s >= best_score - 15][:5]
         return {
             "ambiguous": True,
