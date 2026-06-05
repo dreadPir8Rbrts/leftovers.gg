@@ -9,7 +9,7 @@ import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import {
   createTransaction,
   patchInventoryItem,
-  searchCards,
+  searchCardsSmart,
   quickIdentifyCardV2,
   MARKETPLACE_OPTIONS,
   type TransactionType,
@@ -459,6 +459,25 @@ function CardPickerModal({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
+  // Mirrors parseSearchQuery in GlobalSearch — extracts card_num and language_code tokens
+  function parseSearchQuery(raw: string) {
+    const LANG: Record<string, string> = { en: "en", english: "en", ja: "ja", japanese: "ja" };
+    const tokens = raw.trim().split(/\s+/);
+    let card_num: string | undefined;
+    let language_code: string | undefined;
+    const rest: string[] = [];
+    for (const t of tokens) {
+      if (/^\d+(?:\/\d+)?$/.test(t) && !card_num) card_num = t;
+      else if (t.toLowerCase() in LANG && !language_code) language_code = LANG[t.toLowerCase()];
+      else rest.push(t);
+    }
+    return {
+      ...(rest.length > 0 ? { q: rest.join(" ") } : {}),
+      ...(card_num ? { card_num } : {}),
+      ...(language_code ? { language_code } : {}),
+    };
+  }
+
   // ── Camera state ──────────────────────────────────────────
   const [cameraMode, setCameraMode] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -585,7 +604,8 @@ function CardPickerModal({
     setSearching(true);
     setSearchError(null);
     try {
-      const res = await searchCards({ name: query.trim(), limit: 10 });
+      const params = parseSearchQuery(query);
+      const res = await searchCardsSmart({ ...params, broad: true, limit: 15 });
       setResults(res);
       if (res.length === 0) setSearchError("No cards found — try a different name.");
     } catch {
