@@ -10,6 +10,7 @@ routes via asyncio.to_thread().
 Returns dicts with keys: card (CardV2), expansion (ExpansionV2), confidence (float), method (str).
 """
 
+import unicodedata
 from typing import Optional, Dict, Any, List
 
 from rapidfuzz import fuzz, process
@@ -17,6 +18,11 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.catalog_v2 import CardV2, ExpansionV2
+
+
+def _strip_accents(s: str) -> str:
+    """Strip diacritics so 'Pokemon' matches 'Pokémon' in ilike queries."""
+    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
 
 
 def _count_filter(q: Any, count: int) -> Any:
@@ -389,19 +395,48 @@ def _get_v2_candidate_pool(
             pool_a = q2.limit(limit).all()
         rows.extend(pool_a)
 
-    # Pool B: by name ilike — used when number pool is small or absent
+    # Pool B: by name ilike — used when number pool is small or absent.
+    # Uses func.unaccent() on the DB side + _strip_accents() on the query side so
+    # "Pokemon" matches "Pokémon" etc.
     if len(rows) < 10:
         for search_name in [name, en_name]:
             if search_name and len(search_name) >= 2:
+                norm = _strip_accents(search_name)
                 q = base_q().filter(
                     or_(
-                        CardV2.name.ilike(f"%{search_name}%"),
-                        CardV2.en_name.ilike(f"%{search_name}%"),
+                        func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+                        func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
                     )
                 )
                 if lang_code:
                     q = q.filter(CardV2.language_code == lang_code)
                 rows.extend(q.limit(limit).all())
+
+    # Pool C: visible_text fallback — fires only when both name and number are absent.
+    # Searches each text token Claude found on the card against card names so atypical
+    # cards (e.g. vending series Trainer cards with no name box) can still be surfaced
+    # as candidates for the user to pick from.
+    _SKIP_TOKENS = {
+        "pocket monsters card game", "pocket monsters", "pokemon", "card game",
+        "pokemon card", "trainer", "energy", "basic",
+    }
+    if not name and not number:
+        visible_text: List[str] = extracted.get("visible_text") or []
+        for token in visible_text:
+            if not token or len(token) < 4:
+                continue
+            if token.strip().lower() in _SKIP_TOKENS:
+                continue
+            norm = _strip_accents(token.strip())
+            q = base_q().filter(
+                or_(
+                    func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+                    func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
+                )
+            )
+            if lang_code:
+                q = q.filter(CardV2.language_code == lang_code)
+            rows.extend(q.limit(10).all())
 
     # Deduplicate preserving insertion order
     seen: set = set()
@@ -438,6 +473,17 @@ def match_card_from_claude_extract(
     )
 
     best_row, best_score = scored[0]
+
+    # When both name and number were absent, Pool C found candidates via visible_text.
+    # We can't auto-select with confidence — always surface as ambiguous for the user to pick.
+    name_absent = not (extracted.get("name") or "").strip()
+    number_absent = not (extracted.get("number") or "").strip()
+    if name_absent and number_absent:
+        top = [row for row, _ in scored[:5]]
+        return {
+            "ambiguous": True,
+            "candidates": [{"card": row[0], "expansion": row[1]} for row in top],
+        }
 
     # Below minimum threshold — no usable match
     if best_score < 50:

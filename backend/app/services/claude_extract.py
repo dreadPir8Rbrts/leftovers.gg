@@ -19,20 +19,25 @@ from app.db.session import settings
 
 logger = logging.getLogger(__name__)
 
-_EXTRACTION_PROMPT = """You are analyzing a trading card image. Extract every identifiable field and return ONLY a valid JSON object — no preamble, no markdown fences.
+_EXTRACTION_PROMPT = """You are analyzing a Pokémon trading card image. Extract every identifiable field and return ONLY a valid JSON object — no preamble, no markdown fences.
+
+IMPORTANT — atypical cards: Most cards have a name printed in a name box at the top. However, some vintage Trainer or special cards (e.g. old Japanese vending series) have NO name box. For those cards, look for the most prominent identifying text written within the artwork itself — such as text on a machine, sign, building, or label in the illustration — and use that as the name. Do NOT use "POCKET MONSTERS CARD GAME" as the name; that text appears on the bottom border of all cards and is a set/copyright marker, not the card name.
 
 Return this exact structure (use null for fields you cannot read):
 {
-  "name": "card name exactly as printed (any language)",
-  "en_name": "English name — infer if card is in another language, copy name if already English",
-  "number": "card number exactly as printed (e.g. 029/131, No.150, 1/102, TG15/TG30)",
+  "name": "card name as printed in any language — for no-name-box cards, use the most prominent identifying text in the artwork",
+  "en_name": "English name — infer or translate if card is in another language, copy name if already English",
+  "number": "card number exactly as printed (e.g. 029/131, No.150, 1/102, TG15/TG30) — null if absent",
   "hp": 80,
   "artist": "illustrator name if printed",
   "attacks": ["attack name 1", "attack name 2"],
   "flavor_text": "first 10 words of italic flavor text if present",
   "rarity_symbol": "symbol near card number (e.g. ★, ●, ◆, ◇, ☆)",
-  "language": "English or Japanese or other"
-}"""
+  "language": "English or Japanese or other",
+  "visible_text": ["every", "distinct", "text", "string", "visible", "on", "the", "card"]
+}
+
+For visible_text: list every distinct readable text string on the card, largest/most prominent first. Include text in the artwork, name box, attack names, borders, and set info. Exclude single characters and © symbols."""
 
 
 async def extract_card_fields(image_bytes: bytes, media_type: str = "image/jpeg") -> Dict[str, Any]:
@@ -45,7 +50,7 @@ async def extract_card_fields(image_bytes: bytes, media_type: str = "image/jpeg"
 
     message = await client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=400,
+        max_tokens=600,
         messages=[{
             "role": "user",
             "content": [

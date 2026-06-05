@@ -644,9 +644,12 @@ async def quick_identify_v2(
         "ocr_num2": None,
         "hp": extracted.get("hp"),
         "illustrator": extracted.get("artist"),
+        "visible_text": extracted.get("visible_text") or [],
     }
 
-    if not extracted.get("name") and not extracted.get("number"):
+    # Only bail early if Claude found nothing at all — visible_text alone can still
+    # surface ambiguous candidates via Pool C in match_card_from_claude_extract.
+    if not extracted.get("name") and not extracted.get("number") and not extracted.get("visible_text"):
         return {"matched": False, "reason": "no_text_detected", "ocr": ocr_payload}
 
     match = await asyncio.to_thread(match_card_from_claude_extract, extracted, db)
