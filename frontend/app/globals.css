@@ -57,3 +57,17 @@
     box-shadow: 0 0 0 1px hsl(300 50% 50%), 0 0 10px hsl(300 50% 50% / 0.25);
   }
 }
+
+/*
+ * Prevent iOS Safari auto-zoom on input focus.
+ * Safari zooms the page whenever a focused input has font-size < 16px.
+ * This rule ensures all inputs meet the 16px threshold on mobile without
+ * disabling user pinch-to-zoom (unlike maximum-scale=1 in the viewport meta).
+ */
+@media screen and (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
