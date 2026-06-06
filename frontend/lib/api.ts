@@ -1110,6 +1110,29 @@ export async function quickIdentifyCard(file: File): Promise<QuickScanResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Cert lookup — resolves a PSA/BGS/CGC cert number (scanned from QR code) to
+// a card in cards_v2. Returns the same QuickScanResult shape as quick-identify.
+export async function lookupCertCard(
+  certNumber: string,
+  company: string,
+): Promise<QuickScanResult> {
+  const token = await getAccessToken();
+  const res = await fetch(`${API_URL}/api/v1/scans/cert-lookup`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ cert_number: certNumber, company }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Cert lookup failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // Quick Scan v2 — Claude structured extraction + weighted multi-field DB match.
 // Handles Japanese, old-format, and edge-case cards better than v1 OCR.
 // Note: do NOT set Content-Type header — browser sets it with the multipart boundary.

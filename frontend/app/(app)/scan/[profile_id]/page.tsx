@@ -26,12 +26,14 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import jsQR from "jsqr";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Camera } from "lucide-react";
 import {
   quickIdentifyCard,
   quickIdentifyCardV2,
+  lookupCertCard,
   type QuickScanResult,
   type ScanCandidate,
 } from "@/lib/api";
@@ -73,7 +75,8 @@ type CameraStatus =
   | "requesting"   // getUserMedia in progress
   | "live"         // stream active, viewfinder shown
   | "captured"     // frame grabbed, preview shown, ready to scan
-  | "scanning"     // scan API call in progress
+  | "scanning"     // OCR/Claude scan API call in progress
+  | "cert_lookup"  // QR cert number detected, fetching card from PSA/BGS/CGC
   | "denied"       // camera permission denied by user
   | "unavailable"  // getUserMedia not supported — fall back to file input
   | "error";       // unexpected camera error
@@ -89,6 +92,14 @@ export default function ScanPage() {
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
 
+  // ── QR scanning refs ──────────────────────────────────────
+  // qrIntervalRef: polls the live video frame every 300ms with jsQR
+  // certLookupInProgressRef: guard to prevent firing multiple lookups from consecutive QR detections
+  // qrCanvasRef: offscreen canvas reused across QR scan frames (avoids re-allocation)
+  const qrIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const certLookupInProgressRef = useRef(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // ── [V1 STATE] ─────────────────────────────────────────────
   // const fileRef = useRef<HTMLInputElement>(null);
   // const [preview, setPreview] = useState<string | null>(null);
@@ -103,7 +114,7 @@ export default function ScanPage() {
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [smartScanLoading, setSmartScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
-  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | null>(null);
+  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "qr" | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
 
   const { setScanContext } = useScanContext();
@@ -153,6 +164,85 @@ export default function ScanPage() {
       videoRef.current.play().catch(() => {/* muted autoplay blocked — unlikely */});
     }
   }, [cameraStatus]);
+
+  // QR cert detection — polls every 300ms while the camera is live.
+  // Scans the full video frame (not just the guide region) because the QR code
+  // on a graded slab is typically near the bottom/back, not centred.
+  useEffect(() => {
+    if (cameraStatus !== "live") return;
+
+    if (!qrCanvasRef.current) {
+      qrCanvasRef.current = document.createElement("canvas");
+    }
+
+    qrIntervalRef.current = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || certLookupInProgressRef.current) return;
+
+      const canvas = qrCanvasRef.current!;
+      // Downscale to max 640px wide for jsQR performance; QR codes read fine at this res
+      const scale = Math.min(1, 640 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code?.data) {
+        const certInfo = parseCertUrl(code.data);
+        if (certInfo) {
+          certLookupInProgressRef.current = true;
+          handleCertQr(certInfo);
+        }
+      }
+    }, 300);
+
+    return () => {
+      if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraStatus]);
+
+  // Parse a QR code URL to extract a cert number + grading company.
+  // PSA: https://www.psacard.com/cert/{certNumber} or .../cert/{certNumber}/psa
+  // Returns null for non-cert QR codes (e.g. generic URLs, WiFi QRs, etc.)
+  function parseCertUrl(url: string): { certNumber: string; company: string } | null {
+    const psaMatch = url.match(/psacard\.com\/cert\/(\d+)/i);
+    if (psaMatch) return { certNumber: psaMatch[1], company: "psa" };
+    // BGS and CGC support can be added here when their QR URL patterns are confirmed
+    return null;
+  }
+
+  async function handleCertQr({ certNumber, company }: { certNumber: string; company: string }) {
+    if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    setCameraStatus("cert_lookup");
+    setCameraError("");
+
+    try {
+      const result = await lookupCertCard(certNumber, company);
+      if (result.matched && result.card_id) {
+        setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
+        router.push(`/cards/${result.card_id}`);
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
+        setCameraStatus("captured");
+      } else {
+        setNoMatchResult(result);
+        setNoMatchMethod("qr");
+        setCameraStatus("captured");
+      }
+    } catch (err) {
+      setCameraError(
+        err instanceof Error ? err.message : "QR cert lookup failed — please try again."
+      );
+      certLookupInProgressRef.current = false;
+      startCamera();
+    }
+  }
 
   // Grab a single frame from the video, cropped to exactly the guide rectangle.
   //
@@ -226,6 +316,7 @@ export default function ScanPage() {
     setQuickScanLoading(false);
     setSmartScanLoading(false);
     setCameraError("");
+    certLookupInProgressRef.current = false;
     startCamera();
   }
 
@@ -401,7 +492,7 @@ export default function ScanPage() {
 
             {/* Instruction hint */}
             <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-              Line up the card within the guides
+              Line up the card — or scan the cert QR code on the slab
             </p>
 
             {/* "Opening camera…" overlay while getUserMedia resolves */}
@@ -422,6 +513,14 @@ export default function ScanPage() {
             />
           </div>
         </>
+      )}
+
+      {/* ── CERT LOOKUP (QR detected, fetching card) ──────── */}
+      {cameraStatus === "cert_lookup" && (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 gap-4 text-center">
+          <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-sm text-white/80">QR code detected — looking up card…</p>
+        </div>
       )}
 
       {/* ── CAPTURED / SCANNING ────────────────────────────── */}
@@ -502,7 +601,12 @@ export default function ScanPage() {
           {noMatchResult && !noMatchResult.matched && (
             <div className="rounded-lg border border-muted p-4 space-y-1">
               <p className="text-sm font-medium">
-                {noMatchMethod === "smart" ? "Smart Scan (v2)" : "Quick Scan"} — no match found
+                {noMatchMethod === "smart"
+                  ? "Smart Scan (v2)"
+                  : noMatchMethod === "qr"
+                  ? "QR Cert Lookup"
+                  : "Quick Scan"}{" "}
+                — no match found
               </p>
               {noMatchResult.ocr.name && (
                 <p className="text-xs text-muted-foreground">
