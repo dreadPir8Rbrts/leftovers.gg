@@ -292,147 +292,6 @@ async def identify_card(
 
 
 # ---------------------------------------------------------------------------
-# POST /scans/cert-lookup  (graded card QR → cert page → catalog match)
-# ---------------------------------------------------------------------------
-
-class CertLookupRequest(BaseModel):
-    cert_number: str
-    company: str  # "psa" | "bgs" | "cgc"
-
-
-@router.post("/scans/cert-lookup", response_model=QuickIdentifyResponse)
-async def cert_lookup(
-    body: CertLookupRequest,
-    profile: Profile = Depends(get_current_profile),
-    db: Session = Depends(get_db),
-) -> dict:
-    """
-    Look up a graded card by cert number scanned from a QR code.
-    Scrapes the grading company cert page, parses the card description,
-    and matches it against cards_v2. Returns the same QuickIdentifyResponse
-    shape as /scans/quick-identify so the frontend handles results identically.
-
-    Currently supports: PSA. BGS/CGC can be added by extending psa_cert module.
-    """
-    from app.services.psa_cert import fetch_psa_cert
-
-    company = body.company.lower().strip()
-
-    if company != "psa":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Company '{company}' is not yet supported — only PSA is currently available",
-        )
-
-    try:
-        cert_data = await fetch_psa_cert(body.cert_number)
-    except RuntimeError as exc:
-        logger.warning("cert_lookup — fetch/parse failed: %s", exc)
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
-
-    card_name: Optional[str] = cert_data.get("card_name")
-    card_number: Optional[str] = cert_data.get("card_number")
-    language_code: str = cert_data.get("language_code", "en")
-    grade: Optional[str] = cert_data.get("grade")
-    raw_description: str = cert_data.get("raw_description", "")
-
-    ocr_payload = {
-        "name": card_name,
-        "set_number": None,
-        "ocr_num1": card_number,
-        "ocr_num2": None,
-        "hp": None,
-        "illustrator": None,
-        # Extra cert-specific fields (ignored by frontend QuickScanResult.ocr type)
-        "cert_number": body.cert_number,
-        "cert_company": company,
-        "cert_grade": grade,
-        "cert_raw_description": raw_description,
-    }
-
-    if not card_name and not card_number:
-        return {"matched": False, "reason": "no_card_info_from_cert", "ocr": ocr_payload}
-
-    lang_filter = "JA" if language_code == "ja" else "EN"
-    row = None
-
-    # Primary: exact name + number
-    if card_name and card_number:
-        num_variants = list({card_number, card_number.lstrip("0") or "0"})
-        row = (
-            db.query(CardV2, ExpansionV2)
-            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-            .filter(
-                func.lower(CardV2.name) == card_name.lower(),
-                CardV2.number.in_(num_variants),
-                CardV2.game == "pokemon",
-            )
-            .first()
-        )
-
-    # Fallback: name + language only
-    if row is None and card_name:
-        rows = (
-            db.query(CardV2, ExpansionV2)
-            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-            .filter(
-                func.lower(CardV2.name) == card_name.lower(),
-                CardV2.game == "pokemon",
-                CardV2.language_code == lang_filter,
-            )
-            .all()
-        )
-        if len(rows) == 1:
-            row = rows[0]
-        elif len(rows) > 1:
-            candidates = [
-                CandidateCard(
-                    card_id=str(c.id),
-                    name=c.name,
-                    card_num=c.number,
-                    rarity=c.rarity,
-                    image_url=_extract_image_url(c.images),
-                    set_name=e.name,
-                    language_code=c.language_code or "EN",
-                )
-                for c, e in rows[:10]
-            ]
-            return {
-                "matched": False,
-                "ambiguous": True,
-                "candidates": candidates,
-                "ocr": ocr_payload,
-            }
-
-    if row is None:
-        logger.info(
-            "cert_lookup — no catalog match: cert=%s name=%r number=%r lang=%s",
-            body.cert_number, card_name, card_number, lang_filter,
-        )
-        return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_payload}
-
-    card, expansion = row
-    logger.info("cert_lookup — matched: cert=%s card=%s", body.cert_number, card.id)
-
-    return {
-        "matched": True,
-        "confidence": 0.95,
-        "method": f"cert_{company}",
-        "ocr": ocr_payload,
-        "card_id": str(card.id),
-        "name": card.name,
-        "card_num": card.number,
-        "rarity": card.rarity,
-        "image_url": _extract_image_url(card.images),
-        "set_name": expansion.name,
-        "release_date": str(expansion.release_date) if expansion.release_date else None,
-        "series_name": expansion.series,
-        "game": card.game,
-        "language_code": card.language_code,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Schemas
 # ---------------------------------------------------------------------------
 
@@ -831,6 +690,146 @@ async def quick_identify_v2(
         "matched": True,
         "confidence": confidence,
         "method": method,
+        "ocr": ocr_payload,
+        "card_id": str(card.id),
+        "name": card.name,
+        "card_num": card.number,
+        "rarity": card.rarity,
+        "image_url": _extract_image_url(card.images),
+        "set_name": expansion.name,
+        "release_date": str(expansion.release_date) if expansion.release_date else None,
+        "series_name": expansion.series,
+        "game": card.game,
+        "language_code": card.language_code,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /scans/cert-lookup  (graded card QR → cert page → catalog match)
+# Placed after QuickIdentifyResponse and CandidateCard are defined above.
+# POST /scans/cert-lookup does not conflict with GET/WS /scans/{scan_job_id}.
+# ---------------------------------------------------------------------------
+
+class CertLookupRequest(BaseModel):
+    cert_number: str
+    company: str  # "psa" | "bgs" | "cgc"
+
+
+@router.post("/scans/cert-lookup", response_model=QuickIdentifyResponse)
+async def cert_lookup(
+    body: CertLookupRequest,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Look up a graded card by cert number scanned from a QR code.
+    Scrapes the grading company cert page, parses the card description,
+    and matches it against cards_v2. Returns the same QuickIdentifyResponse
+    shape as /scans/quick-identify so the frontend handles results identically.
+
+    Currently supports: PSA. BGS/CGC can be added by extending psa_cert module.
+    """
+    from app.services.psa_cert import fetch_psa_cert
+
+    company = body.company.lower().strip()
+
+    if company != "psa":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Company '{company}' is not yet supported — only PSA is currently available",
+        )
+
+    try:
+        cert_data = await fetch_psa_cert(body.cert_number)
+    except RuntimeError as exc:
+        logger.warning("cert_lookup — fetch/parse failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
+
+    card_name: Optional[str] = cert_data.get("card_name")
+    card_number: Optional[str] = cert_data.get("card_number")
+    language_code: str = cert_data.get("language_code", "en")
+    grade: Optional[str] = cert_data.get("grade")
+    raw_description: str = cert_data.get("raw_description", "")
+
+    ocr_payload = {
+        "name": card_name,
+        "set_number": None,
+        "ocr_num1": card_number,
+        "ocr_num2": None,
+        "hp": None,
+        "illustrator": None,
+        "cert_number": body.cert_number,
+        "cert_company": company,
+        "cert_grade": grade,
+        "cert_raw_description": raw_description,
+    }
+
+    if not card_name and not card_number:
+        return {"matched": False, "reason": "no_card_info_from_cert", "ocr": ocr_payload}
+
+    lang_filter = "JA" if language_code == "ja" else "EN"
+    row = None
+
+    if card_name and card_number:
+        num_variants = list({card_number, card_number.lstrip("0") or "0"})
+        row = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                func.lower(CardV2.name) == card_name.lower(),
+                CardV2.number.in_(num_variants),
+                CardV2.game == "pokemon",
+            )
+            .first()
+        )
+
+    if row is None and card_name:
+        rows = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                func.lower(CardV2.name) == card_name.lower(),
+                CardV2.game == "pokemon",
+                CardV2.language_code == lang_filter,
+            )
+            .all()
+        )
+        if len(rows) == 1:
+            row = rows[0]
+        elif len(rows) > 1:
+            candidates = [
+                CandidateCard(
+                    card_id=str(c.id),
+                    name=c.name,
+                    card_num=c.number,
+                    rarity=c.rarity,
+                    image_url=_extract_image_url(c.images),
+                    set_name=e.name,
+                    language_code=c.language_code or "EN",
+                )
+                for c, e in rows[:10]
+            ]
+            return {
+                "matched": False,
+                "ambiguous": True,
+                "candidates": candidates,
+                "ocr": ocr_payload,
+            }
+
+    if row is None:
+        logger.info(
+            "cert_lookup — no catalog match: cert=%s name=%r number=%r lang=%s",
+            body.cert_number, card_name, card_number, lang_filter,
+        )
+        return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_payload}
+
+    card, expansion = row
+    logger.info("cert_lookup — matched: cert=%s card=%s", body.cert_number, card.id)
+
+    return {
+        "matched": True,
+        "confidence": 0.95,
+        "method": f"cert_{company}",
         "ocr": ocr_payload,
         "card_id": str(card.id),
         "name": card.name,
