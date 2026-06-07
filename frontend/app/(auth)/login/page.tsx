@@ -36,26 +36,46 @@ export default function LoginPage() {
       return;
     }
 
-    // Fetch profile to determine the correct dashboard, then redirect.
-    // If onboarding is already complete, set the cookie so middleware doesn't
-    // intercept and send an already-onboarded user back to /onboarding.
+    const token = data.session?.access_token;
+
+    // Fetch profile to determine where to land.
+    // - 200 + onboarding_complete: true  → set cookie, go to dashboard
+    // - 200 + onboarding_complete: false → go to onboarding wizard
+    // - 404 (no profile row yet)         → go to onboarding wizard
+    // - network error / 5xx              → show error, let user retry
+    //   (do NOT silently redirect to onboarding — that hides the real problem)
+    let res: Response;
     try {
-      const token = data.session?.access_token;
-      const res = await fetch(`${API_URL}/api/v1/profiles/me`, {
+      res = await fetch(`${API_URL}/api/v1/profiles/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (res.ok) {
-        const profile = await res.json();
-        if (profile.onboarding_complete) {
-          document.cookie = "onboarding_complete=1; Path=/; Max-Age=2592000; SameSite=Lax";
-          router.push(`/dashboard/${profile.id}`);
-        } else {
-          router.push("/onboarding");
-        }
-      } else {
-        router.push("/onboarding");
-      }
-    } catch {
+    } catch (err) {
+      // Network-level failure (backend unreachable, DNS, etc.)
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`Could not reach the server — please check your connection and try again. (${msg})`);
+      setLoading(false);
+      return;
+    }
+
+    if (res.status === 404) {
+      // No profile yet — new user who bypassed the signup flow
+      router.push("/onboarding");
+      return;
+    }
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const detail = (body as { detail?: string }).detail ?? `Server error ${res.status}`;
+      setError(`Sign-in succeeded but profile load failed: ${detail}. Please try again.`);
+      setLoading(false);
+      return;
+    }
+
+    const profile = await res.json();
+    if (profile.onboarding_complete) {
+      document.cookie = "onboarding_complete=1; Path=/; Max-Age=2592000; SameSite=Lax";
+      router.push(`/dashboard/${profile.id}`);
+    } else {
       router.push("/onboarding");
     }
   }
