@@ -92,6 +92,11 @@ export default function ScanPage() {
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
 
+  // ── Scan mode toggle ──────────────────────────────────────
+  // "photo" — card guide + shutter button + OCR scan
+  // "qr"    — square guide + auto-detect QR + cert lookup
+  const [scanMode, setScanMode] = useState<"photo" | "qr">("photo");
+
   // ── QR scanning refs ──────────────────────────────────────
   // qrIntervalRef: polls the live video frame every 300ms with jsQR
   // certLookupInProgressRef: guard to prevent firing multiple lookups from consecutive QR detections
@@ -165,11 +170,11 @@ export default function ScanPage() {
     }
   }, [cameraStatus]);
 
-  // QR cert detection — polls every 300ms while the camera is live.
+  // QR cert detection — polls every 300ms while in QR mode with live camera.
   // Scans the full video frame (not just the guide region) because the QR code
   // on a graded slab is typically near the bottom/back, not centred.
   useEffect(() => {
-    if (cameraStatus !== "live") return;
+    if (cameraStatus !== "live" || scanMode !== "qr") return;
 
     if (!qrCanvasRef.current) {
       qrCanvasRef.current = document.createElement("canvas");
@@ -204,7 +209,7 @@ export default function ScanPage() {
       if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraStatus]);
+  }, [cameraStatus, scanMode]);
 
   // Parse a QR code URL to extract a cert number + grading company.
   // PSA: https://www.psacard.com/cert/{certNumber} or .../cert/{certNumber}/psa
@@ -467,15 +472,36 @@ export default function ScanPage() {
               className="absolute inset-0 w-full h-full object-cover"
             />
 
-            {/* Semi-transparent overlay with card-shaped cutout.
+            {/* Mode toggle — pill with Photo / QR Code options */}
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex rounded-full bg-black/60 p-0.5 backdrop-blur-sm">
+              <button
+                onClick={() => setScanMode("photo")}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  scanMode === "photo" ? "bg-white text-black" : "text-white/70"
+                }`}
+              >
+                Photo
+              </button>
+              <button
+                onClick={() => setScanMode("qr")}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  scanMode === "qr" ? "bg-white text-black" : "text-white/70"
+                }`}
+              >
+                QR Code
+              </button>
+            </div>
+
+            {/* Semi-transparent overlay with guide cutout.
+                Photo mode: card shape (5:7). QR mode: square.
                 The box-shadow extends outside the guide div, masked by
                 overflow-hidden on the parent → dark surround, clear centre. */}
             <div className="absolute inset-0 flex items-center justify-center">
               <div
                 className="relative"
                 style={{
-                  width: "62%",
-                  aspectRatio: "5/7",
+                  width: scanMode === "qr" ? "55%" : "62%",
+                  aspectRatio: scanMode === "qr" ? "1/1" : "5/7",
                   boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
                 }}
               >
@@ -492,7 +518,9 @@ export default function ScanPage() {
 
             {/* Instruction hint */}
             <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-              Line up the card — or scan the cert QR code on the slab
+              {scanMode === "qr"
+                ? "Point at the cert QR code on the slab"
+                : "Line up the card within the guides"}
             </p>
 
             {/* "Opening camera…" overlay while getUserMedia resolves */}
@@ -503,15 +531,24 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Shutter button */}
-          <div className="flex items-center justify-center py-6 bg-black">
-            <button
-              onClick={captureFrame}
-              disabled={cameraStatus !== "live"}
-              aria-label="Capture photo"
-              className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
-            />
-          </div>
+          {/* Bottom controls — mode-specific */}
+          {scanMode === "photo" ? (
+            <div className="flex items-center justify-center py-6 bg-black">
+              <button
+                onClick={captureFrame}
+                disabled={cameraStatus !== "live"}
+                aria-label="Capture photo"
+                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-6 bg-black gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              <p className="text-sm text-white/70">
+                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+              </p>
+            </div>
+          )}
         </>
       )}
 
