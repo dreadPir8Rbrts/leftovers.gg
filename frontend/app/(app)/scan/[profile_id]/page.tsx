@@ -101,6 +101,9 @@ export default function ScanPage() {
   // "qr"    — live video viewfinder + auto-detect PSA cert QR code
   const [scanMode, setScanMode] = useState<"photo" | "qr">("photo");
 
+  // Dev-only: force a specific cert lookup method for testing
+  const [devForceMethod, setDevForceMethod] = useState<"psa_api" | "brightdata" | undefined>(undefined);
+
   // ── QR scanning refs ──────────────────────────────────────
   // qrIntervalRef: polls the live video frame every 300ms with jsQR
   // certLookupInProgressRef: guard to prevent firing multiple lookups from consecutive QR detections
@@ -232,7 +235,7 @@ export default function ScanPage() {
     setCameraError("");
 
     try {
-      const result = await lookupCertCard(certNumber, company);
+      const result = await lookupCertCard(certNumber, company, devForceMethod);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
         router.push(`/cards/${result.card_id}`);
@@ -547,12 +550,31 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Scanning indicator */}
-          <div className="flex items-center justify-center py-6 bg-black gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-            <p className="text-sm text-white/70">
-              {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
-            </p>
+          {/* Scanning indicator + dev method toggle */}
+          <div className="flex flex-col items-center gap-3 py-4 bg-black">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              <p className="text-sm text-white/70">
+                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+              </p>
+            </div>
+            {/* Dev: force cert lookup method */}
+            <div className="flex rounded-full bg-white/10 p-0.5 text-xs">
+              {(["auto", "psa_api", "brightdata"] as const).map((m) => {
+                const active = (devForceMethod ?? "auto") === m;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => setDevForceMethod(m === "auto" ? undefined : m)}
+                    className={`px-3 py-1 rounded-full font-medium transition-colors ${
+                      active ? "bg-white text-black" : "text-white/50"
+                    }`}
+                  >
+                    {m === "auto" ? "Auto" : m === "psa_api" ? "PSA API" : "Bright Data"}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </>
       )}

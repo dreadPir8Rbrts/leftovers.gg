@@ -1115,6 +1115,7 @@ export async function quickIdentifyCard(file: File): Promise<QuickScanResult> {
 export async function lookupCertCard(
   certNumber: string,
   company: string,
+  forceMethod?: "psa_api" | "brightdata",
 ): Promise<QuickScanResult> {
   const token = await getAccessToken();
   const res = await fetch(`${API_URL}/api/v1/scans/cert-lookup`, {
@@ -1123,7 +1124,7 @@ export async function lookupCertCard(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ cert_number: certNumber, company }),
+    body: JSON.stringify({ cert_number: certNumber, company, force_method: forceMethod ?? null }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

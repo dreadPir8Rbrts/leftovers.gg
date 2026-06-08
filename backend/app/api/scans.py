@@ -713,6 +713,7 @@ async def quick_identify_v2(
 class CertLookupRequest(BaseModel):
     cert_number: str
     company: str  # "psa" | "bgs" | "cgc"
+    force_method: Optional[str] = None  # "psa_api" | "brightdata" | None (auto)
 
 
 @router.post("/scans/cert-lookup", response_model=QuickIdentifyResponse)
@@ -740,7 +741,7 @@ async def cert_lookup(
         )
 
     try:
-        cert_data = await fetch_psa_cert(body.cert_number)
+        cert_data = await fetch_psa_cert(body.cert_number, force_method=body.force_method)
     except RuntimeError as exc:
         logger.warning("cert_lookup — fetch/parse failed: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))
