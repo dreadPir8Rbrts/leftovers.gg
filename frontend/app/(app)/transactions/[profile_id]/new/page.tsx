@@ -686,10 +686,14 @@ function CardPickerModal({
     if (photoInputRef.current) photoInputRef.current.value = "";
   }
 
-  // Parse a PSA cert QR code URL — returns null for non-cert QR codes
+  // Parse a cert QR code URL — returns null for non-cert QR codes.
+  // PSA: https://www.psacard.com/cert/{certNumber}
+  // TAG: https://my.taggrading.com/card/{certNumber}
   function parseCertUrl(url: string): { certNumber: string; company: string } | null {
-    const psaMatch = url.match(/psacard\.com\/cert\/(\d+)/i);
+    const psaMatch = url.match(/psacard\.com\/cert\/(\w+)/i);
     if (psaMatch) return { certNumber: psaMatch[1], company: "psa" };
+    const tagMatch = url.match(/taggrading\.com\/card\/(\w+)/i);
+    if (tagMatch) return { certNumber: tagMatch[1], company: "tag" };
     return null;
   }
 

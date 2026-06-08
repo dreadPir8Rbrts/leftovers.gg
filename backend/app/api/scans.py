@@ -730,17 +730,21 @@ async def cert_lookup(
     Currently supports: PSA. BGS/CGC can be added by extending psa_cert module.
     """
     from app.services.psa_cert import fetch_psa_cert, PSADailyLimitError
+    from app.services.tag_cert import fetch_tag_cert
 
     company = body.company.lower().strip()
 
-    if company != "psa":
+    if company not in ("psa", "tag"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Company '{company}' is not yet supported — only PSA is currently available",
+            detail=f"Company '{company}' is not yet supported — supported: psa, tag",
         )
 
     try:
-        cert_data = await fetch_psa_cert(body.cert_number)
+        if company == "psa":
+            cert_data = await fetch_psa_cert(body.cert_number)
+        else:
+            cert_data = await fetch_tag_cert(body.cert_number)
     except PSADailyLimitError:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,

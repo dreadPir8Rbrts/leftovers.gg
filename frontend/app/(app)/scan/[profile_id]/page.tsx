@@ -219,11 +219,13 @@ export default function ScanPage() {
 
   // Parse a QR code URL to extract a cert number + grading company.
   // PSA: https://www.psacard.com/cert/{certNumber} or .../cert/{certNumber}/psa
+  // TAG: https://my.taggrading.com/card/{certNumber}
   // Returns null for non-cert QR codes (e.g. generic URLs, WiFi QRs, etc.)
   function parseCertUrl(url: string): { certNumber: string; company: string } | null {
-    const psaMatch = url.match(/psacard\.com\/cert\/(\d+)/i);
+    const psaMatch = url.match(/psacard\.com\/cert\/(\w+)/i);
     if (psaMatch) return { certNumber: psaMatch[1], company: "psa" };
-    // BGS and CGC support can be added here when their QR URL patterns are confirmed
+    const tagMatch = url.match(/taggrading\.com\/card\/(\w+)/i);
+    if (tagMatch) return { certNumber: tagMatch[1], company: "tag" };
     return null;
   }
 

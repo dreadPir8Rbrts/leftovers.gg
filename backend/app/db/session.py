@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     scrydex_team_id: Optional[str] = None
     brightdata_api: Optional[str] = None
     psa_access_token: Optional[str] = None
+    tag_api_key: Optional[str] = None
 
     model_config = {"env_file": ".env"}
 
