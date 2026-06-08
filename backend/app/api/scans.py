@@ -713,7 +713,6 @@ async def quick_identify_v2(
 class CertLookupRequest(BaseModel):
     cert_number: str
     company: str  # "psa" | "bgs" | "cgc"
-    force_method: Optional[str] = None  # "psa_api" | "brightdata" | None (auto)
 
 
 @router.post("/scans/cert-lookup", response_model=QuickIdentifyResponse)
@@ -730,7 +729,7 @@ async def cert_lookup(
 
     Currently supports: PSA. BGS/CGC can be added by extending psa_cert module.
     """
-    from app.services.psa_cert import fetch_psa_cert
+    from app.services.psa_cert import fetch_psa_cert, PSADailyLimitError
 
     company = body.company.lower().strip()
 
@@ -741,7 +740,12 @@ async def cert_lookup(
         )
 
     try:
-        cert_data = await fetch_psa_cert(body.cert_number, force_method=body.force_method)
+        cert_data = await fetch_psa_cert(body.cert_number)
+    except PSADailyLimitError:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Daily request limit reached",
+        )
     except RuntimeError as exc:
         logger.warning("cert_lookup — fetch/parse failed: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc))

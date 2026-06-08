@@ -82,55 +82,31 @@ async def _increment_psa_api_count() -> None:
 # Public entry point
 # ---------------------------------------------------------------------------
 
-async def fetch_psa_cert(cert_number: str, force_method: Optional[str] = None) -> dict:
+class PSADailyLimitError(RuntimeError):
+    """Raised when the PSA public API daily quota (100 req/day) is exhausted."""
+    pass
+
+
+async def fetch_psa_cert(cert_number: str) -> dict:
     """
-    Fetch and parse a PSA cert.
+    Fetch and parse a PSA cert via the PSA public API.
 
-    force_method: "psa_api" | "brightdata" | None
-      None  → automatic: PSA API up to daily limit, then Web Unlocker
-      "psa_api"   → PSA public API only (bypasses counter check)
-      "brightdata" → Web Unlocker only (bypasses PSA API)
-
-    Returns a dict with keys:
-      card_name, card_number, language_code, year, grade (optional),
-      raw_description
-
-    Raises RuntimeError if the chosen path fails.
+    Raises PSADailyLimitError when the 100 req/day quota is exhausted.
+    Raises RuntimeError on other fetch/parse failures.
     """
-    if force_method == "brightdata":
-        logger.info("psa_cert: forced to Web Unlocker for cert %s", cert_number)
-        return await _fetch_via_web_unlocker(cert_number)
+    if not settings.psa_access_token:
+        raise RuntimeError("PSA_ACCESS_TOKEN is not configured on this server")
 
-    if force_method == "psa_api":
-        logger.info("psa_cert: forced to PSA public API for cert %s", cert_number)
-        return await _try_psa_public_api(cert_number)
+    count = await _psa_api_count()
+    if count >= _PSA_DAILY_LIMIT:
+        raise PSADailyLimitError(
+            f"PSA API daily limit reached ({count}/{_PSA_DAILY_LIMIT}) — resets at midnight UTC"
+        )
 
-    # Automatic path: PSA API up to daily limit, then Web Unlocker
-    if settings.psa_access_token:
-        count = await _psa_api_count()
-        if count < _PSA_DAILY_LIMIT:
-            logger.info("psa_cert: using PSA public API (count %d/%d)", count, _PSA_DAILY_LIMIT)
-            try:
-                result = await _try_psa_public_api(cert_number)
-                await _increment_psa_api_count()
-                return result
-            except _PSARateLimitError:
-                logger.warning(
-                    "psa_cert: PSA API returned rate limit for cert %s — falling back to Web Unlocker",
-                    cert_number,
-                )
-            except RuntimeError as exc:
-                logger.warning(
-                    "psa_cert: PSA API failed for cert %s (%s) — falling back to Web Unlocker",
-                    cert_number, exc,
-                )
-        else:
-            logger.info(
-                "psa_cert: daily quota reached (%d/%d) — using Web Unlocker",
-                count, _PSA_DAILY_LIMIT,
-            )
-
-    return await _fetch_via_web_unlocker(cert_number)
+    logger.info("psa_cert: using PSA public API (count %d/%d)", count, _PSA_DAILY_LIMIT)
+    result = await _try_psa_public_api(cert_number)
+    await _increment_psa_api_count()
+    return result
 
 
 # ---------------------------------------------------------------------------

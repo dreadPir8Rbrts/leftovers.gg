@@ -101,8 +101,7 @@ export default function ScanPage() {
   // "qr"    — live video viewfinder + auto-detect PSA cert QR code
   const [scanMode, setScanMode] = useState<"photo" | "qr">("photo");
 
-  // Dev-only: force a specific cert lookup method for testing
-  const [devForceMethod, setDevForceMethod] = useState<"psa_api" | "brightdata" | undefined>(undefined);
+  const [dailyLimitReached, setDailyLimitReached] = useState(false);
 
   // ── QR scanning refs ──────────────────────────────────────
   // qrIntervalRef: polls the live video frame every 300ms with jsQR
@@ -235,7 +234,7 @@ export default function ScanPage() {
     setCameraError("");
 
     try {
-      const result = await lookupCertCard(certNumber, company, devForceMethod);
+      const result = await lookupCertCard(certNumber, company);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
         router.push(`/cards/${result.card_id}`);
@@ -248,11 +247,16 @@ export default function ScanPage() {
         setCameraStatus("captured");
       }
     } catch (err) {
-      setCameraError(
-        err instanceof Error ? err.message : "QR cert lookup failed — please try again."
-      );
-      certLookupInProgressRef.current = false;
-      startCamera();
+      const msg = err instanceof Error ? err.message : "";
+      if (msg === "Daily request limit reached") {
+        setDailyLimitReached(true);
+        certLookupInProgressRef.current = false;
+        startCamera();
+      } else {
+        setCameraError(msg || "QR cert lookup failed — please try again.");
+        certLookupInProgressRef.current = false;
+        startCamera();
+      }
     }
   }
 
@@ -550,31 +554,12 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Scanning indicator + dev method toggle */}
-          <div className="flex flex-col items-center gap-3 py-4 bg-black">
-            <div className="flex items-center gap-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-              <p className="text-sm text-white/70">
-                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
-              </p>
-            </div>
-            {/* Dev: force cert lookup method */}
-            <div className="flex rounded-full bg-white/10 p-0.5 text-xs">
-              {(["auto", "psa_api", "brightdata"] as const).map((m) => {
-                const active = (devForceMethod ?? "auto") === m;
-                return (
-                  <button
-                    key={m}
-                    onClick={() => setDevForceMethod(m === "auto" ? undefined : m)}
-                    className={`px-3 py-1 rounded-full font-medium transition-colors ${
-                      active ? "bg-white text-black" : "text-white/50"
-                    }`}
-                  >
-                    {m === "auto" ? "Auto" : m === "psa_api" ? "PSA API" : "Bright Data"}
-                  </button>
-                );
-              })}
-            </div>
+          {/* Scanning indicator */}
+          <div className="flex items-center justify-center py-6 bg-black gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+            <p className="text-sm text-white/70">
+              {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+            </p>
           </div>
         </>
       )}
@@ -748,6 +733,19 @@ export default function ScanPage() {
           <Camera className="w-12 h-12 text-muted-foreground" />
           <p className="text-sm text-destructive">{cameraError || "Camera error — please try again."}</p>
           <Button variant="outline" onClick={startCamera}>Try again</Button>
+        </div>
+      )}
+
+      {/* ── DAILY LIMIT POPUP ──────────────────────────────── */}
+      {dailyLimitReached && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6">
+          <div className="bg-background rounded-xl shadow-xl p-6 w-full max-w-xs flex flex-col gap-4 text-center">
+            <p className="text-base font-semibold">Daily Request Limit Reached</p>
+            <p className="text-sm text-muted-foreground">
+              The PSA cert lookup limit of 100 requests per day has been reached. Try again after midnight UTC.
+            </p>
+            <Button onClick={() => setDailyLimitReached(false)}>OK</Button>
+          </div>
         </div>
       )}
     </div>
