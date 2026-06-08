@@ -27,7 +27,7 @@ from botocore.exceptions import ClientError
 from PIL import Image as PILImage
 from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 import celery_app as _celery_module
@@ -773,36 +773,16 @@ async def cert_lookup(
         return {"matched": False, "reason": "no_card_info_from_cert", "ocr": ocr_payload}
 
     lang_filter = "JA" if language_code == "ja" else "EN"
+    cert_year: Optional[int] = int(cert_data["year"]) if cert_data.get("year") else None
     row = None
 
-    if card_name and card_number:
-        num_variants = list({card_number, card_number.lstrip("0") or "0"})
-        row = (
-            db.query(CardV2, ExpansionV2)
-            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-            .filter(
-                func.lower(CardV2.name) == card_name.lower(),
-                CardV2.number.in_(num_variants),
-                CardV2.game == "pokemon",
-            )
-            .first()
-        )
-
-    if row is None and card_name:
-        rows = (
-            db.query(CardV2, ExpansionV2)
-            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
-            .filter(
-                func.lower(CardV2.name) == card_name.lower(),
-                CardV2.game == "pokemon",
-                CardV2.language_code == lang_filter,
-            )
-            .all()
-        )
-        if len(rows) == 1:
-            row = rows[0]
-        elif len(rows) > 1:
-            candidates = [
+    def _to_candidates(pairs: list) -> dict:
+        # Sort: language-matching cards first
+        pairs_sorted = sorted(pairs, key=lambda ce: ce[0].language_code != lang_filter)
+        return {
+            "matched": False,
+            "ambiguous": True,
+            "candidates": [
                 CandidateCard(
                     card_id=str(c.id),
                     name=c.name,
@@ -812,19 +792,76 @@ async def cert_lookup(
                     set_name=e.name,
                     language_code=c.language_code or "EN",
                 )
-                for c, e in rows[:10]
-            ]
-            return {
-                "matched": False,
-                "ambiguous": True,
-                "candidates": candidates,
-                "ocr": ocr_payload,
-            }
+                for c, e in pairs_sorted[:10]
+            ],
+            "ocr": ocr_payload,
+        }
+
+    # Stage 1 — match on (name OR en_name) + number, collect all results.
+    # en_name holds the English name for Japanese cards, so PSA's English label
+    # ("MACHOKE") finds the Japanese card (name="ゴーリキー", en_name="Machoke").
+    stage1: list = []
+    if card_name and card_number:
+        num_variants = list({card_number, card_number.lstrip("0") or card_number})
+        stage1 = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                or_(
+                    func.lower(CardV2.name) == card_name.lower(),
+                    func.lower(CardV2.en_name) == card_name.lower(),
+                ),
+                CardV2.number.in_(num_variants),
+                CardV2.game == "pokemon",
+            )
+            .all()
+        )
+
+    # Stage 2 — apply year filter (±1 year) to narrow down ambiguous name+number matches.
+    # This disambiguates e.g. 1998 Japanese Machoke #67 vs 2023 English Machoke #67.
+    if stage1 and cert_year:
+        year_filtered = [
+            (c, e) for c, e in stage1
+            if e.release_date and abs(e.release_date.year - cert_year) <= 1
+        ]
+        if len(year_filtered) == 1:
+            row = year_filtered[0]
+        elif len(year_filtered) > 1:
+            return _to_candidates(year_filtered)
+        # 0 results after year filter → fall through to stage 3 (relax year)
+
+    # Stage 3 — year filter eliminated everything (reissue, wrong year data, etc.).
+    # Use the full stage 1 set: if unique → auto-match, else → candidates.
+    if row is None and stage1:
+        if len(stage1) == 1:
+            row = stage1[0]
+        else:
+            return _to_candidates(stage1)
+
+    # Fallback — no number available; match on (name OR en_name) + language only.
+    if row is None and card_name:
+        name_only = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                or_(
+                    func.lower(CardV2.name) == card_name.lower(),
+                    func.lower(CardV2.en_name) == card_name.lower(),
+                ),
+                CardV2.game == "pokemon",
+                CardV2.language_code == lang_filter,
+            )
+            .all()
+        )
+        if len(name_only) == 1:
+            row = name_only[0]
+        elif len(name_only) > 1:
+            return _to_candidates(name_only)
 
     if row is None:
         logger.info(
-            "cert_lookup — no catalog match: cert=%s name=%r number=%r lang=%s",
-            body.cert_number, card_name, card_number, lang_filter,
+            "cert_lookup — no catalog match: cert=%s name=%r number=%r lang=%s year=%s",
+            body.cert_number, card_name, card_number, lang_filter, cert_year,
         )
         return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_payload}
 
