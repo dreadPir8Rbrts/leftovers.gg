@@ -70,31 +70,34 @@ async function compressImage(file: File, maxDimension = 1400, quality = 0.85): P
 //   | { step: "error"; message: string };
 // ───────────────────────────────────────────────────────────
 
-// V2 camera lifecycle states
+// Camera lifecycle states.
+// "photo_idle" is the default — no camera stream needed (uses native OS camera).
+// "requesting", "live", "denied", "unavailable", "error" are QR-mode-only states.
 type CameraStatus =
-  | "requesting"   // getUserMedia in progress
-  | "live"         // stream active, viewfinder shown
-  | "captured"     // frame grabbed, preview shown, ready to scan
-  | "scanning"     // OCR/Claude scan API call in progress
-  | "cert_lookup"  // QR cert number detected, fetching card from PSA/BGS/CGC
-  | "denied"       // camera permission denied by user
-  | "unavailable"  // getUserMedia not supported — fall back to file input
-  | "error";       // unexpected camera error
+  | "photo_idle"    // photo mode waiting for user to tap Take Photo
+  | "requesting"    // getUserMedia in progress (QR mode)
+  | "live"          // stream active, viewfinder shown (QR mode)
+  | "captured"      // photo obtained, preview shown, ready to scan
+  | "scanning"      // OCR/Claude scan API call in progress
+  | "cert_lookup"   // QR cert number detected, fetching card from PSA/BGS/CGC
+  | "denied"        // camera permission denied (QR mode)
+  | "unavailable"   // getUserMedia not supported (QR mode)
+  | "error";        // unexpected camera error (QR mode)
 
 export default function ScanPage() {
   const router = useRouter();
 
-  // ── V2 camera refs + state ────────────────────────────────
+  // ── Camera refs + state ───────────────────────────────────
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("requesting");
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("photo_idle");
   const [cameraError, setCameraError] = useState("");
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
 
   // ── Scan mode toggle ──────────────────────────────────────
-  // "photo" — card guide + shutter button + OCR scan
-  // "qr"    — square guide + auto-detect QR + cert lookup
+  // "photo" — static card guide + native OS camera (best image quality)
+  // "qr"    — live video viewfinder + auto-detect PSA cert QR code
   const [scanMode, setScanMode] = useState<"photo" | "qr">("photo");
 
   // ── QR scanning refs ──────────────────────────────────────
@@ -112,10 +115,11 @@ export default function ScanPage() {
   // const [state, setState] = useState<ScanState>({ step: "idle" });
   // ───────────────────────────────────────────────────────────
 
-  // Fallback file input for "unavailable" (getUserMedia not in browser)
+  // File input refs
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const fallbackFileRef = useRef<HTMLInputElement>(null);
 
-  // Scan result state — shared between V1 and V2
+  // Scan result state — shared between photo and QR modes
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [smartScanLoading, setSmartScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
@@ -131,7 +135,7 @@ export default function ScanPage() {
     });
   }, [router]);
 
-  // Start the rear camera stream
+  // Start the rear camera stream (QR mode only — photo mode uses native OS camera)
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraStatus("unavailable");
@@ -156,11 +160,10 @@ export default function ScanPage() {
     }
   }, []);
 
-  // Mount: start camera; unmount: stop all tracks
+  // Default mode is photo — no camera stream needed on mount. Cleanup on unmount.
   useEffect(() => {
-    startCamera();
     return () => streamRef.current?.getTracks().forEach((t) => t.stop());
-  }, [startCamera]);
+  }, []);
 
   // Wire stream → video element after "live" transition (ensures DOM is ready)
   useEffect(() => {
@@ -249,68 +252,37 @@ export default function ScanPage() {
     }
   }
 
-  // Grab a single frame from the video, cropped to exactly the guide rectangle.
-  //
-  // The video uses object-cover inside its container, so the native frame is
-  // larger than what's displayed — we must reverse that transform to find which
-  // native pixels sit behind the guide box before cropping.
-  function captureFrame() {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
-
-    const V_w = video.videoWidth;
-    const V_h = video.videoHeight;
-
-    // Rendered size of the video element (same as the container with object-cover)
-    const { width: C_w, height: C_h } = video.getBoundingClientRect();
-
-    // object-cover scale: the larger factor fills the container; the other axis overflows
-    const s = Math.max(C_w / V_w, C_h / V_h);
-    // How many display-pixels the scaled video is offset from the container edge
-    // (negative = the video extends beyond the container on that axis)
-    const offset_x = (C_w - V_w * s) / 2;
-    const offset_y = (C_h - V_h * s) / 2;
-
-    // Guide rectangle in display coords — must exactly match the CSS values
-    const gw = 0.62 * C_w;       // width: "62%"
-    const gh = gw * (7 / 5);     // aspectRatio: "5/7"  → h = w * 7/5
-    const g_x = (C_w - gw) / 2;  // centered horizontally
-    const g_y = (C_h - gh) / 2;  // centered vertically
-
-    // Map guide rectangle to native video pixel coordinates
-    const crop_x = Math.round((g_x - offset_x) / s);
-    const crop_y = Math.round((g_y - offset_y) / s);
-    const crop_w = Math.round(gw / s);
-    const crop_h = Math.round(gh / s);
-
-    // Clamp to video bounds
-    const sx = Math.max(0, crop_x);
-    const sy = Math.max(0, crop_y);
-    const sw = Math.min(crop_w, V_w - sx);
-    const sh = Math.min(crop_h, V_h - sy);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = sw;
-    canvas.height = sh;
-    canvas.getContext("2d")!.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-
-    // Stop stream to save battery while user decides on scan method
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const f = new File([blob], "scan.jpg", { type: "image/jpeg" });
-        setCapturedFile(f);
-        setCapturedPreview(URL.createObjectURL(blob));
-        setCameraStatus("captured");
-      },
-      "image/jpeg",
-      0.95
-    );
+  // Handle photo captured from the native OS camera (photo mode)
+  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setCapturedFile(f);
+    setCapturedPreview(URL.createObjectURL(f));
+    setScanCandidates(null);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
+    setCameraStatus("captured");
+    // Reset so the same photo can be retaken after a retake
+    if (photoInputRef.current) photoInputRef.current.value = "";
   }
 
-  // Reset all state and restart the camera viewfinder
+  // Switch between photo and QR modes.
+  // Photo mode: stop camera stream, return to static guide.
+  // QR mode: start camera stream for live viewfinder.
+  function handleSetScanMode(mode: "photo" | "qr") {
+    if (mode === scanMode) return;
+    setScanMode(mode);
+    certLookupInProgressRef.current = false;
+    if (mode === "qr") {
+      startCamera();
+    } else {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setCameraStatus("photo_idle");
+    }
+  }
+
+  // Reset all state and return to the idle state for the current mode
   function resetScan() {
     if (capturedPreview) URL.revokeObjectURL(capturedPreview);
     setCapturedFile(null);
@@ -322,7 +294,11 @@ export default function ScanPage() {
     setSmartScanLoading(false);
     setCameraError("");
     certLookupInProgressRef.current = false;
-    startCamera();
+    if (scanMode === "qr") {
+      startCamera();
+    } else {
+      setCameraStatus("photo_idle");
+    }
   }
 
   // File input change handler for the "unavailable" fallback path
@@ -420,6 +396,40 @@ export default function ScanPage() {
 
   const isScanning = quickScanLoading || smartScanLoading;
 
+  // ── Shared JSX fragments ──────────────────────────────────
+
+  // Mode toggle pill — shown in both photo_idle and QR viewfinder viewports
+  const modeToggle = (
+    <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex rounded-full bg-black/60 p-0.5 backdrop-blur-sm">
+      <button
+        onClick={() => handleSetScanMode("photo")}
+        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          scanMode === "photo" ? "bg-white text-black" : "text-white/70"
+        }`}
+      >
+        Photo
+      </button>
+      <button
+        onClick={() => handleSetScanMode("qr")}
+        className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          scanMode === "qr" ? "bg-white text-black" : "text-white/70"
+        }`}
+      >
+        QR Code
+      </button>
+    </div>
+  );
+
+  // Corner brackets used in both guide overlays
+  const cornerBrackets = (
+    <>
+      <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
+      <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
+      <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
+      <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+    </>
+  );
+
   // ── [V1 RETURN] ────────────────────────────────────────────
   // return (
   //   <main className="min-h-screen bg-background p-6 max-w-2xl mx-auto">
@@ -456,7 +466,58 @@ export default function ScanPage() {
   return (
     <div className="flex flex-col bg-background">
 
-      {/* ── VIEWFINDER (requesting + live) ─────────────────── */}
+      {/* ── PHOTO MODE IDLE ────────────────────────────────── */}
+      {/* Static card guide + native OS camera trigger. No getUserMedia needed.
+          The OS camera produces full-quality stills with HDR, autofocus, and
+          noise reduction — significantly sharper than a video frame capture. */}
+      {cameraStatus === "photo_idle" && (
+        <>
+          {/* Viewport — same dimensions as QR viewfinder for visual consistency */}
+          <div
+            className="relative w-full bg-black overflow-hidden"
+            style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
+          >
+            {modeToggle}
+
+            {/* Static card-shaped guide */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div
+                className="relative"
+                style={{
+                  width: "62%",
+                  aspectRatio: "5/7",
+                  boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
+                }}
+              >
+                {cornerBrackets}
+              </div>
+            </div>
+
+            <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
+              Center the card within the guides, then take photo
+            </p>
+          </div>
+
+          {/* Shutter button — triggers native OS camera */}
+          <div className="flex items-center justify-center py-6 bg-black">
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoCapture}
+              className="hidden"
+            />
+            <button
+              onClick={() => photoInputRef.current?.click()}
+              aria-label="Take photo"
+              className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg active:scale-95 transition-transform"
+            />
+          </div>
+        </>
+      )}
+
+      {/* ── QR VIEWFINDER (requesting + live) ──────────────── */}
       {(cameraStatus === "requesting" || cameraStatus === "live") && (
         <>
           {/* Camera viewport — 3:4 aspect, capped so it fits on small screens */}
@@ -472,55 +533,24 @@ export default function ScanPage() {
               className="absolute inset-0 w-full h-full object-cover"
             />
 
-            {/* Mode toggle — pill with Photo / QR Code options */}
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex rounded-full bg-black/60 p-0.5 backdrop-blur-sm">
-              <button
-                onClick={() => setScanMode("photo")}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  scanMode === "photo" ? "bg-white text-black" : "text-white/70"
-                }`}
-              >
-                Photo
-              </button>
-              <button
-                onClick={() => setScanMode("qr")}
-                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                  scanMode === "qr" ? "bg-white text-black" : "text-white/70"
-                }`}
-              >
-                QR Code
-              </button>
-            </div>
+            {modeToggle}
 
-            {/* Semi-transparent overlay with guide cutout.
-                Photo mode: card shape (5:7). QR mode: square.
-                The box-shadow extends outside the guide div, masked by
-                overflow-hidden on the parent → dark surround, clear centre. */}
+            {/* Square guide for QR code sticker */}
             <div className="absolute inset-0 flex items-center justify-center">
               <div
                 className="relative"
                 style={{
-                  width: scanMode === "qr" ? "55%" : "62%",
-                  aspectRatio: scanMode === "qr" ? "1/1" : "5/7",
+                  width: "55%",
+                  aspectRatio: "1/1",
                   boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
                 }}
               >
-                {/* Corner bracket — top left */}
-                <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
-                {/* Corner bracket — top right */}
-                <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
-                {/* Corner bracket — bottom left */}
-                <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
-                {/* Corner bracket — bottom right */}
-                <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+                {cornerBrackets}
               </div>
             </div>
 
-            {/* Instruction hint */}
             <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-              {scanMode === "qr"
-                ? "Point at the cert QR code on the slab"
-                : "Line up the card within the guides"}
+              Point at the cert QR code on the slab
             </p>
 
             {/* "Opening camera…" overlay while getUserMedia resolves */}
@@ -531,24 +561,13 @@ export default function ScanPage() {
             )}
           </div>
 
-          {/* Bottom controls — mode-specific */}
-          {scanMode === "photo" ? (
-            <div className="flex items-center justify-center py-6 bg-black">
-              <button
-                onClick={captureFrame}
-                disabled={cameraStatus !== "live"}
-                aria-label="Capture photo"
-                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
-              />
-            </div>
-          ) : (
-            <div className="flex items-center justify-center py-6 bg-black gap-3">
-              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-              <p className="text-sm text-white/70">
-                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
-              </p>
-            </div>
-          )}
+          {/* Scanning indicator */}
+          <div className="flex items-center justify-center py-6 bg-black gap-3">
+            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+            <p className="text-sm text-white/70">
+              {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+            </p>
+          </div>
         </>
       )}
 
@@ -561,30 +580,32 @@ export default function ScanPage() {
       )}
 
       {/* ── CAPTURED / SCANNING ────────────────────────────── */}
-      {(cameraStatus === "captured" || cameraStatus === "scanning") && capturedPreview && (
+      {(cameraStatus === "captured" || cameraStatus === "scanning") && (
         <div className="flex flex-col gap-4 p-4">
-          {/* Captured frame preview */}
-          <div
-            className="relative w-full rounded-xl overflow-hidden border bg-black"
-            style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
-          >
-            <Image
-              src={capturedPreview}
-              alt="Captured card"
-              fill
-              unoptimized
-              sizes="100vw"
-              className="object-contain"
-            />
-            {cameraStatus === "scanning" && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                <p className="text-white text-sm font-medium tracking-wide">Scanning…</p>
-              </div>
-            )}
-          </div>
+          {/* Photo preview — only present in photo mode (QR no-match has no preview) */}
+          {capturedPreview && (
+            <div
+              className="relative w-full rounded-xl overflow-hidden border bg-black"
+              style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
+            >
+              <Image
+                src={capturedPreview}
+                alt="Captured card"
+                fill
+                unoptimized
+                sizes="100vw"
+                className="object-contain"
+              />
+              {cameraStatus === "scanning" && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                  <p className="text-white text-sm font-medium tracking-wide">Scanning…</p>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Scan buttons — hidden while a scan is running */}
-          {cameraStatus === "captured" && !scanCandidates && (
+          {/* Scan buttons — shown when we have a photo to scan */}
+          {cameraStatus === "captured" && !scanCandidates && capturedFile && (
             <div className="flex gap-2">
               <Button
                 variant="secondary"
@@ -669,14 +690,14 @@ export default function ScanPage() {
             <p className="text-sm text-destructive">{cameraError}</p>
           )}
 
-          {/* Retake — restarts the live viewfinder */}
+          {/* Retake — returns to photo_idle or restarts QR viewfinder */}
           <Button variant="outline" onClick={resetScan} className="w-full">
-            Retake photo
+            {scanMode === "qr" ? "Scan again" : "Retake photo"}
           </Button>
         </div>
       )}
 
-      {/* ── PERMISSION DENIED ──────────────────────────────── */}
+      {/* ── PERMISSION DENIED (QR mode) ────────────────────── */}
       {cameraStatus === "denied" && (
         <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 gap-4 text-center">
           <Camera className="w-12 h-12 text-muted-foreground" />
@@ -687,7 +708,7 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ── UNAVAILABLE — file input fallback ──────────────── */}
+      {/* ── UNAVAILABLE — file input fallback (QR mode) ────── */}
       {/* getUserMedia not supported (older browser/WebView). Falls back to the
           V1 file-input approach: OS camera or file picker, then same scan flow. */}
       {cameraStatus === "unavailable" && (
@@ -713,7 +734,7 @@ export default function ScanPage() {
         </div>
       )}
 
-      {/* ── CAMERA ERROR ───────────────────────────────────── */}
+      {/* ── CAMERA ERROR (QR mode) ─────────────────────────── */}
       {cameraStatus === "error" && (
         <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 gap-4 text-center">
           <Camera className="w-12 h-12 text-muted-foreground" />
