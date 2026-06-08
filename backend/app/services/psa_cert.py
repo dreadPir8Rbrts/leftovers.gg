@@ -1,13 +1,9 @@
 """
-PSA cert page scraper.
+PSA cert page scraper via Bright Data Web Unlocker.
 
-Fetches https://www.psacard.com/cert/{cert_number} and extracts:
-  card_name     — e.g. "Machoke"
-  card_number   — e.g. "34"
-  language_code — "ja" or "en"
-  year          — e.g. "1998"
-  grade         — e.g. "9" (when present)
-  raw_description — the full description string from PSA
+Fetches https://www.psacard.com/cert/{cert_number} through the Web Unlocker
+API to bypass bot protection, then parses the HTML to extract:
+  card_name, card_number, language_code, year, grade, raw_description
 
 Multiple extraction strategies are tried in order:
   1. __NEXT_DATA__ JSON blob (Next.js SSR — most reliable when present)
@@ -15,7 +11,7 @@ Multiple extraction strategies are tried in order:
   3. Open Graph meta tags (og:title / og:description)
   4. HTML <title> tag
 
-Returns a dict on success. Raises RuntimeError on fetch/parse failure.
+Raises RuntimeError on fetch/parse failure.
 """
 
 import json
@@ -26,25 +22,20 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
+from app.db.session import settings
+
 logger = logging.getLogger(__name__)
 
 _PSA_CERT_URL = "https://www.psacard.com/cert/{cert_number}"
-
-_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
-        "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
-}
+_BRIGHTDATA_ENDPOINT = "https://api.brightdata.com/request"
+_BRIGHTDATA_ZONE = "cardops_scraper"
 
 _JAPANESE_KEYWORDS = frozenset({"japanese", "japanese-language", "japan"})
 
 
 async def fetch_psa_cert(cert_number: str) -> dict:
     """
-    Fetch and parse a PSA cert page.
+    Fetch and parse a PSA cert page via Bright Data Web Unlocker.
 
     Returns a dict with keys:
       card_name, card_number, language_code, year, grade (optional),
@@ -52,19 +43,29 @@ async def fetch_psa_cert(cert_number: str) -> dict:
 
     Raises RuntimeError if the cert cannot be fetched or parsed.
     """
+    if not settings.brightdata_api:
+        raise RuntimeError("BRIGHTDATA_API is not configured on this server")
+
     url = _PSA_CERT_URL.format(cert_number=cert_number)
-    logger.info("psa_cert: fetching %s", url)
+    logger.info("psa_cert: fetching %s via Web Unlocker", url)
 
     try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=12.0) as client:
-            resp = await client.get(url, headers=_HEADERS)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                _BRIGHTDATA_ENDPOINT,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {settings.brightdata_api}",
+                },
+                json={"zone": _BRIGHTDATA_ZONE, "url": url, "format": "raw"},
+            )
             resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
         raise RuntimeError(
-            f"PSA cert page returned HTTP {exc.response.status_code} for cert {cert_number}"
+            f"Web Unlocker returned HTTP {exc.response.status_code} for cert {cert_number}"
         ) from exc
     except httpx.RequestError as exc:
-        raise RuntimeError(f"PSA cert page request failed: {exc}") from exc
+        raise RuntimeError(f"Web Unlocker request failed: {exc}") from exc
 
     return _parse_psa_page(resp.text, cert_number)
 
@@ -114,7 +115,6 @@ def _parse_psa_page(html: str, cert_number: str) -> dict:
         title_tag = soup.find("title")
         if title_tag:
             raw = title_tag.get_text(strip=True)
-            # Strip common suffixes like " | PSA" or " - PSAcard.com"
             description = re.split(r"\s*[\|–—-]\s*PSA", raw, flags=re.IGNORECASE)[0].strip()
 
     if not description:
@@ -136,7 +136,6 @@ def _extract_from_next_data(data: dict) -> Optional[dict]:
     """Walk __NEXT_DATA__ looking for cert description + grade fields."""
     page_props = data.get("props", {}).get("pageProps", {})
 
-    # Try common key names for the cert object
     for key in ("cert", "certData", "certDetails", "psaCert", "PSACert", "certInfo"):
         cert = page_props.get(key)
         if cert and isinstance(cert, dict):
@@ -154,7 +153,6 @@ def _extract_from_next_data(data: dict) -> Optional[dict]:
             if desc:
                 return {"description": str(desc), "grade": str(grade) if grade else None}
 
-    # Also try top-level pageProps keys in case cert data is inlined
     desc = (
         page_props.get("subject") or page_props.get("description") or
         page_props.get("cardTitle") or page_props.get("title")
@@ -171,38 +169,27 @@ def _parse_psa_description(description: str) -> dict:
     Parse a PSA card description like:
       "1998 Pokemon Japanese Vending Series II #34 Machoke"
     into structured fields.
-
-    Returns: card_name, card_number, language_code, year
     """
     text = description.strip()
 
-    # Year — 4 digits at the start
     year_match = re.match(r"^(\d{4})\b", text)
     year = year_match.group(1) if year_match else None
 
-    # Card number — #NNN or #NNN/TTT (capture NNN only)
     card_num_match = re.search(r"#(\d+)(?:/\d+)?", text)
     card_number = card_num_match.group(1) if card_num_match else None
 
-    # Language
     lower = text.lower()
     language_code = "ja" if any(kw in lower for kw in _JAPANESE_KEYWORDS) else "en"
 
-    # Card name: everything after the last #NNN[/TTT], stripped of set-number suffixes
     card_name: Optional[str] = None
     if card_num_match:
         after_num = text[card_num_match.end():].strip()
-        # Strip leading /NNN (total count after slash, e.g. "/190")
         after_num = re.sub(r"^/\d+\s*", "", after_num).strip()
         if after_num:
-            # Take up to the first " - " (PSA sometimes appends variant info)
             card_name = after_num.split(" - ")[0].strip()
 
-    # Fallback: last word(s) of the description
     if not card_name:
-        # Try to grab the last capitalised word sequence (likely the Pokémon name)
         words = text.split()
-        # Walk backwards to skip short tokens like "PSA", "9", etc.
         name_parts = []
         for w in reversed(words):
             if re.match(r"^[A-Z][a-zA-Z\-\']+$", w):
