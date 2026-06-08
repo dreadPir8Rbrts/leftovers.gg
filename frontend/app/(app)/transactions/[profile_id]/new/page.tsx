@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
+import jsQR from "jsqr";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -11,6 +12,7 @@ import {
   patchInventoryItem,
   searchCardsSmart,
   quickIdentifyCardV2,
+  lookupCertCard,
   getCardPricing,
   getCardScrydexPrices,
   MARKETPLACE_OPTIONS,
@@ -18,6 +20,7 @@ import {
   type TransactionDirection,
   type TransactionCardIn,
   type Card,
+  type ScanCandidate,
   type EstimatedAcquiredPrice,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -26,15 +29,18 @@ import { Button } from "@/components/ui/button";
 // Types
 // ---------------------------------------------------------------------------
 
-// Live camera lifecycle states (used by CardPickerModal scan mode)
+// Camera lifecycle states (used by CardPickerModal scan mode).
+// Photo mode uses "photo_idle" + native OS camera; QR mode uses getUserMedia live stream.
 type CameraStatus =
-  | "requesting"   // getUserMedia in progress
-  | "live"         // stream active, viewfinder shown
-  | "captured"     // frame grabbed, preview shown
+  | "photo_idle"   // photo mode — static guide, waiting for shutter tap
+  | "requesting"   // getUserMedia in progress (QR mode)
+  | "live"         // stream active, viewfinder shown (QR mode)
+  | "captured"     // photo obtained, scan options shown
   | "scanning"     // scan API call in progress
-  | "denied"       // camera permission denied
-  | "unavailable"  // getUserMedia not supported
-  | "error";       // unexpected camera error
+  | "cert_lookup"  // QR cert detected, fetching card
+  | "denied"       // camera permission denied (QR mode)
+  | "unavailable"  // getUserMedia not supported (QR mode)
+  | "error";       // unexpected camera error (QR mode)
 
 interface CardDraft {
   key: string;
@@ -556,13 +562,19 @@ function CardPickerModal({
 
   // ── Camera state ──────────────────────────────────────────
   const [cameraMode, setCameraMode] = useState(false);
+  const [scanMode, setScanMode] = useState<"photo" | "qr">("photo");
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("requesting");
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>("photo_idle");
   const [cameraError, setCameraError] = useState("");
   const [capturedFile, setCapturedFile] = useState<File | null>(null);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
+  const qrIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const certLookupInProgressRef = useRef(false);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Stop stream whenever the modal closes or camera mode exits
   useEffect(() => {
@@ -576,6 +588,44 @@ function CardPickerModal({
       videoRef.current.play().catch(() => {});
     }
   }, [cameraStatus]);
+
+  // QR scanning loop — polls every 300ms; only runs when live stream + QR mode are both active
+  useEffect(() => {
+    if (cameraStatus !== "live" || scanMode !== "qr") return;
+
+    if (!qrCanvasRef.current) {
+      qrCanvasRef.current = document.createElement("canvas");
+    }
+
+    qrIntervalRef.current = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || !video.videoWidth || certLookupInProgressRef.current) return;
+
+      const canvas = qrCanvasRef.current!;
+      const scale = Math.min(1, 640 / video.videoWidth);
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const code = jsQR(imageData.data, imageData.width, imageData.height);
+
+      if (code?.data) {
+        const certInfo = parseCertUrl(code.data);
+        if (certInfo) {
+          certLookupInProgressRef.current = true;
+          handleCertQr(certInfo);
+        }
+      }
+    }, 300);
+
+    return () => {
+      if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cameraStatus, scanMode]);
 
   const startCamera = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {
@@ -603,76 +653,113 @@ function CardPickerModal({
 
   function openCameraMode() {
     setCameraMode(true);
+    setScanMode("photo");
     setScanError(null);
     setCapturedFile(null);
     setCapturedPreview(null);
-    startCamera();
+    setScanCandidates(null);
+    setCameraStatus("photo_idle");
   }
 
   function exitCameraMode() {
+    if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    certLookupInProgressRef.current = false;
     setCameraMode(false);
     setCapturedFile(null);
     if (capturedPreview) URL.revokeObjectURL(capturedPreview);
     setCapturedPreview(null);
     setScanError(null);
+    setScanCandidates(null);
   }
 
-  // Crop the captured frame to the guide rectangle (same math as /scan page)
-  function captureFrame() {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth) return;
+  // Photo returned from native OS camera — go straight to scan options
+  function handlePhotoCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setCapturedFile(f);
+    setCapturedPreview(URL.createObjectURL(f));
+    setScanCandidates(null);
+    setScanError(null);
+    setCameraStatus("captured");
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  }
 
-    const V_w = video.videoWidth;
-    const V_h = video.videoHeight;
-    const { width: C_w, height: C_h } = video.getBoundingClientRect();
+  // Parse a PSA cert QR code URL — returns null for non-cert QR codes
+  function parseCertUrl(url: string): { certNumber: string; company: string } | null {
+    const psaMatch = url.match(/psacard\.com\/cert\/(\d+)/i);
+    if (psaMatch) return { certNumber: psaMatch[1], company: "psa" };
+    return null;
+  }
 
-    const s = Math.max(C_w / V_w, C_h / V_h);
-    const offset_x = (C_w - V_w * s) / 2;
-    const offset_y = (C_h - V_h * s) / 2;
-
-    const gw = 0.62 * C_w;
-    const gh = gw * (7 / 5);
-    const g_x = (C_w - gw) / 2;
-    const g_y = (C_h - gh) / 2;
-
-    const crop_x = Math.round((g_x - offset_x) / s);
-    const crop_y = Math.round((g_y - offset_y) / s);
-    const crop_w = Math.round(gw / s);
-    const crop_h = Math.round(gh / s);
-
-    const sx = Math.max(0, crop_x);
-    const sy = Math.max(0, crop_y);
-    const sw = Math.min(crop_w, V_w - sx);
-    const sh = Math.min(crop_h, V_h - sy);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = sw;
-    canvas.height = sh;
-    canvas.getContext("2d")!.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-
+  async function handleCertQr({ certNumber, company }: { certNumber: string; company: string }) {
+    if (qrIntervalRef.current) clearInterval(qrIntervalRef.current);
     streamRef.current?.getTracks().forEach((t) => t.stop());
-
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) return;
-        const f = new File([blob], "scan.jpg", { type: "image/jpeg" });
-        setCapturedFile(f);
-        setCapturedPreview(URL.createObjectURL(blob));
+    setCameraStatus("cert_lookup");
+    setScanError(null);
+    try {
+      const result = await lookupCertCard(certNumber, company);
+      if (result.matched && result.card_id) {
+        onSelect(
+          {
+            id: result.card_id,
+            name: result.name ?? "",
+            card_num: result.card_num,
+            rarity: result.rarity,
+            image_url: result.image_url,
+            set_name: result.set_name ?? "",
+            release_date: result.release_date,
+            series_name: result.series_name,
+            game: result.game ?? "",
+            language_code: result.language_code ?? "en",
+          },
+          direction
+        );
+        onClose();
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
         setCameraStatus("captured");
-      },
-      "image/jpeg",
-      0.95
-    );
+      } else {
+        setScanError("QR cert lookup found no match — try searching by name.");
+        certLookupInProgressRef.current = false;
+        startCamera();
+      }
+    } catch (err) {
+      setScanError(err instanceof Error ? err.message : "QR cert lookup failed — please try again.");
+      certLookupInProgressRef.current = false;
+      startCamera();
+    }
   }
 
+  // Switch between photo and QR modes
+  function handleSetScanMode(mode: "photo" | "qr") {
+    if (mode === scanMode) return;
+    certLookupInProgressRef.current = false;
+    setScanMode(mode);
+    if (mode === "qr") {
+      startCamera();
+    } else {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setCameraStatus("photo_idle");
+    }
+  }
+
+  // Reset capture state and return to the idle state for the current mode
   function resetCapture() {
     if (capturedPreview) URL.revokeObjectURL(capturedPreview);
     setCapturedFile(null);
     setCapturedPreview(null);
+    setScanCandidates(null);
     setScanError(null);
     setCameraError("");
-    startCamera();
+    certLookupInProgressRef.current = false;
+    if (scanMode === "qr") {
+      startCamera();
+    } else {
+      setCameraStatus("photo_idle");
+    }
   }
 
   async function handleSearch() {
@@ -725,6 +812,36 @@ function CardPickerModal({
 
   // ── Camera mode — full-screen viewfinder ──────────────────
   if (cameraMode) {
+    const modeToggle = (
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex rounded-full bg-black/60 p-0.5 backdrop-blur-sm">
+        <button
+          onClick={() => handleSetScanMode("photo")}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            scanMode === "photo" ? "bg-white text-black" : "text-white/70"
+          }`}
+        >
+          Photo
+        </button>
+        <button
+          onClick={() => handleSetScanMode("qr")}
+          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+            scanMode === "qr" ? "bg-white text-black" : "text-white/70"
+          }`}
+        >
+          QR Code
+        </button>
+      </div>
+    );
+
+    const cornerBrackets = (
+      <>
+        <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
+        <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
+        <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
+        <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+      </>
+    );
+
     return (
       <div className="fixed inset-0 z-50 flex flex-col bg-background">
         {/* Header */}
@@ -741,11 +858,50 @@ function CardPickerModal({
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
         </div>
 
-        {/* Viewfinder */}
+        {/* ── PHOTO MODE IDLE ── */}
+        {cameraStatus === "photo_idle" && (
+          <>
+            <div
+              className="relative w-full bg-black overflow-hidden"
+              style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
+            >
+              {modeToggle}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div
+                  className="relative"
+                  style={{ width: "62%", aspectRatio: "5/7", boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }}
+                >
+                  {cornerBrackets}
+                </div>
+              </div>
+              <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
+                Center the card within the guides, then take photo
+              </p>
+            </div>
+            <div className="flex items-center justify-center py-6 bg-black shrink-0">
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handlePhotoCapture}
+                className="hidden"
+              />
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                aria-label="Take photo"
+                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg active:scale-95 transition-transform"
+              />
+            </div>
+          </>
+        )}
+
+        {/* ── QR VIEWFINDER (requesting + live) ── */}
         {(cameraStatus === "requesting" || cameraStatus === "live") && (
           <>
             <div
-              className="relative flex-1 bg-black overflow-hidden"
+              className="relative w-full bg-black overflow-hidden"
+              style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
             >
               <video
                 ref={videoRef}
@@ -754,23 +910,17 @@ function CardPickerModal({
                 muted
                 className="absolute inset-0 w-full h-full object-cover"
               />
+              {modeToggle}
               <div className="absolute inset-0 flex items-center justify-center">
                 <div
                   className="relative"
-                  style={{
-                    width: "62%",
-                    aspectRatio: "5/7",
-                    boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
-                  }}
+                  style={{ width: "55%", aspectRatio: "1/1", boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }}
                 >
-                  <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
-                  <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
-                  <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
-                  <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+                  {cornerBrackets}
                 </div>
               </div>
               <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-                Line up the card within the guides
+                Point at the cert QR code on the slab
               </p>
               {cameraStatus === "requesting" && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
@@ -778,49 +928,105 @@ function CardPickerModal({
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-center py-6 bg-black shrink-0">
-              <button
-                onClick={captureFrame}
-                disabled={cameraStatus !== "live"}
-                aria-label="Capture photo"
-                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg disabled:opacity-40 active:scale-95 transition-transform"
-              />
+            <div className="flex items-center justify-center py-6 bg-black gap-3 shrink-0">
+              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              <p className="text-sm text-white/70">
+                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+              </p>
             </div>
           </>
         )}
 
-        {/* Captured / scanning */}
-        {(cameraStatus === "captured" || cameraStatus === "scanning") && capturedPreview && (
-          <div className="flex flex-col gap-4 p-4 flex-1 overflow-y-auto">
-            <div
-              className="relative w-full rounded-xl overflow-hidden border bg-black"
-              style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
-            >
-              <Image
-                src={capturedPreview}
-                alt="Captured card"
-                fill
-                unoptimized
-                sizes="100vw"
-                className="object-contain"
-              />
-              {cameraStatus === "scanning" && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                  <p className="text-white text-sm font-medium">Scanning…</p>
-                </div>
-              )}
-            </div>
-            {scanError && <p className="text-sm text-destructive">{scanError}</p>}
-            {cameraStatus === "captured" && (
-              <div className="flex flex-col gap-2">
-                <Button onClick={handleScanCapture} className="w-full">Scan card</Button>
-                <Button variant="outline" onClick={resetCapture} className="w-full">Retake photo</Button>
-              </div>
-            )}
+        {/* ── CERT LOOKUP ── */}
+        {cameraStatus === "cert_lookup" && (
+          <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
+            <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+            <p className="text-sm text-muted-foreground">QR code detected — looking up card…</p>
           </div>
         )}
 
-        {/* Denied */}
+        {/* ── CAPTURED / SCANNING ── */}
+        {(cameraStatus === "captured" || cameraStatus === "scanning") && (
+          <div className="flex flex-col gap-4 p-4 flex-1 overflow-y-auto">
+            {capturedPreview && (
+              <div
+                className="relative w-full rounded-xl overflow-hidden border bg-black"
+                style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
+              >
+                <Image
+                  src={capturedPreview}
+                  alt="Captured card"
+                  fill
+                  unoptimized
+                  sizes="100vw"
+                  className="object-contain"
+                />
+                {cameraStatus === "scanning" && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/55">
+                    <p className="text-white text-sm font-medium">Scanning…</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Ambiguous QR candidates — pick the right card */}
+            {scanCandidates && scanCandidates.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Multiple matches — which card is this?</p>
+                <div className="flex flex-col gap-2">
+                  {scanCandidates.map((c) => (
+                    <button
+                      key={c.card_id}
+                      onClick={() => {
+                        onSelect(
+                          {
+                            id: c.card_id,
+                            name: c.name,
+                            card_num: c.card_num ?? undefined,
+                            rarity: c.rarity ?? undefined,
+                            image_url: c.image_url ?? undefined,
+                            set_name: c.set_name,
+                            release_date: undefined,
+                            series_name: undefined,
+                            game: "",
+                            language_code: c.language_code,
+                          },
+                          direction
+                        );
+                        onClose();
+                      }}
+                      className="flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                    >
+                      {c.image_url && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={c.image_url} alt={c.name} className="h-16 w-11 rounded object-cover shrink-0" />
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium truncate">{c.name}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {scanError && <p className="text-sm text-destructive">{scanError}</p>}
+
+            {/* Scan button — only in photo mode, only when no candidates */}
+            {cameraStatus === "captured" && !scanCandidates && capturedFile && (
+              <Button onClick={handleScanCapture} className="w-full">Scan card</Button>
+            )}
+
+            <Button variant="outline" onClick={resetCapture} className="w-full">
+              {scanMode === "qr" ? "Scan again" : "Retake photo"}
+            </Button>
+          </div>
+        )}
+
+        {/* ── DENIED ── */}
         {cameraStatus === "denied" && (
           <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
             <p className="text-sm text-muted-foreground">
@@ -830,7 +1036,7 @@ function CardPickerModal({
           </div>
         )}
 
-        {/* Error / unavailable */}
+        {/* ── ERROR / UNAVAILABLE ── */}
         {(cameraStatus === "error" || cameraStatus === "unavailable") && (
           <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
             <p className="text-sm text-muted-foreground">

@@ -470,53 +470,38 @@ export default function ScanPage() {
     <div className="flex flex-col bg-background">
 
       {/* ── PHOTO MODE IDLE ────────────────────────────────── */}
-      {/* Static card guide + native OS camera trigger. No getUserMedia needed.
-          The native camera provides full quality (HDR, autofocus, OIS) and its
-          own "Retake" / "Use Photo" UI — no separate review step needed here. */}
       {cameraStatus === "photo_idle" && (
-        <>
-          <div
-            className="relative w-full bg-black overflow-hidden"
-            style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
-          >
-            {modeToggle}
-
-            {/* Static card-shaped guide */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div
-                className="relative"
-                style={{
-                  width: "62%",
-                  aspectRatio: "5/7",
-                  boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)",
-                }}
-              >
-                {cornerBrackets}
-              </div>
-            </div>
-
-            <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-              Center the card within the guides, then take photo
-            </p>
-          </div>
-
-          {/* Shutter button — triggers native OS camera directly */}
-          <div className="flex items-center justify-center py-6 bg-black">
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handlePhotoCapture}
-              className="hidden"
-            />
+        <div className="flex flex-col items-center gap-6 p-8 flex-1">
+          {/* Mode toggle — inline (not absolute) in this simple layout */}
+          <div className="flex rounded-full bg-muted p-0.5">
             <button
-              onClick={() => photoInputRef.current?.click()}
-              aria-label="Take photo"
-              className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg active:scale-95 transition-transform"
-            />
+              onClick={() => handleSetScanMode("photo")}
+              className="px-4 py-1.5 rounded-full text-sm font-medium bg-background shadow text-foreground"
+            >
+              Photo
+            </button>
+            <button
+              onClick={() => handleSetScanMode("qr")}
+              className="px-4 py-1.5 rounded-full text-sm font-medium text-muted-foreground"
+            >
+              QR Code
+            </button>
           </div>
-        </>
+          <input
+            ref={photoInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handlePhotoCapture}
+            className="hidden"
+          />
+          <Button
+            onClick={() => photoInputRef.current?.click()}
+            className="w-full max-w-xs"
+          >
+            Open camera to take photo
+          </Button>
+        </div>
       )}
 
       {/* ── QR VIEWFINDER (requesting + live) ──────────────── */}
