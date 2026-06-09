@@ -21,8 +21,15 @@ from app.models.catalog_v2 import CardV2, ExpansionV2
 
 
 def _strip_accents(s: str) -> str:
-    """Strip diacritics so 'Pokemon' matches 'Pokémon' in ilike queries."""
-    return "".join(c for c in unicodedata.normalize("NFD", s) if unicodedata.category(c) != "Mn")
+    """Strip Latin diacritics (é→e) without touching other scripts.
+    Only removes Mn characters in U+0300–U+036F (Latin Combining Diacritical Marks).
+    Japanese voiced kana (グ, ダ, ボ…) decompose to base+U+3099/U+309A in NFD;
+    those marks are outside the Latin range and are preserved, then re-composed to NFC."""
+    stripped = "".join(
+        c for c in unicodedata.normalize("NFD", s)
+        if not (unicodedata.category(c) == "Mn" and 0x0300 <= ord(c) <= 0x036F)
+    )
+    return unicodedata.normalize("NFC", stripped)
 
 
 def _count_filter(q: Any, count: int) -> Any:
