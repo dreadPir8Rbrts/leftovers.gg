@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -18,6 +19,7 @@ import {
   deleteTransaction,
   MARKETPLACE_OPTIONS,
   type TransactionOut,
+  type TransactionCardOut,
   type TransactionType,
   type LiveDelta,
 } from "@/lib/api";
@@ -31,6 +33,23 @@ function formatDate(dateStr: string): string {
 function marketplaceLabel(value: string | null | undefined): string {
   if (!value) return "—";
   return MARKETPLACE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+}
+
+function buildSideLabel(cards: TransactionCardOut[], cash: number | null | undefined): string {
+  const parts: string[] = [];
+  if (cards.length > 0) {
+    const name = cards[0].card_name;
+    parts.push(`${cards.length} card${cards.length !== 1 ? "s" : ""}${name ? ` (${name}${cards.length > 1 ? "…" : ""})` : ""}`);
+  }
+  if (cash != null) parts.push(`$${cash.toFixed(2)}`);
+  return parts.join(" + ");
+}
+
+function getFeaturedCard(tx: TransactionOut): TransactionCardOut | null {
+  const gained = tx.cards.filter((c) => c.direction === "gained");
+  const pool = gained.length > 0 ? gained : tx.cards.filter((c) => c.direction === "lost");
+  if (pool.length === 0) return null;
+  return pool.reduce((best, c) => (c.estimated_value ?? 0) > (best.estimated_value ?? 0) ? c : best);
 }
 
 function TypeBadge({ type }: { type: TransactionType }) {
@@ -154,88 +173,107 @@ export default function TransactionsPage() {
           {transactions.map((tx) => {
             const gained = tx.cards.filter((c) => c.direction === "gained");
             const lost = tx.cards.filter((c) => c.direction === "lost");
-            const counterparty = tx.counterparty_name ?? "—";
             const liveData = liveDeltaMap[tx.id];
+            const featured = getFeaturedCard(tx);
+            const lostLabel = buildSideLabel(lost, tx.cash_lost);
+            const gainedLabel = buildSideLabel(gained, tx.cash_gained);
+            const summaryLine = `${lostLabel}${lostLabel && gainedLabel ? " → " : ""}${gainedLabel}`;
 
             return (
-              <div
-                key={tx.id}
-                className="border rounded-lg px-4 py-3 flex items-center gap-4 hover:bg-muted/40 transition-colors"
-              >
-                {/* Type + date */}
-                <div className="flex flex-col gap-1 shrink-0 w-24">
-                  <TypeBadge type={tx.transaction_type} />
-                  <span className="text-xs text-muted-foreground">{formatDate(tx.transaction_date)}</span>
+              <div key={tx.id} className="border rounded-lg overflow-hidden hover:bg-muted/40 transition-colors">
+
+                {/* ── MOBILE layout ── */}
+                <div className="md:hidden">
+                  <div className="px-4 pt-3 pb-2">
+                    <p className="text-sm truncate text-muted-foreground">{summaryLine}</p>
+                  </div>
+                  <div className="flex gap-3 px-4 pb-3">
+                    <div className="shrink-0 w-[80px] h-[107px] rounded-lg overflow-hidden bg-muted relative border border-black/10">
+                      {featured?.image_url ? (
+                        <Image src={featured.image_url} alt={featured.card_name ?? ""} fill sizes="80px" className="object-contain p-0.5" />
+                      ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/30">?</div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5">
+                      <div className="flex items-center gap-2">
+                        <TypeBadge type={tx.transaction_type} />
+                        <span className="text-xs text-muted-foreground">{formatDate(tx.transaction_date)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        at time <span className="font-medium"><ValueDisplay value={tx.transaction_value} /></span>
+                      </div>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-sm font-semibold">
+                          {liveDeltasLoading && !liveData ? (
+                            <span className="text-xs text-muted-foreground">loading…</span>
+                          ) : liveData ? (
+                            <LiveDeltaDisplay delta={liveData} />
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">live</span>
+                      </div>
+                      {tx.marketplace && (
+                        <span className="text-xs text-muted-foreground truncate">{marketplaceLabel(tx.marketplace)}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-4 pb-3 pt-2 border-t flex gap-4">
+                    <Link href={`/transactions/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
+                    <button onClick={() => handleDelete(tx.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
+                  </div>
                 </div>
 
-                {/* Summary */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap text-sm">
-                    {/* Lost side */}
-                    {lost.length > 0 && (
-                      <span className="text-muted-foreground">
-                        {lost.length} card{lost.length !== 1 ? "s" : ""}
-                        {lost[0].card_name ? ` (${lost[0].card_name}${lost.length > 1 ? "…" : ""})` : ""}
-                      </span>
-                    )}
-                    {tx.cash_lost != null && (
-                      <span className="text-muted-foreground">${tx.cash_lost.toFixed(2)}</span>
-                    )}
-                    {(lost.length > 0 || tx.cash_lost != null) && (
-                      <span className="text-muted-foreground">→</span>
-                    )}
-                    {/* Gained side */}
-                    {gained.length > 0 && (
-                      <span>
-                        {gained.length} card{gained.length !== 1 ? "s" : ""}
-                        {gained[0].card_name ? ` (${gained[0].card_name}${gained.length > 1 ? "…" : ""})` : ""}
-                      </span>
-                    )}
-                    {tx.cash_gained != null && (
-                      <span>${tx.cash_gained.toFixed(2)}</span>
-                    )}
-                  </div>
-                  <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                    <span>{marketplaceLabel(tx.marketplace)}</span>
-                    {counterparty !== "—" && <span>· {counterparty}</span>}
-                  </div>
-                </div>
-
-                {/* Value column: at-time on top, live delta below */}
-                <div className="shrink-0 flex flex-col items-end gap-1">
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span>at time</span>
-                    <span className="font-medium">
-                      <ValueDisplay value={tx.transaction_value} />
-                    </span>
-                  </div>
-                  <div className="text-sm font-semibold">
-                    {liveDeltasLoading && !liveData ? (
-                      <span className="text-xs text-muted-foreground">loading…</span>
-                    ) : liveData ? (
-                      <LiveDeltaDisplay delta={liveData} />
+                {/* ── DESKTOP layout ── */}
+                <div className="hidden md:flex items-center gap-4 px-4 py-3">
+                  {/* Card image */}
+                  <div className="shrink-0 w-[48px] h-[64px] rounded-lg overflow-hidden bg-muted relative border border-black/10">
+                    {featured?.image_url ? (
+                      <Image src={featured.image_url} alt={featured.card_name ?? ""} fill sizes="48px" className="object-contain p-0.5" />
                     ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
+                      <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/30">?</div>
                     )}
                   </div>
-                  <span className="text-[10px] text-muted-foreground uppercase tracking-wide">live</span>
+                  {/* Type + date */}
+                  <div className="flex flex-col gap-1 shrink-0 w-24">
+                    <TypeBadge type={tx.transaction_type} />
+                    <span className="text-xs text-muted-foreground">{formatDate(tx.transaction_date)}</span>
+                  </div>
+                  {/* Summary */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{summaryLine}</p>
+                    {tx.marketplace && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{marketplaceLabel(tx.marketplace)}</p>
+                    )}
+                  </div>
+                  {/* Values */}
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <span>at time</span>
+                      <span className="font-medium"><ValueDisplay value={tx.transaction_value} /></span>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-sm font-semibold">
+                        {liveDeltasLoading && !liveData ? (
+                          <span className="text-xs text-muted-foreground">loading…</span>
+                        ) : liveData ? (
+                          <LiveDeltaDisplay delta={liveData} />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground uppercase tracking-wide">live</span>
+                    </div>
+                  </div>
+                  {/* Actions */}
+                  <div className="shrink-0 flex gap-2">
+                    <Link href={`/transactions/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
+                    <button onClick={() => handleDelete(tx.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
+                  </div>
                 </div>
 
-                {/* Actions */}
-                <div className="shrink-0 flex gap-2">
-                  <Link
-                    href={`/transactions/${tx.id}`}
-                    className="text-xs text-muted-foreground hover:text-foreground underline"
-                  >
-                    View
-                  </Link>
-                  <button
-                    onClick={() => handleDelete(tx.id)}
-                    className="text-xs text-muted-foreground hover:text-destructive"
-                  >
-                    Delete
-                  </button>
-                </div>
               </div>
             );
           })}
