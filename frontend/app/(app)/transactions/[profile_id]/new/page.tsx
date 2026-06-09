@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
-import jsQR from "jsqr";
+import { HTMLCanvasElementLuminanceSource, HybridBinarizer, BinaryBitmap, QRCodeReader } from "@zxing/library";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -609,13 +609,17 @@ function CardPickerModal({
       if (!ctx) return;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: "attemptBoth",
-      });
+      let qrText: string | null = null;
+      try {
+        const luminance = new HTMLCanvasElementLuminanceSource(canvas);
+        const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
+        qrText = new QRCodeReader().decode(bitmap).getText();
+      } catch {
+        // NotFoundException — no QR code in this frame, normal case
+      }
 
-      if (code?.data) {
-        const certInfo = parseCertUrl(code.data);
+      if (qrText) {
+        const certInfo = parseCertUrl(qrText);
         if (certInfo) {
           certLookupInProgressRef.current = true;
           handleCertQr(certInfo);
