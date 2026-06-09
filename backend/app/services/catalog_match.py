@@ -315,7 +315,8 @@ def _score_candidate_v2(
     extracted: Dict[str, Any], card: CardV2, expansion: ExpansionV2
 ) -> float:
     """Score a single (CardV2, ExpansionV2) candidate against Claude-extracted fields.
-    Returns 0–100. Weights sum to 100 so the result is directly a percentage."""
+    Returns 0–100 as a percentage of the card's own achievable maximum, so sparse
+    cards (missing HP/artist/attacks in DB) compete fairly with rich ones."""
     score = 0.0
 
     # Name (35 pts): cross-check extracted name + en_name against DB name + en_name
@@ -371,7 +372,10 @@ def _score_candidate_v2(
         if extracted["rarity_symbol"].strip() == card.rarity_code.strip():
             score += _SCORE_WEIGHTS["rarity_symbol"]
 
-    return round(score, 2)
+    max_possible = _max_possible_score_v2(card)
+    if max_possible == 0:
+        return 0.0
+    return round((score / max_possible) * 100, 2)
 
 
 def _get_v2_candidate_pool(
@@ -419,6 +423,23 @@ def _get_v2_candidate_pool(
                 q2 = q2.filter(CardV2.language_code == lang_code)
             pool_a = q2.limit(limit).all()
         rows.extend(pool_a)
+
+    # Pool A-prime: number + name intersection — always fires when both signals present.
+    # Ensures the correct card is in the pool even when Pool A saturates on a common
+    # number (e.g. 140 Japanese cards share number "69").
+    if number_variants and (name or en_name):
+        for search_name in [n for n in [name, en_name] if n and len(n) >= 2]:
+            norm = _strip_accents(search_name)
+            q = base_q().filter(
+                CardV2.number.in_(number_variants),
+                or_(
+                    func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+                    func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
+                ),
+            )
+            if lang_code:
+                q = q.filter(CardV2.language_code == lang_code)
+            rows.extend(q.limit(20).all())
 
     # Pool B: by name ilike — used when number pool is small or absent.
     # Uses func.unaccent() on the DB side + _strip_accents() on the query side so
@@ -511,14 +532,13 @@ def match_card_from_claude_extract(
         }
 
     # Below minimum threshold — no usable match.
-    # Use 75% of the card's achievable max so sparse cards (no number/HP/artist in DB)
-    # aren't unfairly penalised — a near-perfect name match alone is still a good hit.
-    max_possible = _max_possible_score_v2(best_row[0])
-    if best_score < 0.75 * max_possible:
+    # Scores are normalized 0–100 (fraction of each card's own achievable max), so the
+    # threshold is a flat percentage regardless of how many fields the card has in the DB.
+    if best_score < 75:
         return None
 
-    # Ambiguous: top-2 within 10 points and neither is clearly dominant (< 90% of max)
-    if len(scored) >= 2 and (scored[0][1] - scored[1][1]) < 10 and best_score < 0.90 * max_possible:
+    # Ambiguous: top-2 within 10 points and neither is clearly dominant (< 90% match)
+    if len(scored) >= 2 and (scored[0][1] - scored[1][1]) < 10 and best_score < 90:
         top = [(row, s) for row, s in scored if s >= best_score - 15][:5]
         return {
             "ambiguous": True,
