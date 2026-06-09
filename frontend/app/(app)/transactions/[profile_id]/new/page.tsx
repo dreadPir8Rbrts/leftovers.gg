@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
-import { HTMLCanvasElementLuminanceSource, HybridBinarizer, BinaryBitmap, QRCodeReader } from "@zxing/library";
+import {
+  HTMLCanvasElementLuminanceSource,
+  InvertedLuminanceSource,
+  HybridBinarizer,
+  BinaryBitmap,
+  MultiFormatReader,
+  DecodeHintType,
+  BarcodeFormat,
+} from "@zxing/library";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -574,6 +582,8 @@ function CardPickerModal({
   const qrIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const certLookupInProgressRef = useRef(false);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const qrDecodingRef = useRef(false);
+  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   // Stop stream whenever the modal closes or camera mode exits
@@ -597,9 +607,18 @@ function CardPickerModal({
       qrCanvasRef.current = document.createElement("canvas");
     }
 
-    qrIntervalRef.current = setInterval(() => {
+    if (!zxingReaderRef.current) {
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      const r = new MultiFormatReader();
+      r.setHints(hints);
+      zxingReaderRef.current = r;
+    }
+
+    qrIntervalRef.current = setInterval(async () => {
       const video = videoRef.current;
-      if (!video || !video.videoWidth || certLookupInProgressRef.current) return;
+      if (!video || !video.videoWidth || certLookupInProgressRef.current || qrDecodingRef.current) return;
 
       const canvas = qrCanvasRef.current!;
       const scale = Math.min(1, 1280 / video.videoWidth);
@@ -610,12 +629,30 @@ function CardPickerModal({
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       let qrText: string | null = null;
-      try {
-        const luminance = new HTMLCanvasElementLuminanceSource(canvas);
-        const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
-        qrText = new QRCodeReader().decode(bitmap).getText();
-      } catch {
-        // NotFoundException — no QR code in this frame, normal case
+
+      if ("BarcodeDetector" in window) {
+        qrDecodingRef.current = true;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+          const codes = await detector.detect(canvas);
+          if (codes.length > 0) qrText = codes[0].rawValue as string;
+        } catch { /* not supported or no code found */ } finally {
+          qrDecodingRef.current = false;
+        }
+      }
+
+      if (!qrText) {
+        try {
+          const reader = zxingReaderRef.current!;
+          const luminance = new HTMLCanvasElementLuminanceSource(canvas);
+          for (const src of [luminance, new InvertedLuminanceSource(luminance)]) {
+            try {
+              qrText = reader.decodeWithState(new BinaryBitmap(new HybridBinarizer(src))).getText();
+              if (qrText) break;
+            } catch { /* try next */ }
+          }
+        } catch { /* no QR in frame */ }
       }
 
       if (qrText) {

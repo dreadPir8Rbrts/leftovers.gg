@@ -26,7 +26,15 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { HTMLCanvasElementLuminanceSource, HybridBinarizer, BinaryBitmap, QRCodeReader } from "@zxing/library";
+import {
+  HTMLCanvasElementLuminanceSource,
+  InvertedLuminanceSource,
+  HybridBinarizer,
+  BinaryBitmap,
+  MultiFormatReader,
+  DecodeHintType,
+  BarcodeFormat,
+} from "@zxing/library";
 import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Camera } from "lucide-react";
@@ -110,6 +118,8 @@ export default function ScanPage() {
   const qrIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const certLookupInProgressRef = useRef(false);
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const qrDecodingRef = useRef(false); // prevents re-entrant async BarcodeDetector calls
+  const zxingReaderRef = useRef<MultiFormatReader | null>(null);
 
   // ── [V1 STATE] ─────────────────────────────────────────────
   // const fileRef = useRef<HTMLInputElement>(null);
@@ -186,9 +196,19 @@ export default function ScanPage() {
       qrCanvasRef.current = document.createElement("canvas");
     }
 
-    qrIntervalRef.current = setInterval(() => {
+    // Initialise ZXing MultiFormatReader once with TRY_HARDER — reused every frame.
+    if (!zxingReaderRef.current) {
+      const hints = new Map<DecodeHintType, unknown>();
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.QR_CODE]);
+      hints.set(DecodeHintType.TRY_HARDER, true);
+      const r = new MultiFormatReader();
+      r.setHints(hints);
+      zxingReaderRef.current = r;
+    }
+
+    qrIntervalRef.current = setInterval(async () => {
       const video = videoRef.current;
-      if (!video || !video.videoWidth || certLookupInProgressRef.current) return;
+      if (!video || !video.videoWidth || certLookupInProgressRef.current || qrDecodingRef.current) return;
 
       const canvas = qrCanvasRef.current!;
       // Cap at 1280px — logo QR codes (e.g. TAG) need higher resolution to decode.
@@ -200,12 +220,32 @@ export default function ScanPage() {
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       let qrText: string | null = null;
-      try {
-        const luminance = new HTMLCanvasElementLuminanceSource(canvas);
-        const bitmap = new BinaryBitmap(new HybridBinarizer(luminance));
-        qrText = new QRCodeReader().decode(bitmap).getText();
-      } catch {
-        // NotFoundException — no QR code in this frame, normal case
+
+      // Path 1: native BarcodeDetector (Chrome/Android) — handles logo QR codes natively.
+      if ("BarcodeDetector" in window) {
+        qrDecodingRef.current = true;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
+          const codes = await detector.detect(canvas);
+          if (codes.length > 0) qrText = codes[0].rawValue as string;
+        } catch { /* not supported or no code found */ } finally {
+          qrDecodingRef.current = false;
+        }
+      }
+
+      // Path 2: ZXing MultiFormatReader with TRY_HARDER + inverted luminance fallback.
+      if (!qrText) {
+        try {
+          const reader = zxingReaderRef.current!;
+          const luminance = new HTMLCanvasElementLuminanceSource(canvas);
+          for (const src of [luminance, new InvertedLuminanceSource(luminance)]) {
+            try {
+              qrText = reader.decodeWithState(new BinaryBitmap(new HybridBinarizer(src))).getText();
+              if (qrText) break;
+            } catch { /* try next */ }
+          }
+        } catch { /* no QR in frame */ }
       }
 
       if (qrText) {
