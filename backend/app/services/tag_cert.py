@@ -46,6 +46,15 @@ async def fetch_tag_cert(cert_number: str) -> dict:
                     "Origin": _TAG_ORIGIN,
                     "Referer": f"{_TAG_ORIGIN}/",
                     "Accept": "application/json, text/plain, */*",
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "User-Agent": (
+                        "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                        "AppleWebKit/605.1.15 (KHTML, like Gecko) "
+                        "Version/17.0 Mobile/15E148 Safari/604.1"
+                    ),
+                    "sec-fetch-site": "same-site",
+                    "sec-fetch-mode": "cors",
+                    "sec-fetch-dest": "empty",
                 },
             )
     except httpx.RequestError as exc:
