@@ -13,7 +13,7 @@ import {
 } from "@zxing/library";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ArrowUpDown } from "lucide-react";
 import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import {
   createTransaction,
@@ -1328,6 +1328,12 @@ export default function NewTransactionPage() {
     fetchEstimatedValue(key, card.id, "ungraded", "NM", "", "", setCards);
   }, []);
 
+  function handleFlip() {
+    setCards((prev) => prev.map((c) => ({ ...c, direction: c.direction === "lost" ? "gained" : "lost" })));
+    setCashLost(cashGained);
+    setCashGained(cashLost);
+  }
+
   async function handleSave() {
     setSaving(true);
     setSaveError(null);
@@ -1431,6 +1437,14 @@ export default function NewTransactionPage() {
               <span className="text-[10px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
                 {txTypeLabel[txType]}
               </span>
+              <button
+                type="button"
+                onClick={handleFlip}
+                title="Flip sides"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowUpDown className="h-3.5 w-3.5" />
+              </button>
               <div className="flex-1 h-px bg-border" />
             </div>
 
