@@ -408,24 +408,8 @@ def _get_v2_candidate_pool(
 
     rows: List[tuple] = []
 
-    # Pool A: by card number (tightest signal)
-    if number_variants:
-        q = base_q().filter(CardV2.number.in_(number_variants))
-        if lang_code:
-            q = q.filter(CardV2.language_code == lang_code)
-        if card_count is not None:
-            q = _count_filter(q, card_count)
-        pool_a = q.limit(limit).all()
-        # Retry without card_count if empty (total/printed_total may be NULL)
-        if not pool_a and card_count is not None:
-            q2 = base_q().filter(CardV2.number.in_(number_variants))
-            if lang_code:
-                q2 = q2.filter(CardV2.language_code == lang_code)
-            pool_a = q2.limit(limit).all()
-        rows.extend(pool_a)
-
-    # Pool A-prime: number + name intersection — always fires when both signals present.
-    # Ensures the correct card is in the pool even when Pool A saturates on a common
+    # Pool A-prime: number + name intersection — runs first so these targeted results
+    # are guaranteed to be within unique[:limit] even when Pool A saturates on a common
     # number (e.g. 140 Japanese cards share number "69").
     if number_variants and (name or en_name):
         for search_name in [n for n in [name, en_name] if n and len(n) >= 2]:
@@ -440,6 +424,22 @@ def _get_v2_candidate_pool(
             if lang_code:
                 q = q.filter(CardV2.language_code == lang_code)
             rows.extend(q.limit(20).all())
+
+    # Pool A: by card number — fills remaining slots with same-number candidates for scoring
+    if number_variants:
+        q = base_q().filter(CardV2.number.in_(number_variants))
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        if card_count is not None:
+            q = _count_filter(q, card_count)
+        pool_a = q.limit(limit).all()
+        # Retry without card_count if empty (total/printed_total may be NULL)
+        if not pool_a and card_count is not None:
+            q2 = base_q().filter(CardV2.number.in_(number_variants))
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            pool_a = q2.limit(limit).all()
+        rows.extend(pool_a)
 
     # Pool B: by name ilike — used when number pool is small or absent.
     # Uses func.unaccent() on the DB side + _strip_accents() on the query side so
