@@ -1547,7 +1547,7 @@ export default function NewTransactionPage() {
         <div className="flex flex-col" style={{ minHeight: "calc(100svh - 8rem)" }}>
           <div className="flex-1 space-y-4">
             <PersonRow
-              label="You"
+              label="You give"
               cards={cards.filter((c) => c.direction === "lost")}
               cashValue={cashLost}
               menuOpen={menuOpen === "lost"}
@@ -1577,7 +1577,7 @@ export default function NewTransactionPage() {
             </div>
 
             <PersonRow
-              label="Other party"
+              label="Other party gives"
               cards={cards.filter((c) => c.direction === "gained")}
               cashValue={cashGained}
               menuOpen={menuOpen === "gained"}

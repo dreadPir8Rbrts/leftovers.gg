@@ -138,15 +138,21 @@ def _compute_value(
     return round(gained - lost, 2)
 
 
+def _card_image_url(images) -> Optional[str]:
+    if not images or not isinstance(images, list):
+        return None
+    return images[0].get("small") or images[0].get("large")
+
+
 def _build_card_out(tc: TransactionCard, card: Optional[CardV2]) -> dict:
     return {
         "id": tc.id,
         "direction": tc.direction,
         "card_v2_id": tc.card_v2_id,
         "card_name": card.name if card else None,
-        "card_num": card.card_num if card else None,
-        "set_name": card.set_name if card else None,
-        "image_url": card.image_url if card else None,
+        "card_num": card.number if card else None,
+        "set_name": card.expansion.name if card else None,
+        "image_url": _card_image_url(card.images) if card else None,
         "inventory_item_id": tc.inventory_item_id,
         "condition_type": tc.condition_type,
         "condition_ungraded": tc.condition_ungraded,
