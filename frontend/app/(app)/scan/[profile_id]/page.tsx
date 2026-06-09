@@ -603,11 +603,14 @@ export default function ScanPage() {
           </div>
 
           {/* Scanning indicator */}
-          <div className="flex items-center justify-center py-6 bg-black gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-            <p className="text-sm text-white/70">
-              {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
-            </p>
+          <div className="flex flex-col items-center justify-center py-4 bg-black gap-2">
+            <div className="flex items-center gap-3">
+              <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
+              <p className="text-sm text-white/70">
+                {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
+              </p>
+            </div>
+            <p className="text-xs text-white/40">PSA graded cards only</p>
           </div>
         </>
       )}
