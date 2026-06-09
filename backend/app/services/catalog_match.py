@@ -375,7 +375,10 @@ def _score_candidate_v2(
     max_possible = _max_possible_score_v2(card)
     if max_possible == 0:
         return 0.0
-    return round((score / max_possible) * 100, 2)
+    # Normalized 0-100; tiny raw-score fraction breaks ties so a card with more
+    # confirmed-matching fields (e.g. rarity "♦" confirmed vs rarity null) wins
+    # over an equally-sparse card that just had nothing to mismatch.
+    return round((score / max_possible) * 100 + score * 0.001, 4)
 
 
 def _get_v2_candidate_pool(
