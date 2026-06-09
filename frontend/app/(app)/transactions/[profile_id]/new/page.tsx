@@ -63,6 +63,13 @@ interface CardDraft {
   inventoryItemId?: string;
 }
 
+interface ConditionParams {
+  conditionType: "ungraded" | "graded";
+  conditionUngraded: string;
+  gradingCompany: string;
+  grade: string;
+}
+
 const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "SGC", "HGA", "other"];
 const HALF_GRADES = ["10","9.5","9","8.5","8","7.5","7","6.5","6","5.5","5","4.5","4","3.5","3","2.5","2","1.5","1"];
@@ -111,6 +118,7 @@ async function fetchEstimatedValue(
   gradingCompany: string,
   grade: string,
   setCards: React.Dispatch<React.SetStateAction<CardDraft[]>>,
+  isRetry = false,
 ): Promise<void> {
   try {
     let value = "";
@@ -144,6 +152,10 @@ async function fetchEstimatedValue(
       setCards((prev) =>
         prev.map((c) => c.key === key ? { ...c, estimatedValue: value } : c)
       );
+    } else if (!isRetry) {
+      setTimeout(() => {
+        fetchEstimatedValue(key, cardId, conditionType, conditionUngraded, gradingCompany, grade, setCards, true);
+      }, 3000);
     }
   } catch {
     // silently fail — user can enter value manually via card chip edit
@@ -534,13 +546,32 @@ function CashModal({
 // Card picker modal
 // ---------------------------------------------------------------------------
 
+// Mirrors parseSearchQuery in GlobalSearch — extracts card_num and language_code tokens
+function parseSearchQuery(raw: string) {
+  const LANG: Record<string, string> = { en: "en", english: "en", ja: "ja", japanese: "ja" };
+  const tokens = raw.trim().split(/\s+/);
+  let card_num: string | undefined;
+  let language_code: string | undefined;
+  const rest: string[] = [];
+  for (const t of tokens) {
+    if (/^\d+(?:\/\d+)?$/.test(t) && !card_num) card_num = t;
+    else if (t.toLowerCase() in LANG && !language_code) language_code = LANG[t.toLowerCase()];
+    else rest.push(t);
+  }
+  return {
+    ...(rest.length > 0 ? { q: rest.join(" ") } : {}),
+    ...(card_num ? { card_num } : {}),
+    ...(language_code ? { language_code } : {}),
+  };
+}
+
 function CardPickerModal({
   direction,
   onSelect,
   onClose,
 }: {
   direction: TransactionDirection;
-  onSelect: (card: Card, direction: TransactionDirection) => void;
+  onSelect: (card: Card, direction: TransactionDirection, condition: ConditionParams) => void;
   onClose: () => void;
 }) {
   // ── Search state ──────────────────────────────────────────
@@ -548,25 +579,11 @@ function CardPickerModal({
   const [results, setResults] = useState<Card[]>([]);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-
-  // Mirrors parseSearchQuery in GlobalSearch — extracts card_num and language_code tokens
-  function parseSearchQuery(raw: string) {
-    const LANG: Record<string, string> = { en: "en", english: "en", ja: "ja", japanese: "ja" };
-    const tokens = raw.trim().split(/\s+/);
-    let card_num: string | undefined;
-    let language_code: string | undefined;
-    const rest: string[] = [];
-    for (const t of tokens) {
-      if (/^\d+(?:\/\d+)?$/.test(t) && !card_num) card_num = t;
-      else if (t.toLowerCase() in LANG && !language_code) language_code = LANG[t.toLowerCase()];
-      else rest.push(t);
-    }
-    return {
-      ...(rest.length > 0 ? { q: rest.join(" ") } : {}),
-      ...(card_num ? { card_num } : {}),
-      ...(language_code ? { language_code } : {}),
-    };
-  }
+  const [pendingCard, setPendingCard] = useState<Card | null>(null);
+  const [pickerConditionType, setPickerConditionType] = useState<"ungraded" | "graded">("graded");
+  const [pickerConditionUngraded, setPickerConditionUngraded] = useState("NM");
+  const [pickerGradingCompany, setPickerGradingCompany] = useState("psa");
+  const [pickerGrade, setPickerGrade] = useState("10");
 
   // ── Camera state ──────────────────────────────────────────
   const [cameraMode, setCameraMode] = useState(false);
@@ -748,22 +765,21 @@ function CardPickerModal({
     try {
       const result = await lookupCertCard(certNumber, company);
       if (result.matched && result.card_id) {
-        onSelect(
-          {
-            id: result.card_id,
-            name: result.name ?? "",
-            card_num: result.card_num,
-            rarity: result.rarity,
-            image_url: result.image_url,
-            set_name: result.set_name ?? "",
-            release_date: result.release_date,
-            series_name: result.series_name,
-            game: result.game ?? "",
-            language_code: result.language_code ?? "en",
-          },
-          direction
-        );
-        onClose();
+        const certCard: Card = {
+          id: result.card_id,
+          name: result.name ?? "",
+          card_num: result.card_num,
+          rarity: result.rarity,
+          image_url: result.image_url,
+          set_name: result.set_name ?? "",
+          release_date: result.release_date,
+          series_name: result.series_name,
+          game: result.game ?? "",
+          language_code: result.language_code ?? "en",
+        };
+        getCardPricing(certCard.id).catch(() => {});
+        setPendingCard(certCard);
+        exitCameraMode();
       } else if (result.ambiguous && result.candidates?.length) {
         setScanCandidates(result.candidates);
         setCameraStatus("captured");
@@ -809,21 +825,29 @@ function CardPickerModal({
     }
   }
 
-  async function handleSearch() {
-    if (!query.trim()) return;
-    setSearching(true);
-    setSearchError(null);
-    try {
-      const params = parseSearchQuery(query);
-      const res = await searchCardsSmart({ ...params, broad: true, limit: 15 });
-      setResults(res);
-      if (res.length === 0) setSearchError("No cards found — try a different name.");
-    } catch {
-      setSearchError("Search failed. Please try again.");
-    } finally {
-      setSearching(false);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setResults([]);
+      setSearchError(null);
+      return;
     }
-  }
+    const id = setTimeout(async () => {
+      setSearching(true);
+      setSearchError(null);
+      try {
+        const params = parseSearchQuery(trimmed);
+        const res = await searchCardsSmart({ ...params, broad: true, limit: 15 });
+        setResults(res);
+        if (res.length === 0) setSearchError("No cards found — try a different name.");
+      } catch {
+        setSearchError("Search failed. Please try again.");
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
+    return () => clearTimeout(id);
+  }, [query]);
 
   async function handleScanCapture() {
     if (!capturedFile) return;
@@ -845,8 +869,9 @@ function CardPickerModal({
           game: result.game ?? "",
           language_code: result.language_code ?? "en",
         };
-        onSelect(card, direction);
-        onClose();
+        getCardPricing(card.id).catch(() => {});
+        setPendingCard(card);
+        exitCameraMode();
       } else {
         setScanError("Card not recognised — retake or search by name.");
         setCameraStatus("captured");
@@ -1025,22 +1050,21 @@ function CardPickerModal({
                     <button
                       key={c.card_id}
                       onClick={() => {
-                        onSelect(
-                          {
-                            id: c.card_id,
-                            name: c.name,
-                            card_num: c.card_num ?? undefined,
-                            rarity: c.rarity ?? undefined,
-                            image_url: c.image_url ?? undefined,
-                            set_name: c.set_name,
-                            release_date: undefined,
-                            series_name: undefined,
-                            game: "",
-                            language_code: c.language_code,
-                          },
-                          direction
-                        );
-                        onClose();
+                        const candidate: Card = {
+                          id: c.card_id,
+                          name: c.name,
+                          card_num: c.card_num ?? undefined,
+                          rarity: c.rarity ?? undefined,
+                          image_url: c.image_url ?? undefined,
+                          set_name: c.set_name,
+                          release_date: undefined,
+                          series_name: undefined,
+                          game: "",
+                          language_code: c.language_code,
+                        };
+                        getCardPricing(candidate.id).catch(() => {});
+                        setPendingCard(candidate);
+                        exitCameraMode();
                       }}
                       className="flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
                     >
@@ -1100,6 +1124,114 @@ function CardPickerModal({
     );
   }
 
+  // ── Condition picker — after a card is selected ───────────
+  if (pendingCard) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setPendingCard(null)}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              ← Back
+            </button>
+            <h2 className="text-sm font-semibold">Card condition</h2>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
+          </div>
+
+          <div className="flex items-center gap-3 py-2 border-b">
+            {pendingCard.image_url && (
+              <div className="relative w-10 h-[3.2rem] rounded overflow-hidden bg-muted shrink-0">
+                <Image src={pendingCard.image_url} alt={pendingCard.name} fill sizes="40px" className="object-contain" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate">{pendingCard.name}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {pendingCard.set_name}{pendingCard.card_num ? ` · #${pendingCard.card_num}` : ""}
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Condition</label>
+                <select
+                  value={pickerConditionType}
+                  onChange={(e) => setPickerConditionType(e.target.value as "ungraded" | "graded")}
+                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                >
+                  <option value="ungraded">Ungraded</option>
+                  <option value="graded">Graded</option>
+                </select>
+              </div>
+              {pickerConditionType === "ungraded" ? (
+                <div>
+                  <label className="text-xs text-muted-foreground">Grade</label>
+                  <select
+                    value={pickerConditionUngraded}
+                    onChange={(e) => setPickerConditionUngraded(e.target.value)}
+                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  >
+                    {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs text-muted-foreground">Company</label>
+                  <select
+                    value={pickerGradingCompany}
+                    onChange={(e) => {
+                      const co = e.target.value;
+                      setPickerGradingCompany(co);
+                      const opts = GRADE_OPTIONS[co.toLowerCase()] ?? GRADE_OPTIONS.other;
+                      setPickerGrade(opts[0]);
+                    }}
+                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  >
+                    {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            {pickerConditionType === "graded" && (
+              <div>
+                <label className="text-xs text-muted-foreground">Grade</label>
+                <select
+                  value={pickerGrade}
+                  onChange={(e) => setPickerGrade(e.target.value)}
+                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                >
+                  {(GRADE_OPTIONS[pickerGradingCompany.toLowerCase()] ?? GRADE_OPTIONS.other).map((g) => (
+                    <option key={g} value={g}>{g}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          <Button
+            onClick={() => {
+              onSelect(pendingCard, direction, {
+                conditionType: pickerConditionType,
+                conditionUngraded: pickerConditionUngraded,
+                gradingCompany: pickerGradingCompany,
+                grade: pickerGrade,
+              });
+              onClose();
+            }}
+            className="w-full"
+          >
+            Add card
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Search mode (default) ─────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1111,24 +1243,18 @@ function CardPickerModal({
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
         </div>
 
-        <div className="flex gap-2">
+        <div className="relative">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="Search by card name…"
-            className="flex-1 border rounded-md px-3 py-2 text-base sm:text-sm bg-background"
+            className="w-full border rounded-md px-3 py-2 text-base sm:text-sm bg-background"
             autoFocus
           />
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={searching}
-            className="px-3 py-2 text-sm rounded-md bg-foreground text-background hover:bg-foreground/80 disabled:opacity-50"
-          >
-            {searching ? "…" : "Search"}
-          </button>
+          {searching && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
+          )}
         </div>
 
         <button
@@ -1147,7 +1273,10 @@ function CardPickerModal({
               <li key={card.id}>
                 <button
                   type="button"
-                  onClick={() => { onSelect(card, direction); onClose(); }}
+                  onClick={() => {
+                    getCardPricing(card.id).catch(() => {});
+                    setPendingCard(card);
+                  }}
                   className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted text-left"
                 >
                   {card.image_url && (
@@ -1311,21 +1440,20 @@ export default function NewTransactionPage() {
   const txType = useMemo(() => inferTxType(cards, cashLost, cashGained), [cards, cashLost, cashGained]);
   const autoValue = computeValue(cashGained, cashLost, cards);
 
-  const addCard = useCallback((card: Card, direction: TransactionDirection) => {
+  const addCard = useCallback((card: Card, direction: TransactionDirection, condition: ConditionParams) => {
     const key = `${card.id}-${Date.now()}`;
     setCards((prev) => [...prev, {
       key,
       card,
       direction,
-      conditionType: "ungraded",
-      conditionUngraded: "NM",
-      gradingCompany: "",
-      grade: "",
+      conditionType: condition.conditionType,
+      conditionUngraded: condition.conditionUngraded,
+      gradingCompany: condition.gradingCompany,
+      grade: condition.grade,
       estimatedValue: "",
       quantity: 1,
     }]);
-    // Default condition is NM ungraded — fetch TCGPlayer NM estimate immediately
-    fetchEstimatedValue(key, card.id, "ungraded", "NM", "", "", setCards);
+    fetchEstimatedValue(key, card.id, condition.conditionType, condition.conditionUngraded, condition.gradingCompany, condition.grade, setCards);
   }, []);
 
   function handleFlip() {
@@ -1545,7 +1673,7 @@ export default function NewTransactionPage() {
       {pickerDirection && (
         <CardPickerModal
           direction={pickerDirection}
-          onSelect={(card, direction) => { addCard(card, direction); setPickerDirection(null); }}
+          onSelect={(card, dir, condition) => { addCard(card, dir, condition); setPickerDirection(null); }}
           onClose={() => setPickerDirection(null)}
         />
       )}
@@ -1553,8 +1681,26 @@ export default function NewTransactionPage() {
         <CardEditModal
           draft={editingDraft}
           onSave={(patch) => {
-            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...patch } : c));
+            const conditionChanged =
+              patch.conditionType !== editingDraft.conditionType ||
+              patch.conditionUngraded !== editingDraft.conditionUngraded ||
+              patch.gradingCompany !== editingDraft.gradingCompany ||
+              patch.grade !== editingDraft.grade;
+            const finalPatch = conditionChanged ? { ...patch, estimatedValue: "" } : patch;
+            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...finalPatch } : c));
             setEditingDraft(null);
+            if (conditionChanged) {
+              const merged = { ...editingDraft, ...patch };
+              fetchEstimatedValue(
+                editingDraft.key,
+                editingDraft.card.id,
+                merged.conditionType as "ungraded" | "graded",
+                merged.conditionUngraded ?? "",
+                merged.gradingCompany ?? "",
+                merged.grade ?? "",
+                setCards,
+              );
+            }
           }}
           onClose={() => setEditingDraft(null)}
         />
