@@ -11,6 +11,7 @@ Used by POST /scans/quick-identify-v2.
 import base64
 import json
 import logging
+import time
 from typing import Any, Dict
 
 import anthropic
@@ -48,6 +49,7 @@ async def extract_card_fields(image_bytes: bytes, media_type: str = "image/jpeg"
     client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
+    t0 = time.perf_counter()
     message = await client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=600,
@@ -59,6 +61,7 @@ async def extract_card_fields(image_bytes: bytes, media_type: str = "image/jpeg"
             ],
         }],
     )
+    logger.info("claude_extract — anthropic api call: %.3fs", time.perf_counter() - t0)
 
     raw = message.content[0].text.strip()
     logger.info("claude_extract — raw response: %r", raw)

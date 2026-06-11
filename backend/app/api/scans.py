@@ -15,6 +15,7 @@ import json
 import uuid
 import asyncio
 import logging
+import time
 from datetime import datetime
 from typing import List, Optional
 
@@ -620,7 +621,10 @@ async def quick_identify_v2(
     if not image.content_type or not image.content_type.startswith("image/"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
 
+    t_start = time.perf_counter()
     image_bytes = await image.read()
+    t_read = time.perf_counter()
+    logger.info("quick_identify_v2 — image read: %.3fs (%d bytes)", t_read - t_start, len(image_bytes))
 
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 10 MB")
@@ -631,8 +635,10 @@ async def quick_identify_v2(
         logger.error("quick_identify_v2 — extraction error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Extraction service error — please try again")
 
+    t_extract = time.perf_counter()
     logger.info(
-        "quick_identify_v2 — extracted: name=%r en_name=%r number=%r hp=%r artist=%r",
+        "quick_identify_v2 — claude extraction: %.3fs | name=%r en_name=%r number=%r hp=%r artist=%r",
+        t_extract - t_read,
         extracted.get("name"), extracted.get("en_name"), extracted.get("number"),
         extracted.get("hp"), extracted.get("artist"),
     )
@@ -654,6 +660,8 @@ async def quick_identify_v2(
         return {"matched": False, "reason": "no_text_detected", "ocr": ocr_payload}
 
     match = await asyncio.to_thread(match_card_from_claude_extract, extracted, db)
+    t_match = time.perf_counter()
+    logger.info("quick_identify_v2 — db match: %.3fs | total: %.3fs", t_match - t_extract, t_match - t_start)
 
     if not match:
         logger.info("quick_identify_v2 — no catalog match: %s", extracted)
