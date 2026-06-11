@@ -49,7 +49,7 @@ async def extract_card_fields(image_bytes: bytes, media_type: str = "image/jpeg"
     b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
 
     message = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-haiku-4-5-20251001",
         max_tokens=600,
         messages=[{
             "role": "user",
