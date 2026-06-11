@@ -856,6 +856,14 @@ export interface LiveDelta {
   cards_total: number;
 }
 
+export async function getTransactionLiveDelta(id: string): Promise<LiveDelta> {
+  const res = await fetch(`${API_URL}/api/v1/transactions/${id}/live-delta`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load live delta: ${res.status}`);
+  return res.json();
+}
+
 export async function getTransactionLiveDeltas(): Promise<LiveDelta[]> {
   const res = await fetch(`${API_URL}/api/v1/transactions/live-deltas`, {
     headers: await authHeaders(),

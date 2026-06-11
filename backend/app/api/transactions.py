@@ -485,6 +485,53 @@ def get_live_deltas(
     return result
 
 
+@router.get("/transactions/{transaction_id}/live-delta")
+def get_transaction_live_delta(
+    transaction_id: str,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Recompute the live value delta for a single transaction at current market prices."""
+    tx = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.profile_id == profile.id,
+        Transaction.deleted_at.is_(None),
+    ).first()
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    card_rows = (
+        db.query(TransactionCard)
+        .filter(TransactionCard.transaction_id == tx.id)
+        .all()
+    )
+
+    prefs = _get_or_create_preferences(db, profile.id)
+    gained = float(tx.cash_gained) if tx.cash_gained is not None else 0.0
+    lost = float(tx.cash_lost) if tx.cash_lost is not None else 0.0
+    cards_priced = 0
+
+    for tc in card_rows:
+        val = _estimate_for_card(
+            db, prefs,
+            tc.card_v2_id, tc.condition_type, tc.condition_ungraded,
+            tc.grading_company, tc.grade, variant=tc.variant,
+        )
+        if val is not None:
+            cards_priced += 1
+            if tc.direction == "gained":
+                gained += val * tc.quantity
+            else:
+                lost += val * tc.quantity
+
+    return {
+        "transaction_id": tx.id,
+        "live_delta": round(gained - lost, 2),
+        "cards_priced": cards_priced,
+        "cards_total": len(card_rows),
+    }
+
+
 @router.get("/transactions/{transaction_id}", response_model=TransactionOut)
 def get_transaction(
     transaction_id: str,

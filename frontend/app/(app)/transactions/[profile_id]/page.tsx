@@ -221,7 +221,7 @@ export default function TransactionsPage() {
                     </div>
                   </div>
                   <div className="px-4 pb-3 pt-2 border-t flex gap-4">
-                    <Link href={`/transactions/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
+                    <Link href={`/transactions/${params.profile_id}/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
                     <button onClick={() => handleDelete(tx.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
                   </div>
                 </div>
@@ -269,7 +269,7 @@ export default function TransactionsPage() {
                   </div>
                   {/* Actions */}
                   <div className="shrink-0 flex gap-2">
-                    <Link href={`/transactions/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
+                    <Link href={`/transactions/${params.profile_id}/${tx.id}`} className="text-xs text-muted-foreground hover:text-foreground underline">View</Link>
                     <button onClick={() => handleDelete(tx.id)} className="text-xs text-muted-foreground hover:text-destructive">Delete</button>
                   </div>
                 </div>
