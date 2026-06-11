@@ -48,8 +48,8 @@ import {
 import { useScanContext } from "@/lib/stores/useScanContext";
 
 // Resize + compress an image client-side before upload.
-// Quick Scan OCR: 1200px, 0.70 — text is readable at lower quality
-// Smart Scan v2:  1200px, 0.80
+// Quick Scan OCR: 800px, 0.70 — text is readable at lower quality
+// Smart Scan v2:  800px, 0.70
 async function compressImage(file: File, maxDimension = 1400, quality = 0.85): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(maxDimension / bitmap.width, maxDimension / bitmap.height, 1);
@@ -401,7 +401,7 @@ export default function ScanPage() {
     setCameraError("");
     setCameraStatus("scanning");
     try {
-      const compressed = await compressImage(capturedFile, 1200, 0.70);
+      const compressed = await compressImage(capturedFile, 800, 0.70);
       const result = await quickIdentifyCard(compressed);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
@@ -431,7 +431,7 @@ export default function ScanPage() {
     setCameraError("");
     setCameraStatus("scanning");
     try {
-      const compressed = await compressImage(capturedFile, 1200, 0.80);
+      const compressed = await compressImage(capturedFile, 800, 0.70);
       const result = await quickIdentifyCardV2(compressed);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);

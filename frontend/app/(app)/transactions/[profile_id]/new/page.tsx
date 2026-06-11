@@ -80,7 +80,7 @@ const GRADE_OPTIONS: Record<string, string[]> = {
   other: ["10","9","8","7","6","5","4","3","2","1"],
 };
 
-async function compressImage(file: File, maxDimension = 1200, quality = 0.80): Promise<File> {
+async function compressImage(file: File, maxDimension = 800, quality = 0.70): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(maxDimension / bitmap.width, maxDimension / bitmap.height, 1);
   const w = Math.round(bitmap.width * scale);
