@@ -48,7 +48,7 @@ function ValueLine({ value, label }: { value: number | null | undefined; label: 
     <div className="flex items-center justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
       <span className={`font-semibold ${isPositive ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
-        {isPositive ? "+" : ""}${Math.abs(value).toFixed(2)}
+        {isPositive ? "+" : "-"}${Math.abs(value).toFixed(2)}
       </span>
     </div>
   );
@@ -222,7 +222,7 @@ export default function TransactionDetailPage() {
               )}
             </span>
             <span className={`font-semibold ${liveData.live_delta >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
-              {isPartial ? "~" : ""}{liveData.live_delta >= 0 ? "+" : ""}${Math.abs(liveData.live_delta).toFixed(2)}
+              {isPartial ? "~" : ""}{liveData.live_delta >= 0 ? "+" : "-"}${Math.abs(liveData.live_delta).toFixed(2)}
             </span>
           </div>
         ) : (

@@ -70,7 +70,7 @@ function ValueDisplay({ value }: { value: number | null | undefined }) {
   const isPositive = value >= 0;
   return (
     <span className={isPositive ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}>
-      {isPositive ? "+" : ""}${Math.abs(value).toFixed(2)}
+      {isPositive ? "+" : "-"}${Math.abs(value).toFixed(2)}
     </span>
   );
 }
@@ -82,7 +82,7 @@ function LiveDeltaDisplay({ delta }: { delta: LiveDelta }) {
   const isPartial = delta.cards_total > 0 && delta.cards_priced < delta.cards_total;
   return (
     <span className={isPositive ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}>
-      {isPartial ? "~" : ""}{isPositive ? "+" : ""}${Math.abs(val).toFixed(2)}
+      {isPartial ? "~" : ""}{isPositive ? "+" : "-"}${Math.abs(val).toFixed(2)}
       {isPartial && (
         <span className="text-xs text-muted-foreground ml-1">
           ({delta.cards_priced}/{delta.cards_total})
