@@ -73,6 +73,12 @@ export default function ProfilePage() {
   const [uploading, setUploading] = useState<"background" | "avatar" | null>(null);
   const [activeTab, setActiveTab] = useState<"inventory" | "wishlist" | "shows">("inventory");
   const [search, setSearch] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterType, setFilterType] = useState("");
+  const [filterStatus, setFilterStatus] = useState("");
+  const [filterGradingCo, setFilterGradingCo] = useState("");
+  const [filterLanguage, setFilterLanguage] = useState("");
+  const [filterAskingPrice, setFilterAskingPrice] = useState("");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingWishlistItemId, setEditingWishlistItemId] = useState<string | null>(null);
   const [showPricingModal, setShowPricingModal] = useState(false);
@@ -190,17 +196,41 @@ export default function ProfilePage() {
     setEditingItemId(null);
   }
 
+  const languageOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.language_code).filter(Boolean))).sort() as string[],
+    [inventory]
+  );
+
+  const activeFilterCount = [filterType, filterStatus, filterGradingCo, filterLanguage, filterAskingPrice].filter(Boolean).length;
+
+  function clearFilters() {
+    setFilterType("");
+    setFilterStatus("");
+    setFilterGradingCo("");
+    setFilterLanguage("");
+    setFilterAskingPrice("");
+  }
+
   const filteredInventory = useMemo(() => {
-    if (!search.trim()) return inventory;
-    const q = search.toLowerCase();
-    return inventory.filter(
-      (item) =>
-        (item.card_name ?? "").toLowerCase().includes(q) ||
-        (item.set_name ?? "").toLowerCase().includes(q) ||
-        (item.series_name ?? "").toLowerCase().includes(q) ||
-        (item.card_num ?? "").includes(q)
-    );
-  }, [inventory, search]);
+    let result = inventory;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (item) =>
+          (item.card_name ?? "").toLowerCase().includes(q) ||
+          (item.set_name ?? "").toLowerCase().includes(q) ||
+          (item.series_name ?? "").toLowerCase().includes(q) ||
+          (item.card_num ?? "").includes(q)
+      );
+    }
+    if (filterType) result = result.filter((i) => i.condition_type === filterType);
+    if (filterStatus) result = result.filter((i) => i.card_status === filterStatus);
+    if (filterGradingCo) result = result.filter((i) => i.grading_company === filterGradingCo);
+    if (filterLanguage) result = result.filter((i) => i.language_code === filterLanguage);
+    if (filterAskingPrice === "yes") result = result.filter((i) => i.asking_price != null);
+    if (filterAskingPrice === "no") result = result.filter((i) => i.asking_price == null);
+    return result;
+  }, [inventory, search, filterType, filterStatus, filterGradingCo, filterLanguage, filterAskingPrice]);
 
   if (loadingProfile || currentUserProfile === undefined) {
     return (
@@ -537,17 +567,95 @@ export default function ProfilePage() {
         <div className="border border-t-0 rounded-b-lg p-4">
           {activeTab === "inventory" && (
             <>
-              <input
-                type="text"
-                placeholder="Search by card name, set, series, or number..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-background mb-3"
-              />
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  placeholder="Search by name, set, or number…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-background"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowFilters((v) => !v)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm transition-colors shrink-0 ${
+                    showFilters ? "bg-foreground text-background" : "bg-background hover:bg-muted"
+                  }`}
+                >
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] leading-none" style={{ backgroundColor: "#BF40BF" }}>
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {showFilters && (
+                <div className="border rounded-lg p-3 mb-3 bg-muted/20 space-y-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {/* Type */}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Type</label>
+                      <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                        <option value="">All</option>
+                        <option value="ungraded">Ungraded</option>
+                        <option value="graded">Graded</option>
+                      </select>
+                    </div>
+                    {/* Status */}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Status</label>
+                      <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                        <option value="">All</option>
+                        <option value="pc">PC</option>
+                        <option value="fs_ft">FS/FT</option>
+                        <option value="fs">FS</option>
+                        <option value="ft">FT</option>
+                      </select>
+                    </div>
+                    {/* Grading co. */}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Grading co.</label>
+                      <select value={filterGradingCo} onChange={(e) => setFilterGradingCo(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                        <option value="">All</option>
+                        <option value="psa">PSA</option>
+                        <option value="bgs">BGS</option>
+                        <option value="cgc">CGC</option>
+                        <option value="sgc">SGC</option>
+                        <option value="hga">HGA</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    {/* Language */}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Language</label>
+                      <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                        <option value="">All</option>
+                        {languageOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+                      </select>
+                    </div>
+                    {/* Asking price */}
+                    <div>
+                      <label className="text-xs text-muted-foreground">Asking price</label>
+                      <select value={filterAskingPrice} onChange={(e) => setFilterAskingPrice(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                        <option value="">All</option>
+                        <option value="yes">Has price</option>
+                        <option value="no">No price set</option>
+                      </select>
+                    </div>
+                  </div>
+                  {activeFilterCount > 0 && (
+                    <button type="button" onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground underline">
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              )}
 
               {filteredInventory.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  {search ? "No cards match your search." : "No cards in inventory yet."}
+                  {search || activeFilterCount > 0 ? "No cards match your search or filters." : "No cards in inventory yet."}
                 </p>
               )}
 

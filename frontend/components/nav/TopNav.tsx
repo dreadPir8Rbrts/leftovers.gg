@@ -6,6 +6,7 @@
  */
 
 import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import { AvatarDropdown } from "./AvatarDropdown";
 import { GlobalSearch } from "./GlobalSearch";
 import type { ProfileData } from "@/lib/api/profiles";
@@ -24,6 +25,13 @@ export function TopNav({ profile }: TopNavProps) {
         <GlobalSearch />
       </div>
       <div className="flex md:hidden flex-1" />
+      <Link
+        href="/card-shows"
+        className="md:hidden flex items-center gap-1.5 text-white/70 hover:text-white transition-colors text-sm"
+      >
+        <CalendarDays size={16} />
+        <span>Card Shows</span>
+      </Link>
       <AvatarDropdown profile={profile ?? null} />
     </header>
   );

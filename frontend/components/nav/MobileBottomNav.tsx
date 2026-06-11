@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Camera, CalendarDays, UserCircle } from "lucide-react";
+import { LayoutDashboard, Package, Camera, Receipt, UserCircle } from "lucide-react";
 
 interface TabItemProps {
   href: string;
@@ -42,8 +42,8 @@ export function MobileBottomNav({ profileId }: MobileBottomNavProps) {
   ];
 
   const rightTabs = [
-    { href: "/card-shows",               label: "Shows",   icon: CalendarDays },
-    { href: p ? `/profile/${p}` : "#",   label: "Profile", icon: UserCircle },
+    { href: p ? `/transactions/${p}` : "#", label: "Transactions", icon: Receipt },
+    { href: p ? `/profile/${p}` : "#",      label: "Profile",      icon: UserCircle },
   ];
 
   return (
