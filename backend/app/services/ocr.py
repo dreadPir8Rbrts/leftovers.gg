@@ -93,8 +93,10 @@ _INLINE_PREFIX_PATTERN = re.compile(
 
 # Lines to skip entirely — appear before the name on old-format cards.
 # Also skips Japanese "Evolves from X" lines: "ヒトカゲから進化" etc.
+# Lines ending with 。 are Japanese sentences (rule text, flavor text, attack text)
+# and are never card names — e.g. Team Rocket boilerplate "モンスターカードに重ねて使います。"
 _SKIP_LINE_PATTERN = re.compile(
-    r"^(?:E(?:vo|va)lves?\s+from|.+から進化)$",
+    r"^(?:E(?:vo|va)lves?\s+from|.+から進化|.+。)$",
     re.IGNORECASE,
 )
 
