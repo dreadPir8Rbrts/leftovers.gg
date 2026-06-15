@@ -183,16 +183,16 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
         if len(rows) > 1:
             tier2_candidates = rows
 
-    # If Tier 2 found multiple candidates that all match the searched name perfectly,
-    # returning them as ambiguous is more honest than letting Tier 4's HP filter pick
-    # a wrong card (e.g. vending series cards have null HP in the DB, so a different
-    # card with a matching HP value would win incorrectly).
+    # If Tier 2 found multiple candidates, narrow to name-matching ones before Tier 4.
+    # Returning only name-matched ambiguous results is more honest than letting Tier 4's
+    # HP filter pick a wrong card (e.g. vending series cards have null HP in the DB,
+    # so a different card with a matching HP value would win incorrectly).
     if tier2_candidates and name:
-        max_name_score = max(fuzz.token_sort_ratio(name, r[0].name) for r in tier2_candidates)
-        if max_name_score >= 95:
+        name_matched = [r for r in tier2_candidates if fuzz.token_sort_ratio(name, r[0].name) >= 95]
+        if name_matched:
             return {
                 "ambiguous": True,
-                "candidates": [{"card": r[0], "expansion": r[1]} for r in tier2_candidates],
+                "candidates": [{"card": r[0], "expansion": r[1]} for r in name_matched],
             }
 
     # Tier 4: fuzzy name match — unaccent on both sides so "POKEMON MACHINE" finds "Pokémon Machine"
