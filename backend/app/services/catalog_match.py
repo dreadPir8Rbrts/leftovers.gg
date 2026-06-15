@@ -37,6 +37,18 @@ def _count_filter(q: Any, count: int) -> Any:
     return q.filter(or_(ExpansionV2.total == count, ExpansionV2.printed_total == count))
 
 
+def _number_format(set_number: str) -> Optional[str]:
+    """Detect the printed format of an OCR-extracted card number.
+    'No.141' → 'no_prefix'; '141/165' → 'slash'; bare number → None.
+    Used to disambiguate same-name/same-number cards from different eras.
+    """
+    if set_number.upper().startswith("NO."):
+        return "no_prefix"
+    if "/" in set_number:
+        return "slash"
+    return None
+
+
 def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     """
     Attempt to identify a Pokémon card from OCR-extracted fields.
@@ -70,13 +82,12 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
         )
         if card_count is not None:
             q = _count_filter(q, card_count)
-        row = q.first()
-        if row:
-            return {"card": row[0], "expansion": row[1], "confidence": 0.99, "method": "exact"}
+        t1_rows = q.all()
 
-        # Retry Tier 1 without card_count filter in case neither total nor printed_total is populated
-        if card_count is not None:
-            row = (
+        # Retry without card_count if empty — total/printed_total may be NULL
+        no_count_retry = False
+        if not t1_rows and card_count is not None:
+            t1_rows = (
                 db.query(CardV2, ExpansionV2)
                 .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
                 .filter(
@@ -84,10 +95,29 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                     CardV2.number.in_(local_id_variants),
                     CardV2.game == "pokemon",
                 )
-                .first()
+                .all()
             )
-            if row:
-                return {"card": row[0], "expansion": row[1], "confidence": 0.95, "method": "exact_no_count"}
+            no_count_retry = True
+
+        if len(t1_rows) == 1:
+            conf = 0.95 if no_count_retry else 0.99
+            method = "exact_no_count" if no_count_retry else "exact"
+            return {"card": t1_rows[0][0], "expansion": t1_rows[0][1], "confidence": conf, "method": method}
+
+        if len(t1_rows) > 1 and set_number:
+            # Multiple cards share name + number (different sets/eras). Use the printed_number
+            # format to disambiguate: OCR "No.141" should prefer printed_number="No.141"
+            # over printed_number="141/165", and vice versa.
+            fmt = _number_format(set_number)
+            if fmt == "no_prefix":
+                fmt_rows = [r for r in t1_rows if r[0].printed_number and r[0].printed_number.upper().startswith("NO.")]
+            elif fmt == "slash":
+                fmt_rows = [r for r in t1_rows if r[0].printed_number and "/" in r[0].printed_number]
+            else:
+                fmt_rows = []
+            if len(fmt_rows) == 1:
+                return {"card": fmt_rows[0][0], "expansion": fmt_rows[0][1], "confidence": 0.97, "method": "exact_printed_num"}
+            # Still ambiguous — fall through to lower tiers
 
     # Tier 2 + 3: local_id only (+ card_count to narrow expansion), optionally disambiguate with HP
     if local_id_variants:
