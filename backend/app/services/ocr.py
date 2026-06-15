@@ -82,8 +82,9 @@ async def extract_card_text(image_bytes: bytes) -> Dict[str, Any]:
 #   にげる (retreat), 弱点 (weakness), 抵抗力 (resistance),
 #   特性 (ability), ポケパワー (Pokémon Power), ポケボディー (Pokémon Body).
 _NON_NAME_PATTERN = re.compile(
-    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY|\d*進化|たね"
-    r"|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー)$",
+    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY"
+    r"|\S{0,4}進化"  # stage markers: 進化, 1進化, 2進化, ⑦進化 (OCR noise for 1進化), BREAK進化, etc.
+    r"|たね|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー)$",
     re.IGNORECASE,
 )
 
@@ -180,7 +181,11 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     # Allow up to 4 digits on the right side — OCR sometimes appends an extra
     # character to the card count (e.g. "044/1910" instead of "044/191").
     # Also matches old Japanese Base-era "No.NNN" Pokédex-number format.
-    set_number_pattern = re.compile(r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+|No\.\s*\d+)\b", re.IGNORECASE)
+    # Promo format: NNN/XX-P (e.g. "063/SV-P", "001/BW-P", "012/SM-P").
+    set_number_pattern = re.compile(
+        r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+|No\.\s*\d+|\d{1,3}/[A-Z]{1,6}-[A-Z])\b",
+        re.IGNORECASE,
+    )
     for line in lines:
         match = set_number_pattern.search(line)
         if match:
