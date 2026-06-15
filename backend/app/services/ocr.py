@@ -77,9 +77,13 @@ async def extract_card_text(image_bytes: bytes) -> Dict[str, Any]:
 # Covers: stage markers (digit and roman), Pocket-era "BASIC" standalone,
 # VMAX, HP values, bare numbers, trainer/energy type headers,
 # "STAGET" which is OCR noise for "STAGE 1",
-# and Japanese equivalents: 進化/1進化/2進化 (stage markers), たね (basic).
+# Japanese stage markers: 進化/1進化/2進化, たね (basic),
+# and Japanese structural card labels that appear on every card:
+#   にげる (retreat), 弱点 (weakness), 抵抗力 (resistance),
+#   特性 (ability), ポケパワー (Pokémon Power), ポケボディー (Pokémon Body).
 _NON_NAME_PATTERN = re.compile(
-    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY|\d*進化|たね)$",
+    r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY|\d*進化|たね"
+    r"|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー)$",
     re.IGNORECASE,
 )
 
