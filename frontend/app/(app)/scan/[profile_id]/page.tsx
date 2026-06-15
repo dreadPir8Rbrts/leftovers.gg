@@ -664,7 +664,7 @@ export default function ScanPage() {
                 onClick={handleSmartScan}
                 disabled={isScanning}
               >
-                {smartScanLoading ? "Scanning…" : "Smart Scan (v2)"}
+                {smartScanLoading ? "Scanning…" : "Quick Scan v2"}
               </Button>
             </div>
           )}

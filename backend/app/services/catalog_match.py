@@ -176,7 +176,11 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
         if hp and rows:
             hp_matched = [r for r in rows if r[0].hp == str(hp)]
             if len(hp_matched) == 1:
-                return {"card": hp_matched[0][0], "expansion": hp_matched[0][1], "confidence": 0.88, "method": "local_id_hp"}
+                # Guard: HP alone can match an unrelated card that shares the number.
+                # Require a reasonable name similarity when name is available.
+                name_score = fuzz.token_sort_ratio(name, hp_matched[0][0].name) if name else 100
+                if name_score >= 70:
+                    return {"card": hp_matched[0][0], "expansion": hp_matched[0][1], "confidence": 0.88, "method": "local_id_hp"}
 
         # Multiple rows remain after all Tier 2 disambiguation — save for fallback.
         # If Tier 4 also fails, these will be surfaced as ambiguous candidates.
@@ -273,6 +277,187 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
             "ambiguous": True,
             "candidates": [{"card": r[0], "expansion": r[1]} for r in tier2_candidates],
         }
+
+    return None
+
+
+def match_card_from_ocr_v2(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
+    """
+    Name-primary matching strategy (Quick Scan v2).
+
+    Tier 1: exact name + number match
+      - 0 results → fall through to Tier 2
+      - 1 result  → return (confidence 0.99)
+      - >1 results → printed_number disambiguation; if still >1 → AMBIGUOUS immediately
+        (never falls through to number-only search, which pulls in unrelated cards)
+
+    Tier 2: name-primary fuzzy, then narrow by number
+      - finds all cards matching the name (fuzzy)
+      - if number available → filter name pool by number
+        - 1 result → return (0.97); >1 → ambiguous
+      - if no number (or number produced no results) → HP or top matches as ambiguous
+
+    Tier 3: number only (last resort — name completely unreadable)
+      - HP disambiguation requires name agreement (≥70 fuzzy score)
+    """
+    name: str = (ocr.get("name") or "").strip()
+    set_number: str = (ocr.get("set_number") or "").strip()
+    hp: Optional[int] = ocr.get("hp")
+    lang_code: Optional[str] = (ocr.get("language_code") or "").upper().strip() or None
+
+    local_id_variants = _local_id_variants(set_number) if set_number else []
+    card_count = _parse_card_count(set_number) if set_number else None
+
+    # ------------------------------------------------------------------
+    # Tier 1: exact name + number
+    # ------------------------------------------------------------------
+    if name and local_id_variants:
+        q = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                func.lower(CardV2.name) == name.lower(),
+                CardV2.number.in_(local_id_variants),
+                CardV2.game == "pokemon",
+            )
+        )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        if card_count is not None:
+            q = _count_filter(q, card_count)
+        t1_rows = q.all()
+
+        if not t1_rows and card_count is not None:
+            q2 = (
+                db.query(CardV2, ExpansionV2)
+                .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+                .filter(
+                    func.lower(CardV2.name) == name.lower(),
+                    CardV2.number.in_(local_id_variants),
+                    CardV2.game == "pokemon",
+                )
+            )
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            t1_rows = q2.all()
+
+        if len(t1_rows) == 1:
+            return {"card": t1_rows[0][0], "expansion": t1_rows[0][1], "confidence": 0.99, "method": "v2_exact"}
+
+        if len(t1_rows) > 1:
+            fmt = _number_format(set_number)
+            if fmt == "no_prefix":
+                fmt_rows = [r for r in t1_rows if r[0].printed_number and r[0].printed_number.upper().startswith("NO.")]
+            elif fmt == "slash":
+                fmt_rows = [r for r in t1_rows if r[0].printed_number and "/" in r[0].printed_number]
+            else:
+                fmt_rows = []
+            if len(fmt_rows) == 1:
+                return {"card": fmt_rows[0][0], "expansion": fmt_rows[0][1], "confidence": 0.97, "method": "v2_exact_printed_num"}
+            # Still ambiguous — return immediately rather than falling to number-only search
+            candidates = fmt_rows if len(fmt_rows) > 1 else t1_rows
+            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in candidates]}
+
+    # ------------------------------------------------------------------
+    # Tier 2: name-primary fuzzy, then narrow by number
+    # ------------------------------------------------------------------
+    if name and len(name) >= 2:
+        norm_name = _strip_accents(name)
+        q = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                or_(
+                    func.unaccent(CardV2.name).ilike(f"%{norm_name}%"),
+                    func.unaccent(CardV2.en_name).ilike(f"%{norm_name}%"),
+                ),
+                CardV2.game == "pokemon",
+            )
+        )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        name_rows = q.limit(100).all()
+
+        if name_rows:
+            scored = sorted(
+                [(r, fuzz.token_sort_ratio(name, r[0].name)) for r in name_rows],
+                key=lambda x: x[1],
+                reverse=True,
+            )
+            best_score = scored[0][1]
+
+            if best_score >= 75:
+                top: List[tuple] = [r for r, s in scored if s >= best_score - 5]
+
+                if local_id_variants:
+                    number_top = [r for r in top if r[0].number in local_id_variants]
+                    if len(number_top) == 1:
+                        return {
+                            "card": number_top[0][0],
+                            "expansion": number_top[0][1],
+                            "confidence": round(best_score / 100 * 0.97, 2),
+                            "method": "v2_name_number",
+                        }
+                    if len(number_top) > 1:
+                        return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in number_top]}
+                    # Number filter removed all candidates — fall back to name-only top
+
+                if len(top) == 1:
+                    return {
+                        "card": top[0][0],
+                        "expansion": top[0][1],
+                        "confidence": round(best_score / 100, 2),
+                        "method": "v2_name_only",
+                    }
+
+                if hp is not None:
+                    hp_top_t2 = [r for r in top if r[0].hp == str(hp)]
+                    if len(hp_top_t2) == 1:
+                        return {
+                            "card": hp_top_t2[0][0],
+                            "expansion": hp_top_t2[0][1],
+                            "confidence": round(best_score / 100 * 0.92, 2),
+                            "method": "v2_name_hp",
+                        }
+
+                return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in top[:10]]}
+
+    # ------------------------------------------------------------------
+    # Tier 3: number only (last resort)
+    # ------------------------------------------------------------------
+    if local_id_variants:
+        q = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(CardV2.number.in_(local_id_variants), CardV2.game == "pokemon")
+        )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        if card_count is not None:
+            q = _count_filter(q, card_count)
+        rows = q.all()
+
+        if not rows and card_count is not None:
+            q2 = (
+                db.query(CardV2, ExpansionV2)
+                .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+                .filter(CardV2.number.in_(local_id_variants), CardV2.game == "pokemon")
+            )
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            rows = q2.all()
+
+        if len(rows) == 1:
+            return {"card": rows[0][0], "expansion": rows[0][1], "confidence": 0.65, "method": "v2_number_only"}
+
+        if rows:
+            if hp is not None:
+                hp_matched = [r for r in rows if r[0].hp == str(hp)]
+                if len(hp_matched) == 1:
+                    name_score = fuzz.token_sort_ratio(name, hp_matched[0][0].name) if name else 100
+                    if name_score >= 70:
+                        return {"card": hp_matched[0][0], "expansion": hp_matched[0][1], "confidence": 0.70, "method": "v2_number_hp"}
+            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in rows[:10]]}
 
     return None
 

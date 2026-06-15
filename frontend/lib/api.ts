@@ -1141,9 +1141,9 @@ export async function lookupCertCard(
 }
 
 // ---------------------------------------------------------------------------
-// Quick Scan v2 — Claude structured extraction + weighted multi-field DB match.
-// Handles Japanese, old-format, and edge-case cards better than v1 OCR.
-// Note: do NOT set Content-Type header — browser sets it with the multipart boundary.
+// Quick Scan v2 — OCR + name-primary matching strategy.
+// Same Google Vision OCR step as quickIdentifyCard but uses a name-first matching
+// approach that avoids falling through to number-only search when Tier 1 is ambiguous.
 export async function quickIdentifyCardV2(file: File): Promise<QuickScanResult> {
   const token = await getAccessToken();
   const form = new FormData();
@@ -1155,7 +1155,26 @@ export async function quickIdentifyCardV2(file: File): Promise<QuickScanResult> 
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error((body as { detail?: string }).detail ?? `Smart scan failed: ${res.status}`);
+    throw new Error((body as { detail?: string }).detail ?? `Quick scan v2 failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Smart Identify — Claude structured extraction + weighted multi-field DB match.
+// Slower but handles edge cases (graded slabs, damaged cards) better than OCR.
+export async function smartIdentifyCard(file: File): Promise<QuickScanResult> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append("image", file, file.name);
+  const res = await fetch(`${API_URL}/api/v1/scans/smart-identify`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Smart identify failed: ${res.status}`);
   }
   return res.json();
 }

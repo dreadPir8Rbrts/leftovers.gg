@@ -595,7 +595,7 @@ async def quick_identify(
 
 
 # ---------------------------------------------------------------------------
-# POST /scans/quick-identify-v2  (Claude extraction + weighted multi-field match)
+# POST /scans/quick-identify-v2  (OCR + name-primary matching)
 # ---------------------------------------------------------------------------
 
 @router.post("/scans/quick-identify-v2", response_model=QuickIdentifyResponse)
@@ -605,7 +605,100 @@ async def quick_identify_v2(
     db: Session = Depends(get_db),
 ) -> dict:
     """
-    Quick Scan v2: Claude structured extraction + weighted multi-field DB match.
+    Quick Scan v2: same Google Cloud Vision OCR step as /quick-identify, but uses a
+    name-primary matching strategy. Tier 1 ambiguities (same name + same number across
+    multiple vending series) return immediately as ambiguous rather than falling through
+    to a number-only search that can pick unrelated cards.
+    Returns the same QuickIdentifyResponse schema.
+    """
+    from app.services.ocr import extract_card_text
+    from app.services.catalog_match import match_card_from_ocr_v2 as _match_v2
+
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+
+    image_bytes = await image.read()
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 10 MB")
+
+    try:
+        ocr_result = await extract_card_text(image_bytes)
+    except RuntimeError as exc:
+        logger.error("quick_identify_v2 — OCR error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OCR service error — please try again")
+
+    logger.info(
+        "quick_identify_v2 — OCR result: name=%r set_number=%r ocr_num1=%r ocr_num2=%r hp=%r",
+        ocr_result.get("name"), ocr_result.get("set_number"),
+        ocr_result.get("ocr_num1"), ocr_result.get("ocr_num2"), ocr_result.get("hp"),
+    )
+
+    if not ocr_result.get("name") and not ocr_result.get("set_number"):
+        return {"matched": False, "reason": "no_text_detected", "ocr": ocr_result}
+
+    match = await asyncio.to_thread(_match_v2, ocr_result, db)
+
+    if not match:
+        logger.info("quick_identify_v2 — no catalog match for OCR: %s", ocr_result)
+        return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_result}
+
+    if match.get("ambiguous"):
+        raw_candidates = match["candidates"]
+        logger.info("quick_identify_v2 — ambiguous: %d candidates", len(raw_candidates))
+        candidates = [
+            CandidateCard(
+                card_id=str(c["card"].id),
+                name=c["card"].name,
+                card_num=c["card"].number,
+                rarity=c["card"].rarity,
+                image_url=_extract_image_url(c["card"].images),
+                set_name=c["expansion"].name,
+                language_code=c["card"].language_code or "EN",
+            )
+            for c in raw_candidates
+        ]
+        return {"matched": False, "ambiguous": True, "candidates": candidates, "ocr": ocr_result}
+
+    card: CardV2 = match["card"]
+    expansion: ExpansionV2 = match["expansion"]
+    confidence: float = match["confidence"]
+    method: str = match["method"]
+
+    logger.info(
+        "quick_identify_v2 — matched: card=%s confidence=%.2f method=%s",
+        card.id, confidence, method,
+    )
+
+    return {
+        "matched": True,
+        "confidence": confidence,
+        "method": method,
+        "ocr": ocr_result,
+        "card_id": str(card.id),
+        "name": card.name,
+        "card_num": card.number,
+        "rarity": card.rarity,
+        "image_url": _extract_image_url(card.images),
+        "set_name": expansion.name,
+        "release_date": str(expansion.release_date) if expansion.release_date else None,
+        "series_name": expansion.series,
+        "game": card.game,
+        "language_code": card.language_code,
+    }
+
+
+# POST /scans/smart-identify  (Claude extraction + weighted multi-field match)
+# ---------------------------------------------------------------------------
+
+@router.post("/scans/smart-identify", response_model=QuickIdentifyResponse)
+async def smart_identify(
+    image: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Smart Identify: Claude structured extraction + weighted multi-field DB match.
 
     Stage 1 — Claude reads: name, en_name, number, hp, artist, attacks,
                flavor_text, rarity_symbol, language from the card image.
@@ -624,7 +717,7 @@ async def quick_identify_v2(
     t_start = time.perf_counter()
     image_bytes = await image.read()
     t_read = time.perf_counter()
-    logger.info("quick_identify_v2 — image read: %.3fs (%d bytes)", t_read - t_start, len(image_bytes))
+    logger.info("smart_identify — image read: %.3fs (%d bytes)", t_read - t_start, len(image_bytes))
 
     if len(image_bytes) > 10 * 1024 * 1024:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 10 MB")
@@ -632,12 +725,12 @@ async def quick_identify_v2(
     try:
         extracted = await _extract_fields(image_bytes)
     except Exception as exc:
-        logger.error("quick_identify_v2 — extraction error: %s", exc)
+        logger.error("smart_identify — extraction error: %s", exc)
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Extraction service error — please try again")
 
     t_extract = time.perf_counter()
     logger.info(
-        "quick_identify_v2 — claude extraction: %.3fs | name=%r en_name=%r number=%r hp=%r artist=%r",
+        "smart_identify — claude extraction: %.3fs | name=%r en_name=%r number=%r hp=%r artist=%r",
         t_extract - t_read,
         extracted.get("name"), extracted.get("en_name"), extracted.get("number"),
         extracted.get("hp"), extracted.get("artist"),
@@ -661,15 +754,15 @@ async def quick_identify_v2(
 
     match = await asyncio.to_thread(match_card_from_claude_extract, extracted, db)
     t_match = time.perf_counter()
-    logger.info("quick_identify_v2 — db match: %.3fs | total: %.3fs", t_match - t_extract, t_match - t_start)
+    logger.info("smart_identify — db match: %.3fs | total: %.3fs", t_match - t_extract, t_match - t_start)
 
     if not match:
-        logger.info("quick_identify_v2 — no catalog match: %s", extracted)
+        logger.info("smart_identify — no catalog match: %s", extracted)
         return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_payload}
 
     if match.get("ambiguous"):
         raw_candidates = match["candidates"]
-        logger.info("quick_identify_v2 — ambiguous: %d candidates", len(raw_candidates))
+        logger.info("smart_identify — ambiguous: %d candidates", len(raw_candidates))
         candidates = [
             CandidateCard(
                 card_id=str(c["card"].id),
@@ -690,7 +783,7 @@ async def quick_identify_v2(
     method: str = match["method"]
 
     logger.info(
-        "quick_identify_v2 — matched: card=%s confidence=%.2f method=%s",
+        "smart_identify — matched: card=%s confidence=%.2f method=%s",
         card.id, confidence, method,
     )
 
