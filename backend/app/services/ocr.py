@@ -122,6 +122,18 @@ def _strip_level_indicator(name: str) -> str:
     return _LEVEL_SUFFIX_PATTERN.sub("", name).strip()
 
 
+def _detect_language(raw_text: str) -> str:
+    """Return 'JA' if any Japanese Unicode characters are present, else 'EN'.
+    Hiragana (U+3040–U+309F), Katakana (U+30A0–U+30FF), CJK (U+4E00–U+9FFF)
+    are unambiguous markers — English cards never contain them.
+    """
+    for c in raw_text:
+        cp = ord(c)
+        if 0x3040 <= cp <= 0x309F or 0x30A0 <= cp <= 0x30FF or 0x4E00 <= cp <= 0x9FFF:
+            return "JA"
+    return "EN"
+
+
 # HP noise: Vision sometimes reads the HP value (and adjacent type symbol) onto
 # the same line as the card name because they share the same horizontal band.
 # e.g. "Team Rocket's Zapdos 1204" where "120" = HP and "4" = ⚡ OCR noise.
@@ -155,6 +167,7 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
         "ocr_num2": None,   # second part of set number e.g. "191" from "044/191"
         "hp": None,
         "illustrator": None,
+        "language_code": _detect_language(raw_text),
     }
 
     for line in lines:

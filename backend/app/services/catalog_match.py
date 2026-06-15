@@ -64,6 +64,7 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
     name: str = (ocr.get("name") or "").strip()
     set_number: str = (ocr.get("set_number") or "").strip()
     hp: Optional[int] = ocr.get("hp")
+    lang_code: Optional[str] = (ocr.get("language_code") or "").upper().strip() or None
     tier2_candidates: List[tuple] = []  # populated when Tier 2 finds rows but can't disambiguate
 
     local_id_variants = _local_id_variants(set_number) if set_number else []
@@ -129,21 +130,25 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                 CardV2.game == "pokemon",
             )
         )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
         if card_count is not None:
             q = _count_filter(q, card_count)
         rows = q.all()
 
         # Retry Tier 2 without card_count if neither total nor printed_total matched
         if not rows and card_count is not None:
-            rows = (
+            q2 = (
                 db.query(CardV2, ExpansionV2)
                 .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
                 .filter(
                     CardV2.number.in_(local_id_variants),
                     CardV2.game == "pokemon",
                 )
-                .all()
             )
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            rows = q2.all()
 
         if len(rows) == 1:
             return {"card": rows[0][0], "expansion": rows[0][1], "confidence": 0.90, "method": "local_id"}
@@ -177,7 +182,7 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
     # Tier 4: fuzzy name match — unaccent on both sides so "POKEMON MACHINE" finds "Pokémon Machine"
     if name and len(name) >= 3:
         norm_name = _strip_accents(name)
-        rows = (
+        t4_q = (
             db.query(CardV2, ExpansionV2)
             .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
             .filter(
@@ -187,9 +192,10 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                 ),
                 CardV2.game == "pokemon",
             )
-            .limit(50)
-            .all()
         )
+        if lang_code:
+            t4_q = t4_q.filter(CardV2.language_code == lang_code)
+        rows = t4_q.limit(50).all()
 
         if rows:
             candidate_names = [r[0].name for r in rows]
