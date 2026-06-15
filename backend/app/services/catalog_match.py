@@ -81,6 +81,8 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                 CardV2.game == "pokemon",
             )
         )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
         if card_count is not None:
             q = _count_filter(q, card_count)
         t1_rows = q.all()
@@ -88,7 +90,7 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
         # Retry without card_count if empty — total/printed_total may be NULL
         no_count_retry = False
         if not t1_rows and card_count is not None:
-            t1_rows = (
+            q2 = (
                 db.query(CardV2, ExpansionV2)
                 .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
                 .filter(
@@ -96,8 +98,10 @@ def match_card_from_ocr(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, 
                     CardV2.number.in_(local_id_variants),
                     CardV2.game == "pokemon",
                 )
-                .all()
             )
+            if lang_code:
+                q2 = q2.filter(CardV2.language_code == lang_code)
+            t1_rows = q2.all()
             no_count_retry = True
 
         if len(t1_rows) == 1:
