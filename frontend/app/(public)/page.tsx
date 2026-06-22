@@ -67,7 +67,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
           Built for TCG vendors
         </p>
         <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight">
-          The operating system for Pokémon card vendors
+          The Operating System for Pokémon Card Vendors
         </h1>
         <p className="mt-6 text-lg text-gray-400 max-w-xl">
           Price lookups, inventory, transactions, and card shows — all in one place. Stop juggling five tabs and a spreadsheet.
