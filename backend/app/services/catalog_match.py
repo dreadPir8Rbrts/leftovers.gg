@@ -400,7 +400,38 @@ def match_card_from_ocr_v2(ocr: Dict[str, Any], db: Session) -> Optional[Dict[st
                         }
                     if len(number_top) > 1:
                         return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in number_top]}
-                    # Number filter removed all candidates — fall back to name-only top
+                    # Number filter removed all candidates — try en_name bridge before
+                    # falling back to name-only. Handles JA cards where the name field
+                    # stores the English name (data inconsistency in some imported sets,
+                    # e.g. sv6a_ja). The name-matched candidates share the same en_name
+                    # (e.g. 'Horsea'), so we search JA cards by en_name + number to find
+                    # the card that couldn't be reached by direct name search.
+                    en_names = list({r[0].en_name for r in top if r[0].en_name})
+                    if en_names:
+                        fb_q = (
+                            db.query(CardV2, ExpansionV2)
+                            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+                            .filter(
+                                CardV2.en_name.in_(en_names),
+                                CardV2.number.in_(local_id_variants),
+                                CardV2.game == "pokemon",
+                            )
+                        )
+                        if lang_code:
+                            fb_q = fb_q.filter(CardV2.language_code == lang_code)
+                        fb_rows = fb_q.all()
+                        if len(fb_rows) == 1:
+                            return {
+                                "card": fb_rows[0][0],
+                                "expansion": fb_rows[0][1],
+                                "confidence": round(best_score / 100 * 0.88, 2),
+                                "method": "v2_name_en_bridge",
+                            }
+                        if len(fb_rows) > 1:
+                            return {
+                                "ambiguous": True,
+                                "candidates": [{"card": r[0], "expansion": r[1]} for r in fb_rows],
+                            }
 
                 if len(top) == 1:
                     return {

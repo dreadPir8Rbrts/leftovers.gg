@@ -100,8 +100,10 @@ _INLINE_PREFIX_PATTERN = re.compile(
 # Also skips Japanese "Evolves from X" lines: "ヒトカゲから進化" etc.
 # Lines ending with 。 are Japanese sentences (rule text, flavor text, attack text)
 # and are never card names — e.g. Team Rocket boilerplate "モンスターカードに重ねて使います。"
+# ".+進化させます。?" catches the evolution instruction printed on Gen 1-2 stage cards
+# ("「1進化ポケモン」の上に重ねて進化させます。") — OCR sometimes drops the trailing 。.
 _SKIP_LINE_PATTERN = re.compile(
-    r"^(?:E(?:vo|va)lves?\s+from|.+から進化|.+。)$",
+    r"^(?:E(?:vo|va)lves?\s+from|.+から進化|.+。|.+進化させます。?)$",
     re.IGNORECASE,
 )
 
@@ -137,8 +139,15 @@ def _detect_language(raw_text: str) -> str:
 # HP noise: Vision sometimes reads the HP value (and adjacent type symbol) onto
 # the same line as the card name because they share the same horizontal band.
 # e.g. "Team Rocket's Zapdos 1204" where "120" = HP and "4" = ⚡ OCR noise.
-# Safe to strip: no legitimate Pokémon name ends with " <2-4 digits>".
-_HP_SUFFIX_PATTERN = re.compile(r"\s+\d{2,4}$")
+# On old-era JA cards (Base–Neo) the level is also on the name line, so OCR
+# can produce "わるいゲンガー M.3 HP70" where "M.3" is garbled "LV.32".
+# The second alternative strips "HP<digits>" with an optional preceding level
+# token (1-3 ASCII letters + dot + digits, e.g. "LV.32", "Lv.12", "M.3").
+_HP_SUFFIX_PATTERN = re.compile(
+    r"\s+\d{2,4}$"
+    r"|\s+(?:[A-Za-z]{1,3}\.\s*\d+\s+)?HP\s*\d{2,3}\d?$",
+    re.IGNORECASE,
+)
 
 
 def _strip_hp_suffix(name: str) -> str:
