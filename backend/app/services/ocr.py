@@ -83,7 +83,8 @@ async def extract_card_text(image_bytes: bytes) -> Dict[str, Any]:
 #   特性 (ability), ポケパワー (Pokémon Power), ポケボディー (Pokémon Body).
 _NON_NAME_PATTERN = re.compile(
     r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY"
-    r"|\S{0,4}進化:?"  # stage markers: 進化, 1進化, 2進化, ⑦進化: (OCR noise for 1進化, trailing colon), etc.
+    r"|\S{0,4}進化:?"  # stage markers: 進化, 1進化, 2進化, ⑦進化: (OCR noise for 1進化, trailing colon)
+    r"|\d+進\S+"      # garbled stage markers: 2進な (OCR misread of 2進化), etc.
     r"|たね|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー)$",
     re.IGNORECASE,
 )
@@ -100,10 +101,11 @@ _INLINE_PREFIX_PATTERN = re.compile(
 # Also skips Japanese "Evolves from X" lines: "ヒトカゲから進化" etc.
 # Lines ending with 。 are Japanese sentences (rule text, flavor text, attack text)
 # and are never card names — e.g. Team Rocket boilerplate "モンスターカードに重ねて使います。"
-# ".+進化させます。?" catches the evolution instruction printed on Gen 1-2 stage cards
-# ("「1進化ポケモン」の上に重ねて進化させます。") — OCR sometimes drops the trailing 。.
+# ".+進化させます。?" catches the full evolution instruction on Gen 1-2 stage cards.
+# "「.*進化ポケモン.*" catches truncated fragments OCR produces when the instruction
+# wraps or is partially obscured: "「進化ポケモン」の", "「1進化ポケモン」", etc.
 _SKIP_LINE_PATTERN = re.compile(
-    r"^(?:E(?:vo|va)lves?\s+from|.+から進化|.+。|.+進化させます。?)$",
+    r"^(?:E(?:vo|va)lves?\s+from|.+から進化|.+。|.+進化させます。?|「.*進化ポケモン.*)$",
     re.IGNORECASE,
 )
 
@@ -145,7 +147,7 @@ def _detect_language(raw_text: str) -> str:
 # token (1-3 ASCII letters + dot + digits, e.g. "LV.32", "Lv.12", "M.3").
 _HP_SUFFIX_PATTERN = re.compile(
     r"\s+\d{2,4}$"
-    r"|\s+(?:[A-Za-z]{1,3}\.\s*\d+\s+)?HP\s*\d{2,3}\d?$",
+    r"|\s+(?:[A-Za-z]{1,3}\.?\s*\d*\s+)?HP\s*\d{2,3}\d?$",
     re.IGNORECASE,
 )
 
