@@ -508,13 +508,30 @@ def _v3_disambiguate(
     hp: Optional[int],
     method_prefix: str,
 ) -> Optional[Dict[str, Any]]:
-    """Try artist → name_candidates → HP to pick one row from a small result set.
+    """Try HP-elimination → artist → name_candidates → HP-positive to pick one row.
     Returns a match dict or None if still ambiguous."""
+
+    # 0. HP negative elimination — remove candidates whose DB hp is known (non-null)
+    #    and contradicts the OCR hp. null DB hp is inconclusive (vending/vintage cards
+    #    often lack hp data), so only a confirmed mismatch eliminates.
+    working = rows
+    if hp is not None:
+        surviving = [r for r in rows if r[0].hp is None or r[0].hp == str(hp)]
+        if 0 < len(surviving) < len(rows):
+            if len(surviving) == 1:
+                return {
+                    "card": surviving[0][0],
+                    "expansion": surviving[0][1],
+                    "confidence": 0.90,
+                    "method": f"{method_prefix}_hp_elim",
+                }
+            working = surviving
+
     # 1. Artist fuzzy (unique match scoring ≥ 85)
     if illustrator:
         artist_scored = [
             (r, fuzz.ratio(illustrator.lower(), (r[0].artist or "").lower()))
-            for r in rows
+            for r in working
         ]
         artist_top = [(r, s) for r, s in artist_scored if s >= 85]
         if len(artist_top) == 1:
@@ -526,7 +543,10 @@ def _v3_disambiguate(
                 "method": f"{method_prefix}_artist",
             }
 
-    # 2. Name candidates — score each row against all candidates, take max per row
+    # 2. Name candidates — score each row against all candidates, take max per row.
+    #    Only auto-picks when there is a single uniquely best candidate; does NOT
+    #    auto-pick on a perfect-score tie (e.g. two cards with the same name both
+    #    scoring 100% would previously be incorrectly resolved by this step).
     if name_candidates:
         def _best_name_score(card: CardV2) -> int:
             best = 0
@@ -538,14 +558,14 @@ def _v3_disambiguate(
             return best
 
         name_scored = sorted(
-            [(r, _best_name_score(r[0])) for r in rows],
+            [(r, _best_name_score(r[0])) for r in working],
             key=lambda x: x[1],
             reverse=True,
         )
         top_score = name_scored[0][1] if name_scored else 0
         if top_score >= 80:
             close = [r for r, s in name_scored if s >= top_score - 5]
-            if len(close) == 1 or top_score >= 95:
+            if len(close) == 1:
                 r = name_scored[0][0]
                 return {
                     "card": r[0],
@@ -554,9 +574,9 @@ def _v3_disambiguate(
                     "method": f"{method_prefix}_name",
                 }
 
-    # 3. HP
+    # 3. HP positive — pick the single candidate whose HP matches OCR
     if hp is not None:
-        hp_matched = [r for r in rows if r[0].hp == str(hp)]
+        hp_matched = [r for r in working if r[0].hp == str(hp)]
         if len(hp_matched) == 1:
             return {
                 "card": hp_matched[0][0],
