@@ -1161,6 +1161,26 @@ export async function quickIdentifyCardV2(file: File): Promise<QuickScanResult> 
 }
 
 // ---------------------------------------------------------------------------
+// Quick Scan v3 — OCR + printed_number-primary matching strategy.
+// Anchors on the exact printed_number DB field, then uses artist / name
+// candidates / HP to disambiguate. Better for old-era JA cards and promos.
+export async function quickIdentifyCardV3(file: File): Promise<QuickScanResult> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append("image", file, file.name);
+  const res = await fetch(`${API_URL}/api/v1/scans/quick-identify-v3`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Quick scan v3 failed: ${res.status}`);
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
 // Smart Identify — Claude structured extraction + weighted multi-field DB match.
 // Slower but handles edge cases (graded slabs, damaged cards) better than OCR.
 export async function smartIdentifyCard(file: File): Promise<QuickScanResult> {

@@ -10,7 +10,7 @@ Performance notes:
 
 import logging
 import re
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from google.cloud import vision
 
@@ -157,6 +157,31 @@ def _strip_hp_suffix(name: str) -> str:
     return _HP_SUFFIX_PATTERN.sub("", name).strip()
 
 
+def _collect_name_candidates(lines: List[str]) -> List[str]:
+    """
+    Return all OCR lines that could be the card name — every line that passes
+    the noise filters — in top-to-bottom order. Used by Quick Scan v3 so the
+    matcher can try multiple candidates instead of committing to one.
+    """
+    candidates: List[str] = []
+    seen: set = set()
+    for line in lines:
+        if _SKIP_LINE_PATTERN.match(line):
+            continue
+        inline = _INLINE_PREFIX_PATTERN.match(line)
+        candidate = inline.group(1).strip() if inline else line
+        if _NON_NAME_PATTERN.match(candidate):
+            continue
+        candidate = _strip_hp_suffix(_strip_level_indicator(candidate)).strip()
+        if len(candidate) < 2:
+            continue
+        key = candidate.lower()
+        if key not in seen:
+            seen.add(key)
+            candidates.append(candidate)
+    return candidates
+
+
 def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     """
     Extract structured fields from raw OCR text.
@@ -169,10 +194,12 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     Set number matches NNN/NNN or TGxx/TGxx patterns.
     HP matches a number adjacent to 'HP'.
     Illustrator follows 'illus.' prefix.
+    name_candidates: all non-noise lines (used by Quick Scan v3).
     """
     lines = [line.strip() for line in raw_text.split("\n") if line.strip()]
     result: Dict[str, Any] = {
         "name": None,
+        "name_candidates": _collect_name_candidates(lines),
         "set_number": None,
         "ocr_num1": None,   # first part of set number e.g. "044" from "044/191"
         "ocr_num2": None,   # second part of set number e.g. "191" from "044/191"

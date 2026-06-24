@@ -493,6 +493,222 @@ def match_card_from_ocr_v2(ocr: Dict[str, Any], db: Session) -> Optional[Dict[st
     return None
 
 
+def _is_bare_number(set_number: str) -> bool:
+    """True for bare card numbers with no format indicator: '085', '007'.
+    False for slash ('063/182'), No-prefix ('No.036'), and promo ('064/SV-P') formats."""
+    if not set_number:
+        return True
+    return "/" not in set_number and not set_number.upper().startswith("NO.")
+
+
+def _v3_disambiguate(
+    rows: List[tuple],
+    name_candidates: List[str],
+    illustrator: str,
+    hp: Optional[int],
+    method_prefix: str,
+) -> Optional[Dict[str, Any]]:
+    """Try artist → name_candidates → HP to pick one row from a small result set.
+    Returns a match dict or None if still ambiguous."""
+    # 1. Artist fuzzy (unique match scoring ≥ 85)
+    if illustrator:
+        artist_scored = [
+            (r, fuzz.ratio(illustrator.lower(), (r[0].artist or "").lower()))
+            for r in rows
+        ]
+        artist_top = [(r, s) for r, s in artist_scored if s >= 85]
+        if len(artist_top) == 1:
+            r, score = artist_top[0]
+            return {
+                "card": r[0],
+                "expansion": r[1],
+                "confidence": round(score / 100 * 0.97, 2),
+                "method": f"{method_prefix}_artist",
+            }
+
+    # 2. Name candidates — score each row against all candidates, take max per row
+    if name_candidates:
+        def _best_name_score(card: CardV2) -> int:
+            best = 0
+            for candidate in name_candidates:
+                s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
+                if card.en_name:
+                    s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
+                best = max(best, s)
+            return best
+
+        name_scored = sorted(
+            [(r, _best_name_score(r[0])) for r in rows],
+            key=lambda x: x[1],
+            reverse=True,
+        )
+        top_score = name_scored[0][1] if name_scored else 0
+        if top_score >= 80:
+            close = [r for r, s in name_scored if s >= top_score - 5]
+            if len(close) == 1 or top_score >= 95:
+                r = name_scored[0][0]
+                return {
+                    "card": r[0],
+                    "expansion": r[1],
+                    "confidence": round(top_score / 100 * 0.95, 2),
+                    "method": f"{method_prefix}_name",
+                }
+
+    # 3. HP
+    if hp is not None:
+        hp_matched = [r for r in rows if r[0].hp == str(hp)]
+        if len(hp_matched) == 1:
+            return {
+                "card": hp_matched[0][0],
+                "expansion": hp_matched[0][1],
+                "confidence": 0.82,
+                "method": f"{method_prefix}_hp",
+            }
+
+    return None
+
+
+def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
+    """
+    Quick Scan v3: printed_number-primary matching strategy.
+
+    Anchors on the DB printed_number field (exact match against what OCR reads)
+    as the primary signal, then uses artist → name_candidates → HP to resolve
+    the small result sets that remain.
+
+    PATH A (non-bare set_number: slash, No.NNN, promo):
+      1. printed_number direct match + language  → 1 result → done (0.99)
+      2. >1 results → artist → name_candidates → HP → else ambiguous
+      3. 0 results → fallback: number variants + language, same disambiguation
+
+    PATH B (bare NNN or no set_number):
+      Pool by number (if available) + name search; score all rows against every
+      name candidate, then artist → HP to break ties.
+    """
+    set_number: str = (ocr.get("set_number") or "").strip()
+    name_candidates: List[str] = list(ocr.get("name_candidates") or [])
+    if not name_candidates:
+        single = (ocr.get("name") or "").strip()
+        if single:
+            name_candidates = [single]
+    illustrator: str = (ocr.get("illustrator") or "").strip()
+    hp: Optional[int] = ocr.get("hp")
+    lang_code: Optional[str] = (ocr.get("language_code") or "").upper().strip() or None
+    local_id_variants = _local_id_variants(set_number) if set_number else []
+
+    def _base_q() -> Any:
+        q = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(CardV2.game == "pokemon")
+        )
+        if lang_code:
+            q = q.filter(CardV2.language_code == lang_code)
+        return q
+
+    # ------------------------------------------------------------------
+    # PATH A: non-bare set_number
+    # ------------------------------------------------------------------
+    if set_number and not _is_bare_number(set_number):
+        # Step 1: exact printed_number match
+        rows = _base_q().filter(
+            func.lower(CardV2.printed_number) == set_number.lower()
+        ).all()
+
+        if len(rows) == 1:
+            return {"card": rows[0][0], "expansion": rows[0][1], "confidence": 0.99, "method": "v3_printed_number"}
+
+        if len(rows) > 1:
+            result = _v3_disambiguate(rows, name_candidates, illustrator, hp, "v3_printed_number")
+            if result:
+                return result
+            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in rows[:10]]}
+
+        # Step 2: 0 printed_number results — fallback to number variants
+        if local_id_variants:
+            rows2 = _base_q().filter(CardV2.number.in_(local_id_variants)).all()
+            if len(rows2) == 1:
+                return {"card": rows2[0][0], "expansion": rows2[0][1], "confidence": 0.75, "method": "v3_number_fallback"}
+            if len(rows2) > 1:
+                result = _v3_disambiguate(rows2, name_candidates, illustrator, hp, "v3_number_fallback")
+                if result:
+                    return result
+                return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in rows2[:10]]}
+
+        return None
+
+    # ------------------------------------------------------------------
+    # PATH B: bare number or no number — name-primary with multi-candidates
+    # ------------------------------------------------------------------
+    pool: List[tuple] = []
+
+    # Pool A: by number variants
+    if local_id_variants:
+        pool.extend(_base_q().filter(CardV2.number.in_(local_id_variants)).limit(50).all())
+
+    # Pool B: by name candidates (first 2 to limit queries)
+    if len(pool) < 20:
+        for candidate in name_candidates[:2]:
+            if len(candidate) < 2:
+                continue
+            norm = _strip_accents(candidate)
+            pool.extend(
+                _base_q().filter(
+                    or_(
+                        func.unaccent(CardV2.name).ilike(f"%{norm}%"),
+                        func.unaccent(CardV2.en_name).ilike(f"%{norm}%"),
+                    )
+                ).limit(30).all()
+            )
+
+    # Deduplicate preserving order
+    seen_ids: set = set()
+    unique_pool: List[tuple] = []
+    for row in pool:
+        if row[0].id not in seen_ids:
+            seen_ids.add(row[0].id)
+            unique_pool.append(row)
+    pool = unique_pool[:50]
+
+    if not pool:
+        return None
+
+    def _pool_best_name_score(card: CardV2) -> int:
+        best = 0
+        for candidate in name_candidates:
+            s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
+            if card.en_name:
+                s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
+            best = max(best, s)
+        return best
+
+    scored = sorted(
+        [(row, _pool_best_name_score(row[0])) for row in pool],
+        key=lambda x: x[1],
+        reverse=True,
+    )
+
+    if not scored or scored[0][1] < 75:
+        return None
+
+    top_score = scored[0][1]
+    top = [row for row, s in scored if s >= top_score - 5]
+
+    if len(top) == 1 or top_score >= 95:
+        r = scored[0][0]
+        return {"card": r[0], "expansion": r[1], "confidence": round(top_score / 100 * 0.90, 2), "method": "v3_name_primary"}
+
+    result = _v3_disambiguate(top, name_candidates, illustrator, hp, "v3_name")
+    if result:
+        return result
+
+    if len(top) <= 10:
+        return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in top]}
+
+    r = scored[0][0]
+    return {"card": r[0], "expansion": r[1], "confidence": round(top_score / 100 * 0.75, 2), "method": "v3_name_primary_low"}
+
+
 def _parse_card_count(set_number: str) -> Optional[int]:
     """
     Extract the total card count from a set number string.

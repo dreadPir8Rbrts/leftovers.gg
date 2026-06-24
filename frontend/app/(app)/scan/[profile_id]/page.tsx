@@ -41,6 +41,7 @@ import { Camera } from "lucide-react";
 import {
   quickIdentifyCard,
   quickIdentifyCardV2,
+  quickIdentifyCardV3,
   lookupCertCard,
   type QuickScanResult,
   type ScanCandidate,
@@ -135,8 +136,9 @@ export default function ScanPage() {
   // Scan result state — shared between photo and QR modes
   const [quickScanLoading, setQuickScanLoading] = useState(false);
   const [smartScanLoading, setSmartScanLoading] = useState(false);
+  const [v3ScanLoading, setV3ScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
-  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "qr" | null>(null);
+  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "v3" | "qr" | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
 
   const { setScanContext } = useScanContext();
@@ -452,7 +454,37 @@ export default function ScanPage() {
     }
   }
 
-  const isScanning = quickScanLoading || smartScanLoading;
+  async function handleV3Scan() {
+    if (!capturedFile) return;
+    setV3ScanLoading(true);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
+    setScanCandidates(null);
+    setCameraError("");
+    setCameraStatus("scanning");
+    try {
+      const compressed = await compressImage(capturedFile, 800, 0.70);
+      const result = await quickIdentifyCardV3(compressed);
+      if (result.matched && result.card_id) {
+        setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
+        router.push(`/cards/${result.card_id}`);
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
+        setCameraStatus("captured");
+      } else {
+        setNoMatchResult(result);
+        setNoMatchMethod("v3");
+        setCameraStatus("captured");
+      }
+    } catch (err) {
+      setCameraError(err instanceof Error ? err.message : "Quick Scan v3 failed — please try again.");
+      setCameraStatus("captured");
+    } finally {
+      setV3ScanLoading(false);
+    }
+  }
+
+  const isScanning = quickScanLoading || smartScanLoading || v3ScanLoading;
 
   // ── Shared JSX fragments ──────────────────────────────────
 
@@ -660,11 +692,19 @@ export default function ScanPage() {
                 {quickScanLoading ? "Scanning…" : "Quick Scan"}
               </Button>
               <Button
+                variant="secondary"
                 className="flex-1"
                 onClick={handleSmartScan}
                 disabled={isScanning}
               >
                 {smartScanLoading ? "Scanning…" : "Quick Scan v2"}
+              </Button>
+              <Button
+                className="flex-1"
+                onClick={handleV3Scan}
+                disabled={isScanning}
+              >
+                {v3ScanLoading ? "Scanning…" : "Quick Scan v3"}
               </Button>
             </div>
           )}
@@ -703,8 +743,10 @@ export default function ScanPage() {
           {noMatchResult && !noMatchResult.matched && (
             <div className="rounded-lg border border-muted p-4 space-y-1">
               <p className="text-sm font-medium">
-                {noMatchMethod === "smart"
-                  ? "Smart Scan (v2)"
+                {noMatchMethod === "v3"
+                  ? "Quick Scan v3"
+                  : noMatchMethod === "smart"
+                  ? "Quick Scan v2"
                   : noMatchMethod === "qr"
                   ? "QR Cert Lookup"
                   : "Quick Scan"}{" "}
@@ -721,9 +763,9 @@ export default function ScanPage() {
                   Numbers: num1={noMatchResult.ocr.ocr_num1 ?? "—"} · num2={noMatchResult.ocr.ocr_num2 ?? "—"}
                 </p>
               )}
-              {noMatchMethod === "quick" && (
+              {(noMatchMethod === "quick" || noMatchMethod === "smart") && (
                 <p className="text-xs text-muted-foreground">
-                  Try &ldquo;Smart Scan (v2)&rdquo; for better identification.
+                  Try &ldquo;Quick Scan v3&rdquo; for better identification.
                 </p>
               )}
             </div>
