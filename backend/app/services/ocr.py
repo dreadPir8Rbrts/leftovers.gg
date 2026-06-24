@@ -289,9 +289,16 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     if hp_match:
         result["hp"] = int(hp_match.group(1) or hp_match.group(2))
 
-    illus_pattern = re.compile(r"illus\.\s*(.+)", re.IGNORECASE)
+    # Broad illustrator pattern — OCR frequently corrupts the "Illus." prefix:
+    #   "lus.Nobuyuki Hobu"  (Il dropped)
+    #   "Hlus. Hikaru Koike" (I→H, l dropped)
+    #   "Illus Hikaru Koike" (dot dropped)
+    # Anchored to the start of the line: 0–4 ASCII letters before "lus",
+    # optional dot, then the artist name. The ^ anchor prevents mid-sentence
+    # words ending in "lus" (e.g. attack text) from being matched.
+    illus_pattern = re.compile(r"^[A-Za-z]{0,4}lus\.?\s*(.+)", re.IGNORECASE)
     for line in lines:
-        match = illus_pattern.search(line)
+        match = illus_pattern.match(line)
         if match:
             result["illustrator"] = match.group(1).strip()
             break
