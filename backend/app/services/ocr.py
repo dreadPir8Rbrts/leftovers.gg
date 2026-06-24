@@ -264,6 +264,17 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
                 result["ocr_num2"] = None
                 break
 
+    # Pass 3: standalone zero-padded 3-digit numbers ("007", "036") — Topsun and
+    # Vending-era JA cards where the card number is printed alone with no slash total.
+    # Restricted to exactly 3 characters so HP, damage values, and years never match.
+    if result["set_number"] is None:
+        for line in lines:
+            if re.match(r"^0\d{2}$", line):
+                result["set_number"] = line
+                result["ocr_num1"] = line
+                result["ocr_num2"] = None
+                break
+
     # Search the full raw text (not line-by-line) so "HP\n100" is matched
     # even when the number appears on the line after the HP label.
     # Allow an optional trailing noise digit (e.g. "1204" where ⚡ → "4")

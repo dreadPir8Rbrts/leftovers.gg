@@ -640,6 +640,29 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     # ------------------------------------------------------------------
     # PATH B: bare number or no number — name-primary with multi-candidates
     # ------------------------------------------------------------------
+
+    # PATH B sub-step: zero-padded bare numbers ("007", "036") from Topsun/Vending-era
+    # cards where the number is printed alone with no slash total.
+    # printed_number="007" only matches cards whose full printed number IS "007" —
+    # slash-format cards like sv2a's "007/165" won't match, so this cleanly isolates
+    # the vintage card without needing any name scoring.
+    if set_number and set_number.startswith("0") and set_number.isdigit():
+        pn_rows = _base_q().filter(
+            func.lower(CardV2.printed_number) == set_number.lower()
+        ).all()
+        if len(pn_rows) == 1:
+            return {
+                "card": pn_rows[0][0],
+                "expansion": pn_rows[0][1],
+                "confidence": 0.95,
+                "method": "v3_bare_printed_number",
+            }
+        if len(pn_rows) > 1:
+            dis = _v3_disambiguate(pn_rows, name_candidates, illustrator, hp, "v3_bare_printed_number")
+            if dis:
+                return dis
+        # 0 results or disambiguation failed — fall through to pool approach
+
     pool: List[tuple] = []
 
     # Pool A: by number variants
