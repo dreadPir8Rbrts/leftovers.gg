@@ -231,25 +231,38 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
 
     # Allow up to 4 digits on the right side — OCR sometimes appends an extra
     # character to the card count (e.g. "044/1910" instead of "044/191").
-    # Also matches old Japanese Base-era "No.NNN" Pokédex-number format.
-    # Promo format: NNN/XX-P (e.g. "063/SV-P", "001/BW-P", "012/SM-P").
-    # Rarity codes (AR, SAR, SR, HR, UR, CHR, CSR …) are printed immediately
-    # after the card count on SV-era JA cards and OCR merges them: "165AR".
-    # The non-capturing group (?:[A-Z]{0,4}) absorbs 0-4 rarity letters so the
-    # trailing \b lands at the actual word boundary. group(1) gives the clean
-    # numeric portion without the rarity suffix.
-    set_number_pattern = re.compile(
-        r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+|No\.\s*\d+|\d{1,3}/[A-Z]{1,6}-[A-Z])(?:[A-Z]{0,4})\b",
+    # Two-pass set number extraction — slash formats take priority over No.NNN.
+    # Pass 1: NNN/NNN, TG##/TG##, NNN/XX-P — the explicit slash set number.
+    # Pass 2: No.NNN (1-3 digits only) — vintage JA Base-era card numbers.
+    # Keeping them separate prevents the Pokédex species line ("NO. 0523
+    # Thunderbolt Pokémon HT 5'3"…") from shadowing the real set number
+    # ("063/182") that appears lower in the OCR output. Modern Pokédex entries
+    # always use 4-digit numbers (0523, 0036), so the 3-digit cap on No. is safe.
+    # Rarity codes (AR, SAR, SR …) are absorbed by (?:[A-Z]{0,4}) so group(1)
+    # is the clean numeric portion without the rarity suffix.
+    _slash_pattern = re.compile(
+        r"\b(\d{1,3}/\d{1,4}|TG\d+/TG\d+|\d{1,3}/[A-Z]{1,6}-[A-Z])(?:[A-Z]{0,4})\b",
         re.IGNORECASE,
     )
+    _no_pattern = re.compile(r"\b(No\.\s*\d{1,3})\b", re.IGNORECASE)
+
     for line in lines:
-        match = set_number_pattern.search(line)
-        if match:
-            result["set_number"] = match.group(1)
-            parts = match.group(1).split("/")
+        m = _slash_pattern.search(line)
+        if m:
+            result["set_number"] = m.group(1)
+            parts = m.group(1).split("/")
             result["ocr_num1"] = parts[0] if len(parts) > 0 else None
             result["ocr_num2"] = parts[1] if len(parts) > 1 else None
             break
+
+    if result["set_number"] is None:
+        for line in lines:
+            m = _no_pattern.search(line)
+            if m:
+                result["set_number"] = m.group(1)
+                result["ocr_num1"] = m.group(1)
+                result["ocr_num2"] = None
+                break
 
     # Search the full raw text (not line-by-line) so "HP\n100" is matched
     # even when the number appears on the line after the HP label.
