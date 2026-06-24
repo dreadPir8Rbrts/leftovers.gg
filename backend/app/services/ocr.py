@@ -259,8 +259,13 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
         for line in lines:
             m = _no_pattern.search(line)
             if m:
-                result["set_number"] = m.group(1)
-                result["ocr_num1"] = m.group(1)
+                # Normalize "No. 075" → "No.075": remove the optional space the OCR
+                # sometimes inserts between "No." and the digits so the string matches
+                # the DB printed_number format exactly.
+                digits = m.group(1)[3:].strip()
+                normalized = f"No.{digits}"
+                result["set_number"] = normalized
+                result["ocr_num1"] = normalized
                 result["ocr_num2"] = None
                 break
 
