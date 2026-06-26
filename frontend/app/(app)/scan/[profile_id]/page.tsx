@@ -689,27 +689,11 @@ export default function ScanPage() {
           {cameraStatus === "captured" && !scanCandidates && capturedFile && (
             <div className="flex gap-2">
               <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={handleQuickScan}
-                disabled={isScanning}
-              >
-                {quickScanLoading ? "Scanning…" : "Quick Scan"}
-              </Button>
-              <Button
-                variant="secondary"
-                className="flex-1"
-                onClick={handleSmartScan}
-                disabled={isScanning}
-              >
-                {smartScanLoading ? "Scanning…" : "Quick Scan v2"}
-              </Button>
-              <Button
                 className="flex-1"
                 onClick={handleV3Scan}
                 disabled={isScanning}
               >
-                {v3ScanLoading ? "Scanning…" : "Quick Scan v3"}
+                {v3ScanLoading ? "Scanning…" : "Quick Scan"}
               </Button>
             </div>
           )}
@@ -757,13 +741,7 @@ export default function ScanPage() {
           {noMatchResult && !noMatchResult.matched && (
             <div className="rounded-lg border border-muted p-4 space-y-1">
               <p className="text-sm font-medium">
-                {noMatchMethod === "v3"
-                  ? "Quick Scan v3"
-                  : noMatchMethod === "smart"
-                  ? "Quick Scan v2"
-                  : noMatchMethod === "qr"
-                  ? "QR Cert Lookup"
-                  : "Quick Scan"}{" "}
+                {noMatchMethod === "qr" ? "QR Cert Lookup" : "Quick Scan"}{" "}
                 — no match found
               </p>
               {noMatchResult.ocr.name && (
@@ -775,11 +753,6 @@ export default function ScanPage() {
               {(noMatchResult.ocr.ocr_num1 || noMatchResult.ocr.ocr_num2) && (
                 <p className="text-xs text-muted-foreground">
                   Numbers: num1={noMatchResult.ocr.ocr_num1 ?? "—"} · num2={noMatchResult.ocr.ocr_num2 ?? "—"}
-                </p>
-              )}
-              {(noMatchMethod === "quick" || noMatchMethod === "smart") && (
-                <p className="text-xs text-muted-foreground">
-                  Try &ldquo;Quick Scan v3&rdquo; for better identification.
                 </p>
               )}
             </div>

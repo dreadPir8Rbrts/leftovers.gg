@@ -19,7 +19,7 @@ import {
   createTransaction,
   patchInventoryItem,
   searchCardsSmart,
-  quickIdentifyCardV2,
+  quickIdentifyCardV3,
   lookupCertCard,
   getCardPricing,
   getCardScrydexPrices,
@@ -855,7 +855,7 @@ function CardPickerModal({
     setScanError(null);
     try {
       const compressed = await compressImage(capturedFile);
-      const result = await quickIdentifyCardV2(compressed);
+      const result = await quickIdentifyCardV3(compressed);
       if (result.matched && result.card_id) {
         const card: Card = {
           id: result.card_id,
@@ -872,6 +872,9 @@ function CardPickerModal({
         getCardPricing(card.id).catch(() => {});
         setPendingCard(card);
         exitCameraMode();
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
+        setCameraStatus("captured");
       } else {
         setScanError("Card not recognised — retake or search by name.");
         setCameraStatus("captured");
@@ -932,40 +935,23 @@ function CardPickerModal({
 
         {/* ── PHOTO MODE IDLE ── */}
         {cameraStatus === "photo_idle" && (
-          <>
-            <div
-              className="relative w-full bg-black overflow-hidden"
-              style={{ aspectRatio: "3/4", maxHeight: "65vh" }}
-            >
-              {modeToggle}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div
-                  className="relative"
-                  style={{ width: "62%", aspectRatio: "5/7", boxShadow: "0 0 0 9999px rgba(0,0,0,0.55)" }}
-                >
-                  {cornerBrackets}
-                </div>
-              </div>
-              <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
-                Center the card within the guides, then take photo
-              </p>
-            </div>
-            <div className="flex items-center justify-center py-6 bg-black shrink-0">
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={handlePhotoCapture}
-                className="hidden"
-              />
-              <button
-                onClick={() => photoInputRef.current?.click()}
-                aria-label="Take photo"
-                className="w-16 h-16 rounded-full bg-white border-4 border-primary shadow-lg active:scale-95 transition-transform"
-              />
-            </div>
-          </>
+          <div className="relative flex flex-col items-center justify-center flex-1 gap-6 px-6">
+            {modeToggle}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handlePhotoCapture}
+              className="hidden"
+            />
+            <p className="text-sm text-muted-foreground text-center">
+              Take a photo of the card to identify it
+            </p>
+            <Button className="w-full" onClick={() => photoInputRef.current?.click()}>
+              Take photo
+            </Button>
+          </div>
         )}
 
         {/* ── QR VIEWFINDER (requesting + live) ── */}
