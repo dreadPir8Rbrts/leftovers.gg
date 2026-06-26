@@ -585,6 +585,12 @@ def _v3_disambiguate(
                 "confidence": round(score / 100 * 0.97, 2),
                 "method": f"{method_prefix}_artist",
             }
+        # Multiple artist matches — narrow working to artist-confirmed candidates so
+        # subsequent name/HP steps operate on a smaller, validated set.
+        # Example: base2_ja Vaporeon + vnd_ja Vaporeon both by Kagemaru Himeno →
+        # narrows to those two, then step 3 HP-positive picks the one with HP=80.
+        if artist_top and len(artist_top) < len(working):
+            working = [r for r, s in artist_top]
 
     # 2. Name candidates — score each row against all candidates, take max per row.
     #    Only auto-picks when there is a single uniquely best candidate; does NOT
