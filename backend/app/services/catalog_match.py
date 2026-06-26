@@ -494,12 +494,21 @@ def match_card_from_ocr_v2(ocr: Dict[str, Any], db: Session) -> Optional[Dict[st
 
 
 def _best_name_score(card: CardV2, name_candidates: List[str]) -> int:
-    """Score a card against all OCR name candidates; return the highest score."""
+    """Score a card against all OCR name candidates; return the highest score.
+
+    Uses max(ratio, token_sort_ratio) per candidate:
+    - token_sort_ratio handles reordered tokens (e.g. OCR reads "Pikachu BASIC" vs DB "BASIC Pikachu")
+    - ratio handles merged tokens (e.g. OCR reads "イマクニ?のドードー" vs DB "イマクニ? のドードー"
+      where the space causes token_sort to rearrange to "のドードー イマクニ?", tanking the score)
+    """
     best = 0
     for candidate in name_candidates:
-        s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
+        c = candidate.lower()
+        db_name = (card.name or "").lower()
+        s = max(fuzz.ratio(c, db_name), fuzz.token_sort_ratio(c, db_name))
         if card.en_name:
-            s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
+            en = card.en_name.lower()
+            s = max(s, fuzz.ratio(c, en), fuzz.token_sort_ratio(c, en))
         best = max(best, s)
     return best
 

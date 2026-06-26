@@ -85,7 +85,8 @@ _NON_NAME_PATTERN = re.compile(
     r"^(STAGE(?:\s*\d+|\s*I{1,3}|T)?|BASIC|V\s*MAX|HP\s*\d+|\d+\s*HP|\d+|TRAINER|ENERGY"
     r"|\S{0,4}進化:?"  # stage markers: 進化, 1進化, 2進化, ⑦進化: (OCR noise for 1進化, trailing colon)
     r"|\d*進\S*"      # garbled stage markers: 2進な, 2進, 進な, 進化ポケモン, 2進化ポケモン, etc.
-    r"|たね|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー)$",
+    r"|たね|にげる|弱点|抵抗力|特性|ポケパワー|ポケボディー"
+    r"|No\.\s*\d+)$", # Pokédex/card number line (e.g. "No.084") — never a card name
     re.IGNORECASE,
 )
 
