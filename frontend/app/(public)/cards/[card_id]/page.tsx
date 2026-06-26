@@ -512,7 +512,7 @@ export default function CardDetailPage() {
             <>
               <div className="space-y-1">
                 <p className="text-3xl font-bold">${Number(tcgRaw.nm_market_price).toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground">NM Market · TCGPlayer</p>
+                <p className="text-xs text-muted-foreground">NM Market · {tcgRaw.source === "scrydex" ? "Scrydex" : "TCGPlayer"}</p>
               </div>
               <div className="grid grid-cols-2 gap-1.5 text-xs">
                 {tcgRaw.condition_estimates.map(({ condition, label, estimated_price }) => (
