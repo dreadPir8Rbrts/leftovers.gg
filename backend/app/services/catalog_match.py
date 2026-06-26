@@ -493,6 +493,33 @@ def match_card_from_ocr_v2(ocr: Dict[str, Any], db: Session) -> Optional[Dict[st
     return None
 
 
+def _best_name_score(card: CardV2, name_candidates: List[str]) -> int:
+    """Score a card against all OCR name candidates; return the highest score."""
+    best = 0
+    for candidate in name_candidates:
+        s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
+        if card.en_name:
+            s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
+        best = max(best, s)
+    return best
+
+
+def _filter_by_name(
+    rows: List[tuple], name_candidates: List[str], gap: int = 10
+) -> List[tuple]:
+    """Return only the rows whose name score is within `gap` of the best scorer.
+    Drops partial-match contamination (e.g. 'キョウのモンジャラ' scoring ~80%
+    when 'モンジャラ' scores 100%) from ambiguous candidate lists.
+    If name_candidates is empty or all rows score 0, returns rows unchanged."""
+    if not name_candidates or not rows:
+        return rows
+    scored = [(r, _best_name_score(r[0], name_candidates)) for r in rows]
+    top = max(s for _, s in scored)
+    if top == 0:
+        return rows
+    return [r for r, s in scored if s >= top - gap]
+
+
 def _is_bare_number(set_number: str) -> bool:
     """True for bare card numbers with no format indicator: '085', '007'.
     False for slash ('063/182'), No-prefix ('No.036'), and promo ('064/SV-P') formats."""
@@ -548,17 +575,8 @@ def _v3_disambiguate(
     #    auto-pick on a perfect-score tie (e.g. two cards with the same name both
     #    scoring 100% would previously be incorrectly resolved by this step).
     if name_candidates:
-        def _best_name_score(card: CardV2) -> int:
-            best = 0
-            for candidate in name_candidates:
-                s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
-                if card.en_name:
-                    s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
-                best = max(best, s)
-            return best
-
         name_scored = sorted(
-            [(r, _best_name_score(r[0])) for r in working],
+            [(r, _best_name_score(r[0], name_candidates)) for r in working],
             key=lambda x: x[1],
             reverse=True,
         )
@@ -642,7 +660,8 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
             result = _v3_disambiguate(rows, name_candidates, illustrator, hp, "v3_printed_number")
             if result:
                 return result
-            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in rows[:10]]}
+            filtered = _filter_by_name(rows, name_candidates)
+            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in filtered[:10]]}
 
         # Step 2: 0 printed_number results — fallback to number variants
         if local_id_variants:
@@ -653,7 +672,8 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
                 result = _v3_disambiguate(rows2, name_candidates, illustrator, hp, "v3_number_fallback")
                 if result:
                     return result
-                return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in rows2[:10]]}
+                filtered2 = _filter_by_name(rows2, name_candidates)
+                return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in filtered2[:10]]}
 
         return None
 
@@ -716,17 +736,8 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     if not pool:
         return None
 
-    def _pool_best_name_score(card: CardV2) -> int:
-        best = 0
-        for candidate in name_candidates:
-            s = fuzz.token_sort_ratio(candidate.lower(), (card.name or "").lower())
-            if card.en_name:
-                s = max(s, fuzz.token_sort_ratio(candidate.lower(), card.en_name.lower()))
-            best = max(best, s)
-        return best
-
     scored = sorted(
-        [(row, _pool_best_name_score(row[0])) for row in pool],
+        [(row, _best_name_score(row[0], name_candidates)) for row in pool],
         key=lambda x: x[1],
         reverse=True,
     )
