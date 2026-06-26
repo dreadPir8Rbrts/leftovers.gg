@@ -740,6 +740,16 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
                 ).limit(30).all()
             )
 
+    # Pool C: artist-targeted — guarantees the illustrator's cards are present even
+    # when Pool B's limit(30) + [:50] cap would otherwise exclude them (e.g. promo
+    # cards that sort after main-set cards in heap scan order).
+    if illustrator and len(illustrator) >= 3:
+        pool.extend(
+            _base_q().filter(
+                func.unaccent(CardV2.artist).ilike(f"%{_strip_accents(illustrator)}%")
+            ).limit(20).all()
+        )
+
     # Deduplicate preserving order
     seen_ids: set = set()
     unique_pool: List[tuple] = []

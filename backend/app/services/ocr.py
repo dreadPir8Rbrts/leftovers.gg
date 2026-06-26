@@ -323,7 +323,12 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     for line in lines:
         match = illus_pattern.match(line)
         if match:
-            result["illustrator"] = match.group(1).strip()
+            artist = match.group(1).strip()
+            # Strip trailing copyright block: "Benimaru Itoh ©1995..." → "Benimaru Itoh"
+            copy_idx = artist.find("©")
+            if copy_idx > 0:
+                artist = artist[:copy_idx].strip()
+            result["illustrator"] = artist
             break
 
     return result
