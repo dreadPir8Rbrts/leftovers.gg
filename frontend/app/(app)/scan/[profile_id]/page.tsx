@@ -39,8 +39,6 @@ import { supabase } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Camera } from "lucide-react";
 import {
-  quickIdentifyCard,
-  quickIdentifyCardV2,
   quickIdentifyCardV3,
   lookupCertCard,
   type QuickScanResult,
@@ -134,8 +132,6 @@ export default function ScanPage() {
   const fallbackFileRef = useRef<HTMLInputElement>(null);
 
   // Scan result state — shared between photo and QR modes
-  const [quickScanLoading, setQuickScanLoading] = useState(false);
-  const [smartScanLoading, setSmartScanLoading] = useState(false);
   const [v3ScanLoading, setV3ScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
   const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "v3" | "qr" | null>(null);
@@ -352,8 +348,6 @@ export default function ScanPage() {
     setNoMatchMethod(null);
     setScanCandidates(null);
     setNoNumberDetected(false);
-    setQuickScanLoading(false);
-    setSmartScanLoading(false);
     setCameraError("");
     certLookupInProgressRef.current = false;
     if (scanMode === "qr") {
@@ -396,66 +390,6 @@ export default function ScanPage() {
   // }
   // ───────────────────────────────────────────────────────────
 
-  async function handleQuickScan() {
-    if (!capturedFile) return;
-    setQuickScanLoading(true);
-    setNoMatchResult(null);
-    setNoMatchMethod(null);
-    setScanCandidates(null);
-    setCameraError("");
-    setCameraStatus("scanning");
-    try {
-      const compressed = await compressImage(capturedFile, 800, 0.70);
-      const result = await quickIdentifyCard(compressed);
-      if (result.matched && result.card_id) {
-        setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
-        router.push(`/cards/${result.card_id}`);
-      } else if (result.ambiguous && result.candidates?.length) {
-        setScanCandidates(result.candidates);
-        setCameraStatus("captured");
-      } else {
-        setNoMatchResult(result);
-        setNoMatchMethod("quick");
-        setCameraStatus("captured");
-      }
-    } catch (err) {
-      setCameraError(err instanceof Error ? err.message : "Quick Scan failed — please try again.");
-      setCameraStatus("captured");
-    } finally {
-      setQuickScanLoading(false);
-    }
-  }
-
-  async function handleSmartScan() {
-    if (!capturedFile) return;
-    setSmartScanLoading(true);
-    setNoMatchResult(null);
-    setNoMatchMethod(null);
-    setScanCandidates(null);
-    setCameraError("");
-    setCameraStatus("scanning");
-    try {
-      const compressed = await compressImage(capturedFile, 800, 0.70);
-      const result = await quickIdentifyCardV2(compressed);
-      if (result.matched && result.card_id) {
-        setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
-        router.push(`/cards/${result.card_id}`);
-      } else if (result.ambiguous && result.candidates?.length) {
-        setScanCandidates(result.candidates);
-        setCameraStatus("captured");
-      } else {
-        setNoMatchResult(result);
-        setNoMatchMethod("smart");
-        setCameraStatus("captured");
-      }
-    } catch (err) {
-      setCameraError(err instanceof Error ? err.message : "Smart Scan failed — please try again.");
-      setCameraStatus("captured");
-    } finally {
-      setSmartScanLoading(false);
-    }
-  }
-
   async function handleV3Scan() {
     if (!capturedFile) return;
     setV3ScanLoading(true);
@@ -489,7 +423,7 @@ export default function ScanPage() {
     }
   }
 
-  const isScanning = quickScanLoading || smartScanLoading || v3ScanLoading;
+  const isScanning = v3ScanLoading;
 
   // ── Shared JSX fragments ──────────────────────────────────
 
