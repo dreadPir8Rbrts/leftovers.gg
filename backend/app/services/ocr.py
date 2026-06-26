@@ -246,6 +246,9 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
         re.IGNORECASE,
     )
     _no_pattern = re.compile(r"\b(No\.\s*\d{1,3})\b", re.IGNORECASE)
+    # OCR frequently corrupts "No." → "Na", "Nu", "Nc" etc. (o misread as a/u/c).
+    # Captures just the digits so normalization is the same as Pass 2.
+    _no_corrupt_pattern = re.compile(r"\bN[a-z]\.?\s+(\d{1,3})\b", re.IGNORECASE)
 
     for line in lines:
         m = _slash_pattern.search(line)
@@ -264,6 +267,18 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
                 # sometimes inserts between "No." and the digits so the string matches
                 # the DB printed_number format exactly.
                 digits = m.group(1)[3:].strip()
+                normalized = f"No.{digits}"
+                result["set_number"] = normalized
+                result["ocr_num1"] = normalized
+                result["ocr_num2"] = None
+                break
+
+    # Pass 2b: OCR-corrupted No. prefix (e.g. "Na 097" → "No.097")
+    if result["set_number"] is None:
+        for line in lines:
+            m = _no_corrupt_pattern.search(line)
+            if m:
+                digits = m.group(1).strip()
                 normalized = f"No.{digits}"
                 result["set_number"] = normalized
                 result["ocr_num1"] = normalized

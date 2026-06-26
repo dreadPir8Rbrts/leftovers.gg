@@ -764,7 +764,7 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     top_score = scored[0][1]
     top = [row for row, s in scored if s >= top_score - 5]
 
-    if len(top) == 1 or top_score >= 95:
+    if len(top) == 1:
         r = scored[0][0]
         return {"card": r[0], "expansion": r[1], "confidence": round(top_score / 100 * 0.90, 2), "method": "v3_name_primary"}
 

@@ -140,6 +140,7 @@ export default function ScanPage() {
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
   const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "v3" | "qr" | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
+  const [noNumberDetected, setNoNumberDetected] = useState(false);
 
   const { setScanContext } = useScanContext();
 
@@ -350,6 +351,7 @@ export default function ScanPage() {
     setNoMatchResult(null);
     setNoMatchMethod(null);
     setScanCandidates(null);
+    setNoNumberDetected(false);
     setQuickScanLoading(false);
     setSmartScanLoading(false);
     setCameraError("");
@@ -460,11 +462,14 @@ export default function ScanPage() {
     setNoMatchResult(null);
     setNoMatchMethod(null);
     setScanCandidates(null);
+    setNoNumberDetected(false);
     setCameraError("");
     setCameraStatus("scanning");
     try {
       const compressed = await compressImage(capturedFile, 800, 0.70);
       const result = await quickIdentifyCardV3(compressed);
+      const hasNumber = !!(result.ocr?.set_number || result.ocr?.ocr_num1);
+      if (!hasNumber) setNoNumberDetected(true);
       if (result.matched && result.card_id) {
         setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
         router.push(`/cards/${result.card_id}`);
@@ -706,6 +711,15 @@ export default function ScanPage() {
               >
                 {v3ScanLoading ? "Scanning…" : "Quick Scan v3"}
               </Button>
+            </div>
+          )}
+
+          {/* No-number warning — shown when OCR couldn't read any card number */}
+          {noNumberDetected && (
+            <div className="rounded-lg border border-yellow-500/40 bg-yellow-500/10 px-3 py-2">
+              <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                Card number not detected — try removing the card from its holder or holding the camera steadier.
+              </p>
             </div>
           )}
 
