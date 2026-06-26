@@ -550,18 +550,25 @@ def _v3_disambiguate(
     # 0. HP negative elimination — remove candidates whose DB hp is known (non-null)
     #    and contradicts the OCR hp. null DB hp is inconclusive (vending/vintage cards
     #    often lack hp data), so only a confirmed mismatch eliminates.
+    #
+    #    Guard: only run elimination when at least one candidate *confirms* the OCR HP
+    #    (i.e. has hp == str(ocr_hp)). If no candidate confirms it, the OCR reading is
+    #    probably wrong (e.g. "LV.15 HP 50" misread as hp=15) — skip elimination to
+    #    avoid incorrectly narrowing to surviving null-HP cards.
     working = rows
     if hp is not None:
-        surviving = [r for r in rows if r[0].hp is None or r[0].hp == str(hp)]
-        if 0 < len(surviving) < len(rows):
-            if len(surviving) == 1:
-                return {
-                    "card": surviving[0][0],
-                    "expansion": surviving[0][1],
-                    "confidence": 0.90,
-                    "method": f"{method_prefix}_hp_elim",
-                }
-            working = surviving
+        confirmed = [r for r in rows if r[0].hp == str(hp)]
+        if confirmed:
+            surviving = [r for r in rows if r[0].hp is None or r[0].hp == str(hp)]
+            if 0 < len(surviving) < len(rows):
+                if len(surviving) == 1:
+                    return {
+                        "card": surviving[0][0],
+                        "expansion": surviving[0][1],
+                        "confidence": 0.90,
+                        "method": f"{method_prefix}_hp_elim",
+                    }
+                working = surviving
 
     # 1. Artist fuzzy (unique match scoring ≥ 85)
     if illustrator:

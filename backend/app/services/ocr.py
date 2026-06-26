@@ -284,11 +284,18 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
     # Search the full raw text (not line-by-line) so "HP\n100" is matched
     # even when the number appears on the line after the HP label.
     # Allow an optional trailing noise digit (e.g. "1204" where ⚡ → "4")
-    # by matching \d{2,3} followed by an optional extra digit before the HP label.
-    hp_pattern = re.compile(r"\b(\d{2,3})\d?\s*HP\b|\bHP\s*(\d{2,3})\d?\b", re.IGNORECASE)
-    hp_match = hp_pattern.search(raw_text)
-    if hp_match:
-        result["hp"] = int(hp_match.group(1) or hp_match.group(2))
+    # by matching \d{2,3} followed by an optional extra digit before/after the HP label.
+    #
+    # Try "HP 50" (HP-prefix) first, then fall back to "50 HP" (HP-suffix).
+    # Searching jointly with | would return leftmost match — on a line like
+    # "LV.15 HP 50", "15 HP" starts earlier than "HP 50" and would win incorrectly.
+    hp_prefix = re.search(r"\bHP\s*(\d{2,3})\d?\b", raw_text, re.IGNORECASE)
+    if hp_prefix:
+        result["hp"] = int(hp_prefix.group(1))
+    else:
+        hp_suffix = re.search(r"\b(\d{2,3})\d?\s*HP\b", raw_text, re.IGNORECASE)
+        if hp_suffix:
+            result["hp"] = int(hp_suffix.group(1))
 
     # Broad illustrator pattern — OCR frequently corrupts the "Illus." prefix:
     #   "lus.Nobuyuki Hobu"  (Il dropped)
