@@ -775,8 +775,15 @@ def match_card_v3(ocr: Dict[str, Any], db: Session) -> Optional[Dict[str, Any]]:
     if len(top) <= 10:
         return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in top]}
 
-    r = scored[0][0]
-    return {"card": r[0], "expansion": r[1], "confidence": round(top_score / 100 * 0.75, 2), "method": "v3_name_primary_low"}
+    # > 10 name-tied candidates — HP-filter to produce a manageable ambiguous list
+    # (e.g. スリーパー HP90 matches base1_ja + base3_ja, not sv6a HP110)
+    if hp is not None:
+        hp_reduced = [r for r in top if r[0].hp == str(hp)]
+        if 0 < len(hp_reduced) <= 10:
+            return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in hp_reduced]}
+
+    # Still too many — cap at 10 and surface as ambiguous rather than auto-picking
+    return {"ambiguous": True, "candidates": [{"card": r[0], "expansion": r[1]} for r in top[:10]]}
 
 
 def _parse_card_count(set_number: str) -> Optional[int]:
