@@ -17,6 +17,7 @@ import { ArrowLeft, ArrowUpDown } from "lucide-react";
 import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import {
   createTransaction,
+  getInventory,
   patchInventoryItem,
   searchCardsSmart,
   quickIdentifyCardV3,
@@ -30,6 +31,7 @@ import {
   type Card,
   type ScanCandidate,
   type EstimatedAcquiredPrice,
+  type InventoryItemWithCard,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
@@ -167,6 +169,20 @@ async function fetchEstimatedValue(
 // Helpers
 // ---------------------------------------------------------------------------
 
+function findInventoryMatch(draft: CardDraft, inventory: InventoryItemWithCard[]): InventoryItemWithCard | undefined {
+  return inventory.find((item) => {
+    if (item.card_id !== draft.card.id) return false;
+    if (item.condition_type !== draft.conditionType) return false;
+    if (draft.conditionType === "ungraded") {
+      return (item.condition_ungraded ?? "").toLowerCase() === (draft.conditionUngraded ?? "").toLowerCase();
+    }
+    return (
+      (item.grading_company ?? "").toLowerCase() === (draft.gradingCompany ?? "").toLowerCase() &&
+      item.grade === draft.grade
+    );
+  });
+}
+
 function inferTxType(cards: CardDraft[], cashLost: string, cashGained: string): TransactionType {
   const giving = cards.filter((c) => c.direction === "lost");
   const receiving = cards.filter((c) => c.direction === "gained");
@@ -193,10 +209,12 @@ function CardChip({
   draft,
   onEdit,
   onRemove,
+  inInventory,
 }: {
   draft: CardDraft;
   onEdit: () => void;
   onRemove: () => void;
+  inInventory?: boolean;
 }) {
   const condLabel =
     draft.conditionType === "ungraded"
@@ -222,6 +240,9 @@ function CardChip({
         </div>
         <p className="text-[9px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
         <p className="text-[9px] font-semibold">{condLabel}</p>
+        {inInventory && (
+          <p className="text-[9px] text-green-500 font-medium mt-0.5">In inventory</p>
+        )}
       </button>
     </div>
   );
@@ -276,6 +297,7 @@ function PersonRow({
   onRemoveCard,
   onEditCash,
   onRemoveCash,
+  inventoryItems,
 }: {
   label: string;
   cards: CardDraft[];
@@ -288,6 +310,7 @@ function PersonRow({
   onRemoveCard: (key: string) => void;
   onEditCash: () => void;
   onRemoveCash: () => void;
+  inventoryItems?: InventoryItemWithCard[];
 }) {
   const hasCash = !!cashValue && parseFloat(cashValue) > 0;
   const isEmpty = cards.length === 0 && !hasCash;
@@ -313,6 +336,7 @@ function PersonRow({
             draft={draft}
             onEdit={() => onEditCard(draft)}
             onRemove={() => onRemoveCard(draft.key)}
+            inInventory={inventoryItems ? !!findInventoryMatch(draft, inventoryItems) : undefined}
           />
         ))}
         {hasCash && (
@@ -1388,6 +1412,8 @@ export default function NewTransactionPage() {
   const [marketplace, setMarketplace] = useState("");
   const [counterpartyName, setCounterpartyName] = useState("");
   const [notes, setNotes] = useState("");
+  const [autoUpdateInventory, setAutoUpdateInventory] = useState(true);
+  const [inventoryItems, setInventoryItems] = useState<InventoryItemWithCard[]>([]);
 
   const [pickerDirection, setPickerDirection] = useState<TransactionDirection | null>(null);
   const [editingDraft, setEditingDraft] = useState<CardDraft | null>(null);
@@ -1397,6 +1423,11 @@ export default function NewTransactionPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [acquiredPriceDrafts, setAcquiredPriceDrafts] = useState<AcquiredPriceDraft[] | null>(null);
   const [step, setStep] = useState<1 | 2>(1);
+
+  // Load inventory for "In inventory" matching
+  useEffect(() => {
+    getInventory().then(setInventoryItems).catch(() => {});
+  }, []);
 
   // Read and consume seed on mount
   useEffect(() => {
@@ -1426,6 +1457,17 @@ export default function NewTransactionPage() {
 
   const txType = useMemo(() => inferTxType(cards, cashLost, cashGained), [cards, cashLost, cashGained]);
   const autoValue = computeValue(cashGained, cashLost, cards);
+
+  const { autoUpdateEnabled, autoUpdateDisabledReason } = useMemo(() => {
+    const lostCards = cards.filter((c) => c.direction === "lost");
+    const gainedCards = cards.filter((c) => c.direction === "gained");
+    const hasLostMatch = lostCards.some((d) => !!findInventoryMatch(d, inventoryItems));
+    const hasGained = gainedCards.length > 0;
+    if (hasLostMatch || hasGained) return { autoUpdateEnabled: true, autoUpdateDisabledReason: null };
+    if (lostCards.length > 0 && !hasLostMatch)
+      return { autoUpdateEnabled: false, autoUpdateDisabledReason: "Cards you're giving aren't in your inventory" };
+    return { autoUpdateEnabled: false, autoUpdateDisabledReason: "No cards to add or remove from inventory" };
+  }, [cards, inventoryItems]);
 
   const addCard = useCallback((card: Card, direction: TransactionDirection, condition: ConditionParams) => {
     const key = `${card.id}-${Date.now()}`;
@@ -1474,6 +1516,7 @@ export default function NewTransactionPage() {
         cash_lost: txType !== "sell" ? (parseFloat(cashLost) || undefined) : undefined,
         notes: notes || undefined,
         cards: cardPayload,
+        auto_update_inventory: autoUpdateEnabled && autoUpdateInventory,
       });
 
       const estimates = result.estimated_acquired_prices;
@@ -1545,6 +1588,7 @@ export default function NewTransactionPage() {
               onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
               onEditCash={() => setCashModalDirection("lost")}
               onRemoveCash={() => setCashLost("")}
+              inventoryItems={inventoryItems}
             />
 
             <div className="flex items-center gap-3">
@@ -1630,6 +1674,22 @@ export default function NewTransactionPage() {
               placeholder="Optional"
               className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
             />
+          </div>
+
+          <div className={`flex flex-col gap-1 ${!autoUpdateEnabled ? "opacity-50" : ""}`}>
+            <label className={`flex items-center gap-2 ${autoUpdateEnabled ? "cursor-pointer" : "cursor-not-allowed"}`}>
+              <input
+                type="checkbox"
+                checked={autoUpdateEnabled && autoUpdateInventory}
+                disabled={!autoUpdateEnabled}
+                onChange={(e) => setAutoUpdateInventory(e.target.checked)}
+                className="accent-primary w-4 h-4"
+              />
+              <span className="text-sm">Automatically update your inventory</span>
+            </label>
+            {!autoUpdateEnabled && autoUpdateDisabledReason && (
+              <p className="text-xs text-muted-foreground pl-6">{autoUpdateDisabledReason}</p>
+            )}
           </div>
 
           <div className="border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">

@@ -764,6 +764,7 @@ export interface TransactionIn {
   transaction_value?: number;       // omit to auto-compute
   notes?: string;
   cards: TransactionCardIn[];
+  auto_update_inventory?: boolean;
 }
 
 export interface TransactionCardOut {

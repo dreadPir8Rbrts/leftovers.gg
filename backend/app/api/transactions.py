@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.api.pricing import (
@@ -70,6 +71,7 @@ class TransactionIn(BaseModel):
     transaction_value: Optional[float] = None   # None → auto-compute
     notes: Optional[str] = None
     cards: List[TransactionCardIn] = []
+    auto_update_inventory: bool = False
 
 
 class TransactionCardOut(BaseModel):
@@ -299,6 +301,62 @@ def list_transactions(
     return [_build_transaction_out(tx, db) for tx in txs]
 
 
+def _auto_update_inventory_items(
+    db: Session,
+    profile_id: str,
+    cards: List[TransactionCardIn],
+) -> None:
+    """Decrement/remove inventory for lost cards; add inventory for gained cards."""
+    now = datetime.now(timezone.utc)
+    for c in cards:
+        if c.direction == "lost":
+            q = (
+                db.query(Inventory)
+                .filter(
+                    Inventory.profile_id == profile_id,
+                    Inventory.card_v2_id == c.card_v2_id,
+                    Inventory.condition_type == c.condition_type,
+                    Inventory.deleted_at.is_(None),
+                    Inventory.status == "active",
+                )
+            )
+            if c.condition_type == "ungraded":
+                q = q.filter(
+                    func.lower(Inventory.condition_ungraded) == (c.condition_ungraded or "").lower()
+                )
+            else:
+                q = q.filter(
+                    func.lower(Inventory.grading_company) == (c.grading_company or "").lower(),
+                    Inventory.grade == c.grade,
+                )
+            inv = q.order_by(Inventory.created_at.asc()).first()
+            if inv:
+                qty_to_remove = max(1, c.quantity)
+                if inv.quantity <= qty_to_remove:
+                    inv.deleted_at = now
+                    inv.updated_at = now
+                else:
+                    inv.quantity -= qty_to_remove
+                    inv.updated_at = now
+
+        elif c.direction == "gained":
+            db.add(Inventory(
+                id=str(uuid.uuid4()),
+                profile_id=profile_id,
+                card_v2_id=c.card_v2_id,
+                condition_type=c.condition_type,
+                condition_ungraded=c.condition_ungraded,
+                grading_company=c.grading_company,
+                grade=c.grade,
+                grading_company_other=c.grading_company_other,
+                variant=c.variant,
+                quantity=max(1, c.quantity),
+                is_public=False,
+                card_status="pc",
+                status="active",
+            ))
+
+
 @router.post("/transactions", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
 def create_transaction(
     body: TransactionIn,
@@ -386,6 +444,11 @@ def create_transaction(
 
     db.commit()
     db.refresh(tx)
+
+    if body.auto_update_inventory:
+        _auto_update_inventory_items(db, profile.id, body.cards)
+        db.commit()
+
     out = _build_transaction_out(tx, db)
 
     # Compute estimated acquired prices for gained cards that link to an inventory item
