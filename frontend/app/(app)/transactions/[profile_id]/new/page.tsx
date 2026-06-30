@@ -1587,7 +1587,7 @@ export default function NewTransactionPage() {
       {/* ── Step 2: Details + save ── */}
       {step === 2 && (
         <div className="space-y-3 pb-24">
-          <div className="flex gap-[3px]">
+          <div className="flex gap-[6px]">
             <div className="flex flex-col shrink-0">
               <label className="text-xs text-muted-foreground">Date</label>
               <input
