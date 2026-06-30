@@ -1587,22 +1587,22 @@ export default function NewTransactionPage() {
       {/* ── Step 2: Details + save ── */}
       {step === 2 && (
         <div className="space-y-3 pb-24">
-          <div className="grid grid-cols-[35%_65%] gap-3">
-            <div className="min-w-0">
+          <div className="flex gap-[3px]">
+            <div className="flex flex-col shrink-0">
               <label className="text-xs text-muted-foreground">Date</label>
               <input
                 type="date"
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
+                className="h-10 border rounded-md px-3 text-sm bg-background mt-1"
               />
             </div>
-            <div className="min-w-0">
+            <div className="flex-1 min-w-0 flex flex-col">
               <label className="text-xs text-muted-foreground">Marketplace</label>
               <select
                 value={marketplace}
                 onChange={(e) => setMarketplace(e.target.value)}
-                className="w-full h-10 border rounded-md px-3 text-sm bg-background mt-1"
+                className="w-full flex-1 border rounded-md px-3 text-sm bg-background mt-1"
               >
                 <option value="">Select…</option>
                 {MARKETPLACE_OPTIONS.map((o) => (
