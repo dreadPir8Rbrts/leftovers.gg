@@ -883,15 +883,20 @@ export interface ConditionEstimate {
   estimated_price: number | null;
 }
 
-export interface PricingReady {
-  card_v2_id: string;
-  status: "ready";
+export interface PricingSourceData {
   nm_market_price: number;
   currency: string;
-  source: string;
   fetched_at: string;
   expires_at: string;
   condition_estimates: ConditionEstimate[];
+}
+
+export interface PricingReady {
+  card_v2_id: string;
+  status: "ready";
+  default_source: "scrydex" | "tcgplayer";
+  scrydex: PricingSourceData | null;
+  tcgplayer: PricingSourceData | null;
 }
 
 export interface PricingPending {

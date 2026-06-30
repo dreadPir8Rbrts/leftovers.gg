@@ -151,9 +151,10 @@ export default function CardDetailPage() {
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // TCGPlayer raw pricing
+  // Raw pricing (Scrydex + TCGPlayer)
   const [tcgRaw, setTcgRaw] = useState<PricingReady | null>(null);
   const [tcgRawLoading, setTcgRawLoading] = useState(false);
+  const [rawSource, setRawSource] = useState<"scrydex" | "tcgplayer">("scrydex");
 
   // Wishlist
   const [wishlistLoading, setWishlistLoading] = useState(false);
@@ -219,12 +220,17 @@ export default function CardDetailPage() {
   useEffect(() => {
     if (!isLoggedIn || !cardId) return;
 
+    setTcgRaw(null);
+    setRawSource("scrydex");
+
     async function loadTcgRaw(retryOnPending = true) {
       setTcgRawLoading(true);
       try {
         const { http_status, data } = await getCardPricing(cardId);
         if (http_status === 200 && data.status === "ready") {
-          setTcgRaw(data as PricingReady);
+          const ready = data as PricingReady;
+          setTcgRaw(ready);
+          setRawSource(ready.default_source);
           setTcgRawLoading(false);
         } else if (data.status === "pending" && retryOnPending) {
           setTimeout(() => loadTcgRaw(false), 4000);
@@ -499,33 +505,57 @@ export default function CardDetailPage() {
         </div>
       </div>
 
-      {/* RAW tab — TCGPlayer pricing */}
+      {/* RAW tab — Scrydex / TCGPlayer pricing with source toggle */}
       {priceCategory === "RAW" && (
         <>
           {tcgRawLoading && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground py-4 justify-center">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Loading TCGPlayer prices…</span>
+              <span>Loading prices…</span>
             </div>
           )}
-          {!tcgRawLoading && tcgRaw && (
-            <>
-              <div className="space-y-1">
-                <p className="text-3xl font-bold">${Number(tcgRaw.nm_market_price).toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground">NM Market · {tcgRaw.source === "scrydex" ? "Scrydex" : "TCGPlayer"}</p>
-              </div>
-              <div className="grid grid-cols-2 gap-1.5 text-xs">
-                {tcgRaw.condition_estimates.map(({ condition, label, estimated_price }) => (
-                  <div key={condition} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
-                    <span className="text-muted-foreground">{label}</span>
-                    <span className="font-medium">{estimated_price != null ? `$${Number(estimated_price).toFixed(2)}` : "—"}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
+          {!tcgRawLoading && tcgRaw && (() => {
+            const activeData = tcgRaw[rawSource];
+            return (
+              <>
+                <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                  {(["scrydex", "tcgplayer"] as const).map((src) => (
+                    <button
+                      key={src}
+                      type="button"
+                      onClick={() => setRawSource(src)}
+                      disabled={tcgRaw[src] === null}
+                      className={`flex-1 py-1.5 font-medium transition-colors ${
+                        rawSource === src
+                          ? "bg-foreground text-background"
+                          : "bg-background hover:bg-muted"
+                      } disabled:opacity-40 disabled:cursor-not-allowed`}
+                    >
+                      {src === "scrydex" ? "Scrydex" : "TCGPlayer"}
+                    </button>
+                  ))}
+                </div>
+                {activeData && (
+                  <>
+                    <div className="space-y-1">
+                      <p className="text-3xl font-bold">${Number(activeData.nm_market_price).toFixed(2)}</p>
+                      <p className="text-xs text-muted-foreground">NM Market · {rawSource === "scrydex" ? "Scrydex" : "TCGPlayer"}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 text-xs">
+                      {activeData.condition_estimates.map(({ condition, label, estimated_price }) => (
+                        <div key={condition} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span className="font-medium">{estimated_price != null ? `$${Number(estimated_price).toFixed(2)}` : "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </>
+            );
+          })()}
           {!tcgRawLoading && !tcgRaw && (
-            <p className="text-xs text-muted-foreground text-center py-4">No TCGPlayer pricing available for this card.</p>
+            <p className="text-xs text-muted-foreground text-center py-4">No pricing available for this card.</p>
           )}
         </>
       )}

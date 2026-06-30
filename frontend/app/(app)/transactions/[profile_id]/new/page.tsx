@@ -126,7 +126,8 @@ async function fetchEstimatedValue(
     if (conditionType === "ungraded" && conditionUngraded) {
       const { data } = await getCardPricing(cardId);
       if (data.status === "ready") {
-        const est = data.condition_estimates.find(
+        const sourceData = data.scrydex ?? data.tcgplayer;
+        const est = sourceData?.condition_estimates.find(
           (e) => e.condition.toUpperCase() === conditionUngraded.toUpperCase()
         );
         if (est?.estimated_price != null) {

@@ -407,19 +407,31 @@ def get_card_pricing(
     profile: Profile = Depends(get_current_profile),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """Return NM market price anchor and estimated prices for all ungraded conditions.
+    """Return NM market price and condition estimates from both Scrydex and TCGPlayer.
 
-    Condition estimates use the authenticated user's custom multipliers (falling
-    back to defaults if no preferences row exists yet).
+    Both sources are returned in a single response so the frontend can toggle
+    between them without a second round-trip. TCGPlayer is always enqueued in
+    the background when its data is stale or missing.
 
-    Priority: Scrydex raw NM (already cached, broad JA coverage) → TCGPlayer price_snapshots.
-    When Scrydex is used, a TCGPlayer scrape is still enqueued in the background if
-    TCGPlayer data is stale or missing, so the table fills in over time.
-
-    Returns 200 with pricing data when fresh data exists.
-    Returns 202 with { "status": "pending" } when data is stale/missing from both sources.
+    Returns 200 { status: "ready", default_source, scrydex, tcgplayer } where
+    either source may be null if data is not yet available.
+    Returns 202 { status: "pending" } only when both sources have no data.
     """
-    # ── 1. Try Scrydex raw NM (primary) ───────────────────────────────────────
+    prefs = _get_or_create_preferences(db, profile.id)
+    multipliers = _effective_multipliers(prefs)
+
+    def _build_estimates(nm: float) -> List[Dict[str, Any]]:
+        return [
+            {
+                "condition": condition,
+                "label": CONDITION_LABELS[condition],
+                "multiplier": multiplier,
+                "estimated_price": _price_estimate(nm, multiplier),
+            }
+            for condition, multiplier in multipliers.items()
+        ]
+
+    # ── 1. Scrydex raw NM ─────────────────────────────────────────────────────
     scrydex_cutoff = datetime.utcnow() - timedelta(hours=24)
     scrydex_row = (
         db.query(ScrydexPrice)
@@ -430,58 +442,24 @@ def get_card_pricing(
         .first()
     )
 
-    scrydex_nm: Optional[float] = None
-    scrydex_fetched_at: Optional[datetime] = None
+    scrydex_data: Optional[Dict[str, Any]] = None
     if scrydex_row is not None:
         for entry in (scrydex_row.prices_json or []):
             if entry.get("type") == "raw" and entry.get("condition") == "NM":
                 m = entry.get("market")
                 if m is not None:
-                    scrydex_nm = float(m)
-                    scrydex_fetched_at = scrydex_row.fetched_at
+                    nm = float(m)
+                    expires_at = scrydex_row.fetched_at + timedelta(hours=24)
+                    scrydex_data = {
+                        "nm_market_price": nm,
+                        "currency": "USD",
+                        "fetched_at": scrydex_row.fetched_at.isoformat(),
+                        "expires_at": expires_at.isoformat(),
+                        "condition_estimates": _build_estimates(nm),
+                    }
                     break
 
-    if scrydex_nm is not None:
-        prefs = _get_or_create_preferences(db, profile.id)
-        multipliers = _effective_multipliers(prefs)
-        condition_estimates = [
-            {
-                "condition": condition,
-                "label": CONDITION_LABELS[condition],
-                "multiplier": multiplier,
-                "estimated_price": _price_estimate(scrydex_nm, multiplier),
-            }
-            for condition, multiplier in multipliers.items()
-        ]
-        # Enqueue TCGPlayer scrape in background if its data is stale/missing,
-        # so price_snapshots fills in over time as a secondary reference.
-        tcg_snapshot = (
-            db.query(PriceSnapshot)
-            .filter(
-                PriceSnapshot.card_v2_id == card_v2_id,
-                PriceSnapshot.source == "tcgplayer",
-                PriceSnapshot.market_price.isnot(None),
-            )
-            .order_by(PriceSnapshot.fetched_at.desc())
-            .first()
-        )
-        if not _is_pricing_fresh(tcg_snapshot):
-            _enqueue_on_demand(card_v2_id)
-
-        assert scrydex_fetched_at is not None
-        expires_at = scrydex_fetched_at + timedelta(hours=24)
-        return {
-            "card_v2_id": str(card_v2_id),
-            "status": "ready",
-            "nm_market_price": scrydex_nm,
-            "currency": "USD",
-            "source": "scrydex",
-            "fetched_at": scrydex_fetched_at.isoformat(),
-            "expires_at": expires_at.isoformat(),
-            "condition_estimates": condition_estimates,
-        }
-
-    # ── 2. Fall back to TCGPlayer price_snapshots ──────────────────────────────
+    # ── 2. TCGPlayer price_snapshots ──────────────────────────────────────────
     snapshots = (
         db.query(PriceSnapshot)
         .filter(
@@ -501,8 +479,23 @@ def get_card_pricing(
     if snapshot is None and snapshots:
         snapshot = snapshots[0]
 
-    if not _is_pricing_fresh(snapshot):
+    tcgplayer_data: Optional[Dict[str, Any]] = None
+    if _is_pricing_fresh(snapshot):
+        nm = float(snapshot.market_price)
+        tcgplayer_data = {
+            "nm_market_price": nm,
+            "currency": snapshot.currency,
+            "fetched_at": snapshot.fetched_at.isoformat(),
+            "expires_at": snapshot.expires_at.isoformat(),
+            "condition_estimates": _build_estimates(nm),
+        }
+
+    # ── 3. Enqueue TCGPlayer scrape if stale/missing ──────────────────────────
+    if tcgplayer_data is None:
         _enqueue_on_demand(card_v2_id)
+
+    # ── 4. Neither source has data → pending ──────────────────────────────────
+    if scrydex_data is None and tcgplayer_data is None:
         response.status_code = status.HTTP_202_ACCEPTED
         return {
             "card_v2_id": str(card_v2_id),
@@ -510,29 +503,12 @@ def get_card_pricing(
             "message": "Pricing data is being fetched. Please try again shortly.",
         }
 
-    nm_price = float(snapshot.market_price)
-    prefs = _get_or_create_preferences(db, profile.id)
-    multipliers = _effective_multipliers(prefs)
-
-    condition_estimates = [
-        {
-            "condition": condition,
-            "label": CONDITION_LABELS[condition],
-            "multiplier": multiplier,
-            "estimated_price": _price_estimate(nm_price, multiplier),
-        }
-        for condition, multiplier in multipliers.items()
-    ]
-
     return {
         "card_v2_id": str(card_v2_id),
         "status": "ready",
-        "nm_market_price": nm_price,
-        "currency": snapshot.currency,
-        "source": snapshot.source,
-        "fetched_at": snapshot.fetched_at.isoformat(),
-        "expires_at": snapshot.expires_at.isoformat(),
-        "condition_estimates": condition_estimates,
+        "default_source": "scrydex" if scrydex_data is not None else "tcgplayer",
+        "scrydex": scrydex_data,
+        "tcgplayer": tcgplayer_data,
     }
 
 
