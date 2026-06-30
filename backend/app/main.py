@@ -22,6 +22,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://192.168.0.11:3000",
         "https://leftovers-gg-isud9.ondigitalocean.app",
         "https://leftovers.gg",
         "https://www.leftovers.gg",
