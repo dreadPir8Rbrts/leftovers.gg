@@ -492,7 +492,9 @@ export default function InventoryPage() {
       result = result.filter(
         (i) =>
           i.card_name.toLowerCase().includes(q) ||
+          (i.card_name_en ?? "").toLowerCase().includes(q) ||
           i.set_name.toLowerCase().includes(q) ||
+          (i.set_name_en ?? "").toLowerCase().includes(q) ||
           (i.series_name ?? "").toLowerCase().includes(q) ||
           (i.card_num ?? "").includes(q)
       );
