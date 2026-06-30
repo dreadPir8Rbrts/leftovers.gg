@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   getInventory,
@@ -45,12 +46,16 @@ function InventoryCard({
   onEdit: (item: InventoryItemWithCard) => void;
   onRequestDelete: (item: InventoryItemWithCard) => void;
 }) {
+  const router = useRouter();
   return (
-    <div className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all">
+    <div
+      className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
+      onClick={() => router.push(`/cards/${item.card_id}`)}
+    >
       {/* Delete X */}
       <button
         type="button"
-        onClick={() => onRequestDelete(item)}
+        onClick={(e) => { e.stopPropagation(); onRequestDelete(item); }}
         className="absolute top-1.5 right-1.5 z-10 w-5 h-5 flex items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/80 text-xs leading-none transition-colors"
         title="Remove from inventory"
       >
@@ -114,7 +119,7 @@ function InventoryCard({
           </div>
           <button
             type="button"
-            onClick={() => onEdit(item)}
+            onClick={(e) => { e.stopPropagation(); onEdit(item); }}
             className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             title="Edit"
           >

@@ -42,7 +42,7 @@ import {
 import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 type AnyProfile = ProfileData | PublicProfileData;
 
@@ -60,6 +60,7 @@ function formatCondition(item: InventoryItemWithCard): string {
 
 export default function ProfilePage() {
   const params = useParams<{ profile_id: string }>();
+  const router = useRouter();
   const { data: currentUserProfile } = useProfile();
   const { activeRole } = useActiveRoleStore();
   const isOwner = currentUserProfile?.id === params.profile_id;
@@ -662,7 +663,10 @@ export default function ProfilePage() {
               <div className="space-y-1">
                 {filteredInventory.map((item) => (
                   <div key={item.id} className="border rounded-lg overflow-hidden">
-                    <div className="flex items-center gap-3 px-3 py-2">
+                    <div
+                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                      onClick={() => router.push(`/cards/${item.card_id}`)}
+                    >
                       {item.image_url ? (
                         <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
                           <Image src={item.image_url} alt={item.card_name} fill sizes="40px" className="object-contain" />
@@ -698,7 +702,7 @@ export default function ProfilePage() {
                           </span>
                           {isOwner && (
                             <>
-                              <label className="flex items-center gap-1 cursor-pointer ml-1">
+                              <label className="flex items-center gap-1 cursor-pointer ml-1" onClick={(e) => e.stopPropagation()}>
                                 <input
                                   type="checkbox"
                                   checked={!item.is_public}
@@ -717,7 +721,7 @@ export default function ProfilePage() {
                               </label>
                               <button
                                 type="button"
-                                onClick={() => setEditingItemId(editingItemId === item.id ? null : item.id)}
+                                onClick={(e) => { e.stopPropagation(); setEditingItemId(editingItemId === item.id ? null : item.id); }}
                                 className="ml-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
                                 title="Edit"
                               >
