@@ -219,7 +219,9 @@ export default function ProfilePage() {
       result = result.filter(
         (item) =>
           (item.card_name ?? "").toLowerCase().includes(q) ||
+          (item.card_name_en ?? "").toLowerCase().includes(q) ||
           (item.set_name ?? "").toLowerCase().includes(q) ||
+          (item.set_name_en ?? "").toLowerCase().includes(q) ||
           (item.series_name ?? "").toLowerCase().includes(q) ||
           (item.card_num ?? "").includes(q)
       );
