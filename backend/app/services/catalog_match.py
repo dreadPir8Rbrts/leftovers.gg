@@ -614,10 +614,15 @@ def _v3_disambiguate(
                     "method": f"{method_prefix}_name",
                 }
 
-    # 3. HP positive — pick the single candidate whose HP matches OCR
+    # 3. HP positive — pick the single candidate whose HP matches OCR.
+    #    Only auto-pick when no null-HP candidates remain: null HP in the DB can mean
+    #    "data not populated" (Vending Machine era) rather than "card has no HP," so
+    #    auto-picking against a null-HP sibling risks choosing the wrong card.
+    #    When null-HP siblings exist, caller surfaces all remaining candidates as ambiguous.
     if hp is not None:
         hp_matched = [r for r in working if r[0].hp == str(hp)]
-        if len(hp_matched) == 1:
+        null_hp = [r for r in working if r[0].hp is None]
+        if len(hp_matched) == 1 and not null_hp:
             return {
                 "card": hp_matched[0][0],
                 "expansion": hp_matched[0][1],
