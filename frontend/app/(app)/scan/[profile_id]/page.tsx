@@ -525,8 +525,17 @@ export default function ScanPage() {
             onClick={() => photoInputRef.current?.click()}
             className="w-full max-w-xs"
           >
-            Open camera to take photo
+            Open Camera to Take Photo
           </Button>
+          <div className="w-full max-w-xs rounded-lg border border-black/20 bg-muted/40 px-4 py-3 text-xs text-muted-foreground space-y-1">
+            <p className="font-semibold text-foreground">Tips for best results</p>
+            <ul className="list-disc list-inside space-y-0.5">
+              <li>Card name is clearly visible</li>
+              <li>HP is readable</li>
+              <li>Illustrator credit is in frame</li>
+              <li>Any card number(s) are visible</li>
+            </ul>
+          </div>
         </div>
       )}
 
