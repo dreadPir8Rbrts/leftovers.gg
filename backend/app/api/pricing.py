@@ -442,6 +442,29 @@ def get_card_pricing(
         .first()
     )
 
+    # No fresh cached data — fetch from Scrydex on-demand and cache it
+    if scrydex_row is None:
+        card = db.get(CardV2, str(card_v2_id))
+        if card and card.external_id and card.game == "pokemon":
+            prices = fetch_scrydex_prices(card.external_id)
+            if prices:
+                now = datetime.utcnow()
+                existing = db.query(ScrydexPrice).filter(
+                    ScrydexPrice.card_v2_id == str(card_v2_id)
+                ).first()
+                if existing:
+                    existing.prices_json = prices
+                    existing.fetched_at = now
+                    scrydex_row = existing
+                else:
+                    scrydex_row = ScrydexPrice(
+                        card_v2_id=str(card_v2_id),
+                        prices_json=prices,
+                        fetched_at=now,
+                    )
+                    db.add(scrydex_row)
+                db.commit()
+
     scrydex_data: Optional[Dict[str, Any]] = None
     if scrydex_row is not None:
         for entry in (scrydex_row.prices_json or []):
