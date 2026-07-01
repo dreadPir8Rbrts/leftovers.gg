@@ -467,20 +467,29 @@ def get_card_pricing(
 
     scrydex_data: Optional[Dict[str, Any]] = None
     if scrydex_row is not None:
-        for entry in (scrydex_row.prices_json or []):
-            if entry.get("type") == "raw" and entry.get("condition") == "NM":
-                m = entry.get("market")
-                if m is not None:
-                    nm = float(m)
-                    expires_at = scrydex_row.fetched_at + timedelta(hours=24)
-                    scrydex_data = {
-                        "nm_market_price": nm,
-                        "currency": "USD",
-                        "fetched_at": scrydex_row.fetched_at.isoformat(),
-                        "expires_at": expires_at.isoformat(),
-                        "condition_estimates": _build_estimates(nm),
-                    }
-                    break
+        raw_nm_entries = [
+            e for e in (scrydex_row.prices_json or [])
+            if e.get("type") == "raw" and e.get("condition") == "NM" and e.get("market") is not None
+        ]
+        if raw_nm_entries:
+            expires_at = scrydex_row.fetched_at + timedelta(hours=24)
+            scrydex_variants = [
+                {
+                    "variant": e.get("variant", ""),
+                    "nm_market_price": float(e["market"]),
+                    "condition_estimates": _build_estimates(float(e["market"])),
+                }
+                for e in raw_nm_entries
+            ]
+            default = scrydex_variants[0]
+            scrydex_data = {
+                "nm_market_price": default["nm_market_price"],
+                "currency": "USD",
+                "fetched_at": scrydex_row.fetched_at.isoformat(),
+                "expires_at": expires_at.isoformat(),
+                "condition_estimates": default["condition_estimates"],
+                "variants": scrydex_variants,
+            }
 
     # ── 2. TCGPlayer price_snapshots ──────────────────────────────────────────
     snapshots = (

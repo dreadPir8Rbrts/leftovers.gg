@@ -155,6 +155,7 @@ export default function CardDetailPage() {
   const [tcgRaw, setTcgRaw] = useState<PricingReady | null>(null);
   const [tcgRawLoading, setTcgRawLoading] = useState(false);
   const [rawSource, setRawSource] = useState<"scrydex" | "tcgplayer">("scrydex");
+  const [rawScrydexVariantIdx, setRawScrydexVariantIdx] = useState(0);
 
   // Wishlist
   const [wishlistLoading, setWishlistLoading] = useState(false);
@@ -222,6 +223,7 @@ export default function CardDetailPage() {
 
     setTcgRaw(null);
     setRawSource("scrydex");
+    setRawScrydexVariantIdx(0);
 
     async function loadTcgRaw(retryOnPending = true) {
       setTcgRawLoading(true);
@@ -515,7 +517,10 @@ export default function CardDetailPage() {
             </div>
           )}
           {!tcgRawLoading && tcgRaw && (() => {
-            const activeData = tcgRaw[rawSource];
+            const scrydexVariants = tcgRaw.scrydex?.variants ?? [];
+            const activeVariantIdx = Math.min(rawScrydexVariantIdx, Math.max(0, scrydexVariants.length - 1));
+            const activeVariant = scrydexVariants[activeVariantIdx] ?? null;
+            const activeData = rawSource === "scrydex" ? (activeVariant ?? tcgRaw.scrydex) : tcgRaw.tcgplayer;
             return (
               <>
                 <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
@@ -535,6 +540,24 @@ export default function CardDetailPage() {
                     </button>
                   ))}
                 </div>
+                {rawSource === "scrydex" && scrydexVariants.length > 1 && (
+                  <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                    {scrydexVariants.map((v, i) => (
+                      <button
+                        key={v.variant}
+                        type="button"
+                        onClick={() => setRawScrydexVariantIdx(i)}
+                        className={`flex-1 py-1.5 font-medium transition-colors ${
+                          activeVariantIdx === i
+                            ? "bg-foreground text-background"
+                            : "bg-background hover:bg-muted"
+                        }`}
+                      >
+                        {formatVariantName(v.variant)}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {activeData && (
                   <>
                     <div className="space-y-1">

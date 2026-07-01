@@ -884,12 +884,19 @@ export interface ConditionEstimate {
   estimated_price: number | null;
 }
 
+export interface ScrydexVariant {
+  variant: string;
+  nm_market_price: number;
+  condition_estimates: ConditionEstimate[];
+}
+
 export interface PricingSourceData {
   nm_market_price: number;
   currency: string;
   fetched_at: string;
   expires_at: string;
   condition_estimates: ConditionEstimate[];
+  variants?: ScrydexVariant[];  // present for scrydex source when multiple raw variants exist
 }
 
 export interface PricingReady {
