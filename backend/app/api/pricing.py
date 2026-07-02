@@ -35,7 +35,7 @@ from app.models.excluded_sold_comps import ExcludedSoldComp
 from app.models.pricing_preferences import PricingPreferences
 from app.models.profiles import Profile
 from app.models.scrydex_prices import ScrydexPrice
-from app.services.scrydex import fetch_scrydex_prices
+from app.services.scrydex import _dedup_raw_entries, fetch_scrydex_prices
 
 logger = logging.getLogger(__name__)
 
@@ -476,8 +476,9 @@ def get_card_pricing(
 
     scrydex_data: Optional[Dict[str, Any]] = None
     if scrydex_row is not None:
+        effective_prices = _dedup_raw_entries(scrydex_row.prices_json or [])
         raw_nm_entries = [
-            e for e in (scrydex_row.prices_json or [])
+            e for e in effective_prices
             if e.get("type") == "raw" and e.get("condition") == "NM" and e.get("market") is not None
         ]
         if raw_nm_entries:
@@ -832,7 +833,7 @@ def get_scrydex_prices(
 
     cached = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
     if cached and cached.fetched_at >= stale_cutoff:
-        return {"prices": cached.prices_json}
+        return {"prices": _dedup_raw_entries(cached.prices_json or [])}
 
     if not card.external_id or card.game != "pokemon":
         return {"prices": cached.prices_json if cached else []}
