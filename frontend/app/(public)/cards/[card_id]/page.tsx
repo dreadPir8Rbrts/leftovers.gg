@@ -615,24 +615,6 @@ export default function CardDetailPage() {
                   )}
                   {selectedRawScrydexEntry ? (
                     <>
-                      {availableRawConditions.length > 1 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {availableRawConditions.map((cond) => (
-                            <button
-                              key={cond}
-                              type="button"
-                              onClick={() => setRawCondition(cond)}
-                              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
-                                effectiveRawCondition === cond
-                                  ? "bg-foreground text-background border-foreground"
-                                  : "bg-background hover:bg-muted border-border"
-                              }`}
-                            >
-                              {cond === "DM" ? "DMG" : cond}
-                            </button>
-                          ))}
-                        </div>
-                      )}
                       <div className="space-y-1">
                         <p className="text-3xl font-bold">${Number(selectedRawScrydexEntry.market).toFixed(2)}</p>
                         <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
@@ -664,6 +646,24 @@ export default function CardDetailPage() {
                             <Line type="monotone" dataKey="price" stroke={rawChartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                           </LineChart>
                         </ResponsiveContainer>
+                      )}
+                      {availableRawConditions.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableRawConditions.map((cond) => (
+                            <button
+                              key={cond}
+                              type="button"
+                              onClick={() => setRawCondition(cond)}
+                              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                                effectiveRawCondition === cond
+                                  ? "bg-foreground text-background border-foreground"
+                                  : "bg-background hover:bg-muted border-border"
+                              }`}
+                            >
+                              {cond === "DM" ? "DMG" : cond}
+                            </button>
+                          ))}
+                        </div>
                       )}
                       <div className="grid grid-cols-2 gap-1.5 text-xs">
                         {[
