@@ -737,6 +737,24 @@ def get_card_sold_comps(
         base_query = base_query.filter(SoldComp.condition_ungraded == condition_ungraded)
 
     if base_query.first() is None:
+        # Check if scraper already tried and found nothing (avoids infinite retry loop)
+        gc = grading_company or "none"
+        gr = grade or "none"
+        ct = condition_type or "none"
+        no_results_key = f"ebay_no_results:{card_v2_id}:{gc}:{gr}:{ct}"
+        try:
+            r = redis_lib.from_url(settings.scraper_redis_url, socket_connect_timeout=2)
+            if r.get(no_results_key):
+                return {
+                    "card_v2_id": str(card_v2_id),
+                    "status": "ready",
+                    "total": 0,
+                    "ebay_search_url": _build_ebay_search_url(db, card_v2_id, grading_company, grade),
+                    "comps": [],
+                }
+        except Exception as exc:
+            logger.warning("Redis no-results check failed: %s", exc)
+
         _enqueue_ebay_on_demand(card_v2_id, grading_company, grade, condition_type)
         response.status_code = status.HTTP_202_ACCEPTED
         return {

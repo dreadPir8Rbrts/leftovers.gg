@@ -339,9 +339,16 @@ export default function CardDetailPage() {
     setCompsResult(null);
     try {
       let result = await getSoldComps(card.id, cond);
-      while (result.http_status === 202) {
+      let polls = 0;
+      const MAX_POLLS = 30; // ~90 seconds
+      while (result.http_status === 202 && polls < MAX_POLLS) {
         await new Promise((r) => setTimeout(r, 3000));
         result = await getSoldComps(card.id, cond);
+        polls++;
+      }
+      if (result.http_status === 202) {
+        setCompsError("eBay search timed out. No listings found — try again later.");
+        return;
       }
       setCompsResult(result.data);
     } catch {
