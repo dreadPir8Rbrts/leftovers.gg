@@ -95,10 +95,38 @@ def _to_usd(prices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return result
 
 
-def fetch_scrydex_prices(external_id: str) -> Optional[List[Dict[str, Any]]]:
+def _dedup_raw_entries(prices: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate raw entries with the same (variant, condition).
+
+    Scrydex returns both a JPY and a USD entry for some conditions on Japanese cards.
+    We keep the native-USD entry (source_currency == "USD") when duplicates exist.
+    """
+    from collections import defaultdict
+
+    raw_entries = [p for p in prices if p.get("type") == "raw"]
+    other_entries = [p for p in prices if p.get("type") != "raw"]
+
+    groups: Dict[Tuple, List[Dict[str, Any]]] = defaultdict(list)
+    for e in raw_entries:
+        key = (e.get("variant", ""), e.get("condition", ""))
+        groups[key].append(e)
+
+    deduped: List[Dict[str, Any]] = []
+    for entries in groups.values():
+        if len(entries) == 1:
+            deduped.append(entries[0])
+        else:
+            usd_native = [e for e in entries if e.get("source_currency") == "USD"]
+            deduped.append(usd_native[0] if usd_native else entries[0])
+
+    return other_entries + deduped
+
+
+def fetch_scrydex_prices(external_id: str) -> Optional[Dict[str, Any]]:
     """Fetch all prices for a card from Scrydex, normalised to USD.
 
-    Returns the combined prices list from all variants, or None on failure.
+    Returns {"prices": [...], "tcgplayer_product_ids": {variant: product_id}}
+    or None on failure.
     """
     if not settings.scrydex_api_key or not settings.scrydex_team_id:
         logger.warning("Scrydex credentials not configured — skipping fetch for %s", external_id)
@@ -115,11 +143,18 @@ def fetch_scrydex_prices(external_id: str) -> Optional[List[Dict[str, Any]]]:
         resp.raise_for_status()
         data = resp.json()["data"]
         prices: List[Dict[str, Any]] = []
+        tcgplayer_product_ids: Dict[str, str] = {}
         for variant in data.get("variants", []):
             variant_name = variant.get("name", "")
             for price in variant.get("prices", []):
                 prices.append({**price, "variant": variant_name})
-        return _to_usd(prices)
+            for marketplace in variant.get("marketplaces", []):
+                if marketplace.get("name") == "tcgplayer" and marketplace.get("product_id"):
+                    tcgplayer_product_ids[variant_name] = str(marketplace["product_id"])
+        return {
+            "prices": _dedup_raw_entries(_to_usd(prices)),
+            "tcgplayer_product_ids": tcgplayer_product_ids,
+        }
     except Exception as exc:
         logger.error("Scrydex fetch failed for %s: %s", external_id, exc)
         return None

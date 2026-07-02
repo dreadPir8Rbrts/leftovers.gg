@@ -10,8 +10,10 @@ import { Button } from "@/components/ui/button";
 import {
   getCard,
   getCardScrydexPrices,
-  getCardEstimatedValue,
   getCardPricing,
+  getSoldComps,
+  excludeSoldComp,
+  unexcludeSoldComp,
   addInventoryItem,
   addToWishlist,
   formatVariantName,
@@ -20,7 +22,10 @@ import {
   type ScrydexPriceEntry,
   type PricingReady,
   type CardStatus,
+  type SoldCompsResponse,
+  type CompWindowDays,
 } from "@/lib/api";
+import { SoldCompsChart } from "@/components/pricing/SoldCompsChart";
 import { getProfile } from "@/lib/api/profiles";
 import { useTransactionSeed } from "@/lib/stores/useTransactionSeed";
 import { useScanContext } from "@/lib/stores/useScanContext";
@@ -118,11 +123,12 @@ export default function CardDetailPage() {
   const [selectedEntryIdx, setSelectedEntryIdx] = useState(0);
   const [selectedVariant, setSelectedVariant] = useState<string | null>(null);
 
-  // eBay estimated value
-  const [ebayValue, setEbayValue] = useState<number | null>(null);
-  const [ebayDataPoints, setEbayDataPoints] = useState<number | null>(null);
-  const [ebayLoading, setEbayLoading] = useState(false);
-  const [ebayError, setEbayError] = useState<string | null>(null);
+  // eBay comps
+  const [activeTab, setActiveTab] = useState<"pricing" | "ebay">("pricing");
+  const [compsResult, setCompsResult] = useState<SoldCompsResponse | null>(null);
+  const [compsLoading, setCompsLoading] = useState(false);
+  const [compsError, setCompsError] = useState<string | null>(null);
+  const [compsWindow, setCompsWindow] = useState<CompWindowDays>(90);
 
   // Auth
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -156,6 +162,7 @@ export default function CardDetailPage() {
   const [tcgRawLoading, setTcgRawLoading] = useState(false);
   const [rawSource, setRawSource] = useState<"scrydex" | "tcgplayer">("scrydex");
   const [rawScrydexVariantIdx, setRawScrydexVariantIdx] = useState(0);
+  const [rawCondition, setRawCondition] = useState<string>("NM");
 
   // Wishlist
   const [wishlistLoading, setWishlistLoading] = useState(false);
@@ -224,6 +231,7 @@ export default function CardDetailPage() {
     setTcgRaw(null);
     setRawSource("scrydex");
     setRawScrydexVariantIdx(0);
+    setRawCondition("NM");
 
     async function loadTcgRaw(retryOnPending = true) {
       setTcgRawLoading(true);
@@ -246,6 +254,12 @@ export default function CardDetailPage() {
 
     loadTcgRaw();
   }, [cardId, isLoggedIn]);
+
+  // Clear stale comps whenever the selected condition changes
+  useEffect(() => {
+    setCompsResult(null);
+    setCompsError(null);
+  }, [priceCategory, selectedEntryIdx]);
 
   // ---------------------------------------------------------------------------
   // Derived pricing state
@@ -286,30 +300,71 @@ export default function CardDetailPage() {
   const chartUp = chartData.length >= 2 && chartData[chartData.length - 1].price >= chartData[0].price;
   const chartColor = chartUp ? "#22c55e" : "#BF40BF";
 
+  // Derived state for Scrydex raw conditions (Issues 3 + 4)
+  const rawScrydexEntriesAll = (scrydexPrices ?? []).filter(
+    (p) => p.type === "raw" && !p.is_signed && !p.is_error
+  );
+  const rawScrydexVariantNames = Array.from(
+    new Set(rawScrydexEntriesAll.map((e) => e.variant ?? "").filter(Boolean))
+  );
+  const activeRawVariantIdx = Math.min(rawScrydexVariantIdx, Math.max(0, rawScrydexVariantNames.length - 1));
+  const activeRawVariantName = rawScrydexVariantNames[activeRawVariantIdx] ?? null;
+  const rawScrydexVariantEntries = rawScrydexEntriesAll.filter(
+    (e) => !activeRawVariantName || e.variant === activeRawVariantName
+  );
+  const RAW_COND_DISPLAY_ORDER = ["NM", "LP", "MP", "HP", "DM"];
+  const availableRawConditions = RAW_COND_DISPLAY_ORDER.filter((c) =>
+    rawScrydexVariantEntries.some((e) => e.condition === c && e.market != null)
+  );
+  const effectiveRawCondition = availableRawConditions.includes(rawCondition)
+    ? rawCondition
+    : (availableRawConditions[0] ?? "NM");
+  const selectedRawScrydexEntry = rawScrydexVariantEntries.find(
+    (e) => e.condition === effectiveRawCondition && e.market != null
+  ) ?? null;
+  const rawChartData = selectedRawScrydexEntry ? buildChartData(selectedRawScrydexEntry) : [];
+  const rawChartUp = rawChartData.length >= 2 && rawChartData[rawChartData.length - 1].price >= rawChartData[0].price;
+  const rawChartColor = rawChartUp ? "#22c55e" : "#BF40BF";
+
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
 
-  async function handleFetchEbay() {
+  async function handleFetchComps() {
     if (!card) return;
     const cond = getConditionParams();
     if (!cond) return;
-    setEbayLoading(true);
-    setEbayError(null);
-    setEbayValue(null);
-    setEbayDataPoints(null);
+    setCompsLoading(true);
+    setCompsError(null);
+    setCompsResult(null);
     try {
-      let result = await getCardEstimatedValue(card.id, cond);
+      let result = await getSoldComps(card.id, cond);
       while (result.http_status === 202) {
         await new Promise((r) => setTimeout(r, 3000));
-        result = await getCardEstimatedValue(card.id, cond);
+        result = await getSoldComps(card.id, cond);
       }
-      setEbayValue(result.data.estimated_value ?? null);
-      setEbayDataPoints(result.data.data_points ?? null);
+      setCompsResult(result.data);
     } catch {
-      setEbayError("Failed to fetch eBay data.");
+      setCompsError("Failed to fetch eBay data.");
     } finally {
-      setEbayLoading(false);
+      setCompsLoading(false);
+    }
+  }
+
+  async function handleToggleExclude(compId: string, excluded: boolean) {
+    try {
+      if (excluded) {
+        await unexcludeSoldComp(compId);
+      } else {
+        await excludeSoldComp(compId);
+      }
+      setCompsResult((prev) =>
+        prev
+          ? { ...prev, comps: prev.comps.map((c) => c.id === compId ? { ...c, excluded: !excluded } : c) }
+          : prev
+      );
+    } catch {
+      // ignore toggle errors silently
     }
   }
 
@@ -516,67 +571,139 @@ export default function CardDetailPage() {
               <span>Loading prices…</span>
             </div>
           )}
-          {!tcgRawLoading && tcgRaw && (() => {
-            const scrydexVariants = tcgRaw.scrydex?.variants ?? [];
-            const activeVariantIdx = Math.min(rawScrydexVariantIdx, Math.max(0, scrydexVariants.length - 1));
-            const activeVariant = scrydexVariants[activeVariantIdx] ?? null;
-            const activeData = rawSource === "scrydex" ? (activeVariant ?? tcgRaw.scrydex) : tcgRaw.tcgplayer;
-            return (
-              <>
-                <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
-                  {(["scrydex", "tcgplayer"] as const).map((src) => (
-                    <button
-                      key={src}
-                      type="button"
-                      onClick={() => setRawSource(src)}
-                      disabled={tcgRaw[src] === null}
-                      className={`flex-1 py-1.5 font-medium transition-colors ${
-                        rawSource === src
-                          ? "bg-foreground text-background"
-                          : "bg-background hover:bg-muted"
-                      } disabled:opacity-40 disabled:cursor-not-allowed`}
-                    >
-                      {src === "scrydex" ? "Scrydex" : "TCGPlayer"}
-                    </button>
-                  ))}
-                </div>
-                {rawSource === "scrydex" && scrydexVariants.length > 1 && (
-                  <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
-                    {scrydexVariants.map((v, i) => (
-                      <button
-                        key={v.variant}
-                        type="button"
-                        onClick={() => setRawScrydexVariantIdx(i)}
-                        className={`flex-1 py-1.5 font-medium transition-colors ${
-                          activeVariantIdx === i
-                            ? "bg-foreground text-background"
-                            : "bg-background hover:bg-muted"
-                        }`}
-                      >
-                        {formatVariantName(v.variant)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                {activeData && (
-                  <>
-                    <div className="space-y-1">
-                      <p className="text-3xl font-bold">${Number(activeData.nm_market_price).toFixed(2)}</p>
-                      <p className="text-xs text-muted-foreground">NM Market · {rawSource === "scrydex" ? "Scrydex" : "TCGPlayer"}</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5 text-xs">
-                      {activeData.condition_estimates.map(({ condition, label, estimated_price }) => (
-                        <div key={condition} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span className="font-medium">{estimated_price != null ? `$${Number(estimated_price).toFixed(2)}` : "—"}</span>
-                        </div>
+          {!tcgRawLoading && tcgRaw && (
+            <>
+              {/* Source toggle */}
+              <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                {(["scrydex", "tcgplayer"] as const).map((src) => (
+                  <button
+                    key={src}
+                    type="button"
+                    onClick={() => setRawSource(src)}
+                    disabled={src === "scrydex" ? rawScrydexEntriesAll.length === 0 : tcgRaw.tcgplayer === null}
+                    className={`flex-1 py-1.5 font-medium transition-colors ${
+                      rawSource === src
+                        ? "bg-foreground text-background"
+                        : "bg-background hover:bg-muted"
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    {src === "scrydex" ? "Scrydex" : "TCGPlayer"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Scrydex raw display — condition pills + trend chart */}
+              {rawSource === "scrydex" && (
+                <>
+                  {rawScrydexVariantNames.length > 1 && (
+                    <div className="flex rounded-md border border-black/20 overflow-hidden text-xs">
+                      {rawScrydexVariantNames.map((v, i) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => setRawScrydexVariantIdx(i)}
+                          className={`flex-1 py-1.5 font-medium transition-colors ${
+                            activeRawVariantIdx === i
+                              ? "bg-foreground text-background"
+                              : "bg-background hover:bg-muted"
+                          }`}
+                        >
+                          {formatVariantName(v)}
+                        </button>
                       ))}
                     </div>
-                  </>
-                )}
-              </>
-            );
-          })()}
+                  )}
+                  {selectedRawScrydexEntry ? (
+                    <>
+                      {availableRawConditions.length > 1 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableRawConditions.map((cond) => (
+                            <button
+                              key={cond}
+                              type="button"
+                              onClick={() => setRawCondition(cond)}
+                              className={`px-2.5 py-1 text-xs rounded-md border transition-colors ${
+                                effectiveRawCondition === cond
+                                  ? "bg-foreground text-background border-foreground"
+                                  : "bg-background hover:bg-muted border-border"
+                              }`}
+                            >
+                              {cond === "DM" ? "DMG" : cond}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="space-y-1">
+                        <p className="text-3xl font-bold">${Number(selectedRawScrydexEntry.market).toFixed(2)}</p>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
+                          {(["days_7", "days_14", "days_30"] as const).map((key) => {
+                            const t = selectedRawScrydexEntry.trends?.[key];
+                            if (!t) return null;
+                            const up = t.price_change >= 0;
+                            const lbl = key === "days_7" ? "1wk" : key === "days_14" ? "2wk" : "1mo";
+                            return (
+                              <span key={key} className={up ? "text-green-500" : "text-[#BF40BF]"}>
+                                {up ? "+" : ""}{`$${Math.abs(t.price_change).toFixed(2)}`} ({up ? "+" : ""}{t.percent_change.toFixed(1)}%) {lbl}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          {effectiveRawCondition === "DM" ? "DMG" : effectiveRawCondition} Market · Scrydex
+                        </p>
+                      </div>
+                      {rawChartData.length >= 2 && (
+                        <ResponsiveContainer width="100%" height={120}>
+                          <LineChart data={rawChartData} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+                            <XAxis dataKey="label" tick={{ fontSize: 10 }} tickLine={false} axisLine={false} />
+                            <YAxis hide domain={["auto", "auto"]} />
+                            <Tooltip
+                              formatter={(v: number) => [`$${v.toFixed(2)}`, "Price"]}
+                              contentStyle={{ fontSize: 11, padding: "4px 8px" }}
+                            />
+                            <Line type="monotone" dataKey="price" stroke={rawChartColor} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      )}
+                      <div className="grid grid-cols-2 gap-1.5 text-xs">
+                        {[
+                          { label: "Low", value: selectedRawScrydexEntry.low },
+                          { label: "Mid", value: selectedRawScrydexEntry.mid },
+                          { label: "High", value: selectedRawScrydexEntry.high },
+                          { label: "Market", value: selectedRawScrydexEntry.market },
+                        ].filter(({ value }) => value != null).map(({ label, value }) => (
+                          <div key={label} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
+                            <span className="text-muted-foreground">{label}</span>
+                            <span className={label === "Market" ? "font-bold" : "font-medium"}>${Number(value).toFixed(2)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-muted-foreground text-center py-2">No Scrydex raw pricing for this card.</p>
+                  )}
+                </>
+              )}
+
+              {/* TCGPlayer raw display — NM price + condition estimates */}
+              {rawSource === "tcgplayer" && tcgRaw.tcgplayer && (
+                <>
+                  <div className="space-y-1">
+                    <p className="text-3xl font-bold">${Number(tcgRaw.tcgplayer.nm_market_price).toFixed(2)}</p>
+                    <p className="text-xs text-muted-foreground">NM Market · TCGPlayer</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 text-xs">
+                    {tcgRaw.tcgplayer.condition_estimates.map(({ condition, label, estimated_price }) => (
+                      <div key={condition} className="flex justify-between border border-black/20 rounded px-2.5 py-1.5">
+                        <span className="text-muted-foreground">{label}</span>
+                        <span className="font-medium">{estimated_price != null ? `$${Number(estimated_price).toFixed(2)}` : "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
           {!tcgRawLoading && !tcgRaw && (
             <p className="text-xs text-muted-foreground text-center py-4">No pricing available for this card.</p>
           )}
@@ -633,7 +760,7 @@ export default function CardDetailPage() {
                 {currentEntries.map((entry, idx) => (
                   <button
                     key={idx}
-                    onClick={() => { setSelectedEntryIdx(idx); setEbayValue(null); setEbayDataPoints(null); }}
+                    onClick={() => { setSelectedEntryIdx(idx); }}
                     className={`px-2.5 py-1 text-xs rounded-md border border-border transition-colors ${
                       idx === safeIdx
                         ? "bg-foreground text-background border-foreground"
@@ -672,42 +799,122 @@ export default function CardDetailPage() {
     </div>
   );
 
-  const ebaySection = (
-    <div className="border border-black/20 rounded-xl p-4 space-y-3">
+  const ebayCompsSection = (
+    <div className="border border-black/20 rounded-xl p-4 space-y-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">eBay Market Data</p>
       {!isLoggedIn ? (
         <p className="text-xs text-muted-foreground">
-          <Link href="/login" className="text-primary hover:underline">Sign in</Link> to access eBay sold comps and build a custom price estimate.
+          <Link href="/login" className="text-primary hover:underline">Sign in</Link> to access eBay sold comps.
         </p>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground">
-            {(priceCategory === "RAW" || selectedEntry)
-              ? `Fetches recent eBay sold listings for ${selectedConditionLabel()}.`
-              : "Select a condition above to fetch eBay data."}
-          </p>
-          <Button size="sm" variant="outline" onClick={handleFetchEbay} disabled={ebayLoading || (priceCategory !== "RAW" && !selectedEntry)}>
-            {ebayLoading ? (
-              <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Fetching…</span>
-            ) : "Fetch eBay Comps"}
-          </Button>
-          {ebayError && <p className="text-xs text-destructive">{ebayError}</p>}
-          {ebayLoading && (
-            <p className="text-xs text-muted-foreground animate-pulse">Searching eBay sold listings… this may take a moment.</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground">
+              {(priceCategory === "RAW" || selectedEntry)
+                ? `Recent eBay sold listings · ${selectedConditionLabel()}`
+                : "Select a condition in the Pricing tab."}
+            </p>
+            <Button size="sm" variant="outline" onClick={handleFetchComps} disabled={compsLoading || (priceCategory !== "RAW" && !selectedEntry)}>
+              {compsLoading
+                ? <span className="flex items-center gap-2"><Loader2 className="h-3 w-3 animate-spin" />Fetching…</span>
+                : compsResult ? "Refresh" : "Fetch eBay Comps"}
+            </Button>
+          </div>
+          {compsLoading && (
+            <p className="text-xs text-muted-foreground animate-pulse">Searching eBay sold listings… this may take ~30 seconds.</p>
           )}
-          {ebayValue != null && !ebayLoading && (
-            <div className="flex items-baseline justify-between border border-black/20 rounded-lg px-3 py-2">
-              <div>
-                <p className="text-xs text-muted-foreground">eBay Estimate · {selectedConditionLabel()}</p>
-                {ebayDataPoints != null && (
-                  <p className="text-xs text-muted-foreground">{ebayDataPoints} sales</p>
-                )}
-              </div>
-              <p className="text-2xl font-bold">${ebayValue.toFixed(2)}</p>
+          {compsError && <p className="text-xs text-destructive">{compsError}</p>}
+          {compsResult && !compsLoading && (
+            <div className="space-y-4">
+              <p className="text-xs text-muted-foreground">
+                {compsResult.total === 0
+                  ? "No sales found in the last 90 days."
+                  : `${compsResult.total} sale${compsResult.total !== 1 ? "s" : ""} in last 90 days`}
+              </p>
+              {compsResult.comps.length > 0 && (
+                <>
+                  <div className="border border-black/20 rounded-lg p-3 bg-muted/20">
+                    <SoldCompsChart comps={compsResult.comps} window={compsWindow} />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Time window</label>
+                    <select
+                      value={compsWindow}
+                      onChange={(e) => setCompsWindow(Number(e.target.value) as CompWindowDays)}
+                      className="border border-black/20 rounded px-2 py-1 text-xs bg-background"
+                    >
+                      <option value={7}>Last 7 days</option>
+                      <option value={14}>Last 14 days</option>
+                      <option value={30}>Last 30 days</option>
+                      <option value={60}>Last 60 days</option>
+                      <option value={90}>Last 90 days</option>
+                    </select>
+                  </div>
+
+                  <div className="border border-black/20 rounded-md overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted text-muted-foreground">
+                        <tr>
+                          <th className="text-left px-2 py-1.5 font-medium">Date</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Title</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Condition</th>
+                          <th className="text-left px-2 py-1.5 font-medium">Type</th>
+                          <th className="text-right px-2 py-1.5 font-medium">Price</th>
+                          <th className="px-2 py-1.5" />
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {compsResult.comps.map((comp) => {
+                          const withinWindow = !comp.sold_date || Date.now() - new Date(comp.sold_date).getTime() <= compsWindow * 86400000;
+                          const dimmed = comp.excluded || !withinWindow;
+                          return (
+                            <tr key={comp.id} className={`transition-colors ${dimmed ? "opacity-40" : "hover:bg-muted/40"}`}>
+                              <td className="px-2 py-1.5 whitespace-nowrap text-muted-foreground cursor-pointer" onClick={() => window.open(comp.listing_url, "_blank", "noopener,noreferrer")}>
+                                {comp.sold_date ? new Date(comp.sold_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
+                              </td>
+                              <td className="px-2 py-1.5 max-w-[200px] cursor-pointer" onClick={() => window.open(comp.listing_url, "_blank", "noopener,noreferrer")}>
+                                <span className="truncate block text-foreground" title={comp.title}>{comp.title}</span>
+                              </td>
+                              <td className="px-2 py-1.5 whitespace-nowrap">
+                                {comp.condition_type === "graded" && comp.grading_company && comp.grade ? (
+                                  <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 font-medium">{comp.grading_company.toUpperCase()} {comp.grade}</span>
+                                ) : comp.condition_ungraded ? (
+                                  <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground">{comp.condition_ungraded}</span>
+                                ) : <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-2 py-1.5 whitespace-nowrap">
+                                {comp.sale_type === "buy_now" && <span className="inline-flex px-1.5 py-0.5 rounded bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300 font-medium">Buy Now</span>}
+                                {comp.sale_type === "auction" && <span className="inline-flex px-1.5 py-0.5 rounded bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300 font-medium">Auction</span>}
+                                {comp.sale_type === "obo" && <span className="inline-flex px-1.5 py-0.5 rounded bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300 font-medium">OBO</span>}
+                                {!comp.sale_type && <span className="text-muted-foreground">—</span>}
+                              </td>
+                              <td className="px-2 py-1.5 text-right font-medium whitespace-nowrap">
+                                {comp.currency === "USD" ? "$" : comp.currency}{Number(comp.price).toFixed(2)}
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <button type="button" title={comp.excluded ? "Restore" : "Exclude"} onClick={() => handleToggleExclude(comp.id, comp.excluded)} className="text-muted-foreground hover:text-destructive transition-colors text-xs">
+                                  {comp.excluded ? "↩" : "✕"}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {compsResult.ebay_search_url && (
+                    <div className="pt-2 border-t border-border/50">
+                      <p className="text-xs text-muted-foreground mb-1 font-medium">eBay search URL</p>
+                      <a href={compsResult.ebay_search_url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline break-all">
+                        {compsResult.ebay_search_url}
+                      </a>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
-          )}
-          {ebayValue === null && !ebayLoading && ebayError === null && ebayDataPoints !== null && (
-            <p className="text-xs text-muted-foreground">No eBay sales found for this condition.</p>
           )}
         </>
       )}
@@ -751,8 +958,32 @@ export default function CardDetailPage() {
               {cardHeading}
             </div>
 
-            {marketPriceSection}
-            {ebaySection}
+            {/* Mobile: pricing only, no tabs */}
+            <div className="md:hidden">
+              {marketPriceSection}
+            </div>
+
+            {/* Desktop: tab layout */}
+            <div className="hidden md:flex md:flex-col md:gap-4">
+              <div className="flex border-b border-black/20">
+                {(["pricing", "ebay"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === tab
+                        ? "border-foreground text-foreground"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    {tab === "pricing" ? "Pricing" : "eBay Comps"}
+                  </button>
+                ))}
+              </div>
+              {activeTab === "pricing" && marketPriceSection}
+              {activeTab === "ebay" && ebayCompsSection}
+            </div>
           </div>
 
         </div>

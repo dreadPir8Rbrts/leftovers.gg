@@ -126,7 +126,10 @@ def _acquire_scrape_lock(lock_key: str, ttl_seconds: int) -> bool:
         return True
 
 
-def _enqueue_on_demand(card_v2_id: uuid.UUID) -> bool:
+def _enqueue_on_demand(
+    card_v2_id: uuid.UUID,
+    tcgplayer_product_ids: Optional[Dict[str, str]] = None,
+) -> bool:
     lock_key = f"scrape_lock:on_demand:{card_v2_id}"
     if not _acquire_scrape_lock(lock_key, ttl_seconds=70):
         logger.info("scrape_card_on_demand already in-flight for %s — skipping duplicate enqueue", card_v2_id)
@@ -136,8 +139,11 @@ def _enqueue_on_demand(card_v2_id: uuid.UUID) -> bool:
         logger.warning("SCRAPER_REDIS_URL not set — skipping on-demand enqueue for %s", card_v2_id)
         return False
     try:
-        scraper.send_task("prices.scrape_card_on_demand", args=[str(card_v2_id)])
-        logger.info("Enqueued scrape_card_on_demand for %s", card_v2_id)
+        kwargs: Dict[str, Any] = {}
+        if tcgplayer_product_ids:
+            kwargs["tcgplayer_product_ids"] = tcgplayer_product_ids
+        scraper.send_task("prices.scrape_card_on_demand", args=[str(card_v2_id)], kwargs=kwargs)
+        logger.info("Enqueued scrape_card_on_demand for %s (product_ids=%s)", card_v2_id, tcgplayer_product_ids)
         return True
     except Exception as exc:
         logger.error("Failed to enqueue scrape task for %s: %s", card_v2_id, exc)
@@ -443,23 +449,26 @@ def get_card_pricing(
     )
 
     # No fresh cached data — fetch from Scrydex on-demand and cache it
+    freshly_fetched_product_ids: Dict[str, str] = {}
     if scrydex_row is None:
         card = db.get(CardV2, str(card_v2_id))
         if card and card.external_id and card.game == "pokemon":
-            prices = fetch_scrydex_prices(card.external_id)
-            if prices:
+            scrydex_result = fetch_scrydex_prices(card.external_id)
+            if scrydex_result:
+                fresh_prices = scrydex_result["prices"]
+                freshly_fetched_product_ids = scrydex_result.get("tcgplayer_product_ids") or {}
                 now = datetime.utcnow()
                 existing = db.query(ScrydexPrice).filter(
                     ScrydexPrice.card_v2_id == str(card_v2_id)
                 ).first()
                 if existing:
-                    existing.prices_json = prices
+                    existing.prices_json = fresh_prices
                     existing.fetched_at = now
                     scrydex_row = existing
                 else:
                     scrydex_row = ScrydexPrice(
                         card_v2_id=str(card_v2_id),
-                        prices_json=prices,
+                        prices_json=fresh_prices,
                         fetched_at=now,
                     )
                     db.add(scrydex_row)
@@ -524,7 +533,7 @@ def get_card_pricing(
 
     # ── 3. Enqueue TCGPlayer scrape if stale/missing ──────────────────────────
     if tcgplayer_data is None:
-        _enqueue_on_demand(card_v2_id)
+        _enqueue_on_demand(card_v2_id, freshly_fetched_product_ids or None)
 
     # ── 4. Neither source has data → pending ──────────────────────────────────
     if scrydex_data is None and tcgplayer_data is None:
@@ -828,18 +837,19 @@ def get_scrydex_prices(
     if not card.external_id or card.game != "pokemon":
         return {"prices": cached.prices_json if cached else []}
 
-    prices = fetch_scrydex_prices(card.external_id)
-    if prices is None:
+    scrydex_result = fetch_scrydex_prices(card.external_id)
+    if scrydex_result is None:
         return {"prices": cached.prices_json if cached else []}
 
+    fresh_prices = scrydex_result["prices"]
     if cached:
-        cached.prices_json = prices
+        cached.prices_json = fresh_prices
         cached.fetched_at = datetime.utcnow()
     else:
         db.add(ScrydexPrice(
             card_v2_id=card_v2_id,
-            prices_json=prices,
+            prices_json=fresh_prices,
             fetched_at=datetime.utcnow(),
         ))
     db.commit()
-    return {"prices": prices}
+    return {"prices": fresh_prices}
