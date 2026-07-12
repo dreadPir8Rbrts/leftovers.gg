@@ -195,6 +195,13 @@ def _build_transaction_out(tx: Transaction, db: Session) -> dict:
 _SCRYDEX_CACHE_TTL_HOURS = 24
 
 
+def _extract_prices_list(prices_json: Any) -> List[Any]:
+    """Extract the flat prices list from either the old list format or new dict format."""
+    if isinstance(prices_json, dict):
+        return prices_json.get("prices", [])
+    return prices_json or []
+
+
 def _get_scrydex_prices(db: Session, card_v2_id: str) -> List[Any]:
     """Return cached Scrydex prices for a card, refreshing if stale. Returns [] on failure."""
     stale_cutoff = datetime.utcnow() - timedelta(hours=_SCRYDEX_CACHE_TTL_HOURS)
@@ -204,14 +211,14 @@ def _get_scrydex_prices(db: Session, card_v2_id: str) -> List[Any]:
 
     cached = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
     if cached and cached.fetched_at >= stale_cutoff:
-        return cached.prices_json or []
+        return _extract_prices_list(cached.prices_json)
 
     if not card.external_id or card.game != "pokemon":
-        return cached.prices_json if cached else []
+        return _extract_prices_list(cached.prices_json) if cached else []
 
     prices = fetch_scrydex_prices(card.external_id)
     if prices is None:
-        return cached.prices_json if cached else []
+        return _extract_prices_list(cached.prices_json) if cached else []
 
     if cached:
         cached.prices_json = prices
@@ -219,7 +226,7 @@ def _get_scrydex_prices(db: Session, card_v2_id: str) -> List[Any]:
     else:
         db.add(ScrydexPrice(card_v2_id=card_v2_id, prices_json=prices, fetched_at=datetime.utcnow()))
     db.commit()
-    return prices
+    return _extract_prices_list(prices)
 
 
 def _estimate_for_card(

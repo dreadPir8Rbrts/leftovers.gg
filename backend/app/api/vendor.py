@@ -248,7 +248,8 @@ def list_inventory(
         for card_v2_id, external_id in card_external.items():
             cached = cached_by_id.get(card_v2_id)
             if cached and cached.fetched_at >= stale_cutoff:
-                scrydex_cache[card_v2_id] = cached.prices_json
+                pj = cached.prices_json
+                scrydex_cache[card_v2_id] = pj.get("prices", []) if isinstance(pj, dict) else (pj or [])
             else:
                 needs_refresh.append((card_v2_id, external_id))
 
