@@ -171,17 +171,18 @@ def _refresh_scrydex_cache(cards: List[Tuple[str, str]]) -> None:
     db = SessionLocal()
     try:
         for card_v2_id, external_id in cards:
-            prices = fetch_scrydex_prices(external_id)
-            if prices is None:
+            result = fetch_scrydex_prices(external_id)
+            if result is None:
                 continue
+            prices_list = result["prices"] if isinstance(result, dict) else result
             existing = db.query(ScrydexPrice).filter(ScrydexPrice.card_v2_id == card_v2_id).first()
             if existing:
-                existing.prices_json = prices
+                existing.prices_json = prices_list
                 existing.fetched_at = datetime.utcnow()
             else:
                 db.add(ScrydexPrice(
                     card_v2_id=card_v2_id,
-                    prices_json=prices,
+                    prices_json=prices_list,
                     fetched_at=datetime.utcnow(),
                 ))
             db.commit()
