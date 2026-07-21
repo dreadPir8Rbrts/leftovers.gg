@@ -352,7 +352,7 @@ def _auto_update_inventory_items(
                 profile_id=profile_id,
                 card_v2_id=c.card_v2_id,
                 condition_type=c.condition_type,
-                condition_ungraded=c.condition_ungraded,
+                condition_ungraded=c.condition_ungraded.lower() if c.condition_ungraded else None,
                 grading_company=c.grading_company,
                 grade=c.grade,
                 grading_company_other=c.grading_company_other,
