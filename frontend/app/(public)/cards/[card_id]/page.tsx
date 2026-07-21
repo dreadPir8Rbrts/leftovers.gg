@@ -242,6 +242,16 @@ export default function CardDetailPage() {
           setTcgRaw(ready);
           setRawSource(ready.default_source);
           setTcgRawLoading(false);
+          // tcgplayer === null means the backend enqueued a scrape — poll silently
+          // once the scraper has had time to finish (typically 15–35s).
+          if (ready.tcgplayer === null && retryOnPending) {
+            setTimeout(async () => {
+              try {
+                const { data: d2 } = await getCardPricing(cardId);
+                if (d2.status === "ready") setTcgRaw(d2 as PricingReady);
+              } catch { /* silent */ }
+            }, 35000);
+          }
         } else if (data.status === "pending" && retryOnPending) {
           setTimeout(() => loadTcgRaw(false), 4000);
         } else {
