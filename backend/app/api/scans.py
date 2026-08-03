@@ -784,6 +784,165 @@ async def quick_identify_v3(
     }
 
 
+# POST /scans/quick-identify-naruto  (OCR + printed_number-primary matching for Naruto CCG)
+# ---------------------------------------------------------------------------
+
+@router.post("/scans/quick-identify-naruto", response_model=QuickIdentifyResponse)
+async def quick_identify_naruto(
+    image: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> dict:
+    """
+    Quick Scan for Naruto CCG cards.
+
+    Uses Google Vision OCR to extract the card number (3-4 digits, bottom-left
+    on every Naruto card) and card name, then matches against cards_v2 filtered
+    to game='naruto_ccg'.
+
+    Match strategy:
+      1. printed_number exact match (most reliable — number is always visible)
+         - Single result  → matched
+         - Multiple (b-variants) → narrow by name; still ambiguous → return candidates
+      2. Name-only fallback (case-insensitive) when no number detected
+    """
+    from app.services.ocr import extract_naruto_card_text
+
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+
+    image_bytes = await image.read()
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Image must be under 10 MB")
+
+    try:
+        ocr_result = await extract_naruto_card_text(image_bytes)
+    except RuntimeError as exc:
+        logger.error("quick_identify_naruto — OCR error: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="OCR service error — please try again")
+
+    card_number = ocr_result.get("card_number")
+    ocr_name = ocr_result.get("name")
+
+    logger.info(
+        "quick_identify_naruto — OCR result: card_number=%r name=%r",
+        card_number, ocr_name,
+    )
+
+    # Shared OCR dict for the response (reuses the QuickIdentifyResponse.ocr field)
+    ocr_dict = {
+        "name": ocr_name,
+        "set_number": card_number,
+        "ocr_num1": card_number,
+        "ocr_num2": None,
+        "hp": None,
+        "illustrator": None,
+        "language_code": "EN",
+    }
+
+    if not card_number and not ocr_name:
+        return {"matched": False, "reason": "no_text_detected", "ocr": ocr_dict}
+
+    def _card_response(card: CardV2, expansion: ExpansionV2, confidence: float, method: str) -> dict:
+        return {
+            "matched": True,
+            "confidence": confidence,
+            "method": method,
+            "ocr": ocr_dict,
+            "card_id": str(card.id),
+            "name": card.name,
+            "card_num": card.number,
+            "rarity": card.rarity,
+            "image_url": _extract_image_url(card.images),
+            "set_name": expansion.name,
+            "release_date": None,
+            "series_name": expansion.series,
+            "game": card.game,
+            "language_code": card.language_code or "EN",
+        }
+
+    def _candidate_list(rows: list) -> List[CandidateCard]:
+        return [
+            CandidateCard(
+                card_id=str(card.id),
+                name=card.name,
+                card_num=card.number,
+                rarity=card.rarity,
+                image_url=_extract_image_url(card.images),
+                set_name=expansion.name,
+                language_code=card.language_code or "EN",
+            )
+            for card, expansion in rows
+        ]
+
+    # --- Strategy 1: printed_number exact match ---
+    if card_number:
+        rows = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                CardV2.game == "naruto_ccg",
+                CardV2.printed_number == card_number,
+            )
+            .all()
+        )
+
+        if len(rows) == 1:
+            card, expansion = rows[0]
+            logger.info("quick_identify_naruto — matched by number: %s", card.id)
+            return _card_response(card, expansion, 0.95, "number_exact")
+
+        if len(rows) > 1 and ocr_name:
+            # Narrow b-variants by name (case-insensitive exact)
+            name_matches = [
+                (c, e) for c, e in rows
+                if c.name.lower() == ocr_name.lower()
+            ]
+            if len(name_matches) == 1:
+                card, expansion = name_matches[0]
+                logger.info("quick_identify_naruto — matched by number+name: %s", card.id)
+                return _card_response(card, expansion, 0.90, "number_name")
+
+        if len(rows) > 1:
+            logger.info("quick_identify_naruto — ambiguous: %d candidates for number %s", len(rows), card_number)
+            return {
+                "matched": False,
+                "ambiguous": True,
+                "candidates": _candidate_list(rows),
+                "ocr": ocr_dict,
+            }
+
+    # --- Strategy 2: name-only fallback ---
+    if ocr_name:
+        rows = (
+            db.query(CardV2, ExpansionV2)
+            .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+            .filter(
+                CardV2.game == "naruto_ccg",
+                func.lower(CardV2.name) == ocr_name.lower(),
+            )
+            .all()
+        )
+
+        if len(rows) == 1:
+            card, expansion = rows[0]
+            logger.info("quick_identify_naruto — matched by name: %s", card.id)
+            return _card_response(card, expansion, 0.70, "name_exact")
+
+        if len(rows) > 1:
+            logger.info("quick_identify_naruto — ambiguous by name: %d candidates", len(rows))
+            return {
+                "matched": False,
+                "ambiguous": True,
+                "candidates": _candidate_list(rows),
+                "ocr": ocr_dict,
+            }
+
+    logger.info("quick_identify_naruto — no match: number=%r name=%r", card_number, ocr_name)
+    return {"matched": False, "reason": "no_catalog_match", "ocr": ocr_dict}
+
+
 # POST /scans/smart-identify  (Claude extraction + weighted multi-field match)
 # ---------------------------------------------------------------------------
 

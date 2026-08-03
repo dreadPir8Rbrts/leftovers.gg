@@ -40,6 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Camera } from "lucide-react";
 import {
   quickIdentifyCardV3,
+  quickIdentifyNaruto,
   lookupCertCard,
   type QuickScanResult,
   type ScanCandidate,
@@ -133,8 +134,9 @@ export default function ScanPage() {
 
   // Scan result state — shared between photo and QR modes
   const [v3ScanLoading, setV3ScanLoading] = useState(false);
+  const [narutoScanLoading, setNarutoScanLoading] = useState(false);
   const [noMatchResult, setNoMatchResult] = useState<QuickScanResult | null>(null);
-  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "v3" | "qr" | null>(null);
+  const [noMatchMethod, setNoMatchMethod] = useState<"quick" | "smart" | "v3" | "naruto" | "qr" | null>(null);
   const [scanCandidates, setScanCandidates] = useState<ScanCandidate[] | null>(null);
   const [noNumberDetected, setNoNumberDetected] = useState(false);
 
@@ -423,7 +425,39 @@ export default function ScanPage() {
     }
   }
 
-  const isScanning = v3ScanLoading;
+  async function handleNarutoScan() {
+    if (!capturedFile) return;
+    setNarutoScanLoading(true);
+    setNoMatchResult(null);
+    setNoMatchMethod(null);
+    setScanCandidates(null);
+    setNoNumberDetected(false);
+    setCameraError("");
+    setCameraStatus("scanning");
+    try {
+      const compressed = await compressImage(capturedFile, 800, 0.70);
+      const result = await quickIdentifyNaruto(compressed);
+      if (!result.ocr?.set_number && !result.ocr?.ocr_num1) setNoNumberDetected(true);
+      if (result.matched && result.card_id) {
+        setScanContext(result.ocr?.name ?? result.name ?? "", result.confidence ?? null);
+        router.push(`/cards/${result.card_id}`);
+      } else if (result.ambiguous && result.candidates?.length) {
+        setScanCandidates(result.candidates);
+        setCameraStatus("captured");
+      } else {
+        setNoMatchResult(result);
+        setNoMatchMethod("naruto");
+        setCameraStatus("captured");
+      }
+    } catch (err) {
+      setCameraError(err instanceof Error ? err.message : "Naruto scan failed — please try again.");
+      setCameraStatus("captured");
+    } finally {
+      setNarutoScanLoading(false);
+    }
+  }
+
+  const isScanning = v3ScanLoading || narutoScanLoading;
 
   // ── Shared JSX fragments ──────────────────────────────────
 
@@ -636,7 +670,15 @@ export default function ScanPage() {
                 onClick={handleV3Scan}
                 disabled={isScanning}
               >
-                {v3ScanLoading ? "Scanning…" : "Quick Scan"}
+                {v3ScanLoading ? "Scanning…" : "Quick Scan — Pokémon"}
+              </Button>
+              <Button
+                className="flex-1"
+                variant="secondary"
+                onClick={handleNarutoScan}
+                disabled={isScanning}
+              >
+                {narutoScanLoading ? "Scanning…" : "Quick Scan — Naruto"}
               </Button>
             </div>
           )}
@@ -684,7 +726,7 @@ export default function ScanPage() {
           {noMatchResult && !noMatchResult.matched && (
             <div className="rounded-lg border border-muted p-4 space-y-1">
               <p className="text-sm font-medium">
-                {noMatchMethod === "qr" ? "QR Cert Lookup" : "Quick Scan"}{" "}
+                {noMatchMethod === "qr" ? "QR Cert Lookup" : noMatchMethod === "naruto" ? "Naruto Scan" : "Quick Scan"}{" "}
                 — no match found
               </p>
               {noMatchResult.ocr.name && (

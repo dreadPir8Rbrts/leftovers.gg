@@ -1193,6 +1193,22 @@ export async function quickIdentifyCardV3(file: File): Promise<QuickScanResult> 
   return res.json();
 }
 
+export async function quickIdentifyNaruto(file: File): Promise<QuickScanResult> {
+  const token = await getAccessToken();
+  const form = new FormData();
+  form.append("image", file, file.name);
+  const res = await fetch(`${API_URL}/api/v1/scans/quick-identify-naruto`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { detail?: string }).detail ?? `Naruto scan failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 // ---------------------------------------------------------------------------
 // Smart Identify — Claude structured extraction + weighted multi-field DB match.
 // Slower but handles edge cases (graded slabs, damaged cards) better than OCR.

@@ -332,3 +332,102 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
             break
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Naruto CCG OCR parsing
+# ---------------------------------------------------------------------------
+
+# Lines to skip when looking for the card name on a Naruto card.
+# Covers: edition markers, pure numbers, copyright, stat pipe lines,
+# game-mechanic keyword starters, symbol-only lines, score boxes.
+_NARUTO_SKIP = re.compile(
+    r"^(1st Edition|2nd Edition|\d+|©|Requirements?:|Effect:|Valid:|Even:|Odd:|"
+    r"[XO]$|0/X|X/0|\[|●|JUTSU|MISSION|CLIENT|PERMANENT)",
+    re.IGNORECASE,
+)
+
+
+def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
+    """
+    Extract card number and name from raw OCR text of a Naruto CCG card.
+
+    Card number: 3-4 digit number on the ID/copyright line.
+      Every Naruto card bottom line looks like:
+        術 772 S19 ©2002MK · 2007SP ● ● ●   (Jutsu format)
+        忍 1205 TP3 ©2002MK · 2007SP ● ● ●  (Ninja format)
+      We find the line containing '©' and extract the first 3-4 digit number.
+
+    Card name: first non-noise line. On Ninja cards the name is near the top
+      of the card so it appears early in OCR output. On Jutsu cards the name
+      sits in the center but is still the largest non-mechanic text present.
+    """
+    lines = [l.strip() for l in raw_text.split("\n") if l.strip()]
+
+    card_number: Optional[str] = None
+    name: Optional[str] = None
+
+    # --- Card number: find the © line and grab the 3-4 digit number ---
+    for line in lines:
+        if "©" in line or "2002" in line:
+            m = re.search(r"\b(\d{3,4})\b", line)
+            if m:
+                card_number = m.group(1)
+                break
+
+    # Fallback: lone 3-4 digit number on its own line
+    if card_number is None:
+        for line in lines:
+            if re.fullmatch(r"\d{3,4}", line):
+                card_number = line
+                break
+
+    # --- Card name: first clean line ---
+    for line in lines:
+        if len(line) < 2:
+            continue
+        if _NARUTO_SKIP.match(line):
+            continue
+        if "©" in line or "2002MK" in line or "2007SP" in line:
+            continue
+        # Skip quoted flavor text
+        if line[0] in ('"', "“", "‘", "'"):
+            continue
+        # Skip stat/attribute pipe lines: "Akatsuki | Rain | Male | ..."
+        if " | " in line:
+            continue
+        # Skip score/combat boxes like "0/X" handled by regex but also "X/0", "7 1"
+        if re.fullmatch(r"[\dX/\s]+", line):
+            continue
+        name = line
+        break
+
+    return {"card_number": card_number, "name": name}
+
+
+async def extract_naruto_card_text(image_bytes: bytes) -> Dict[str, Any]:
+    """
+    Send image to Google Cloud Vision and extract Naruto CCG card fields.
+    Returns {"card_number": str|None, "name": str|None}.
+    """
+    client = _get_async_client()
+    request = BatchAnnotateImagesRequest(
+        requests=[
+            AnnotateImageRequest(
+                image=VisionImage(content=image_bytes),
+                features=[Feature(type_=Feature.Type.TEXT_DETECTION)],
+            )
+        ]
+    )
+    response = await client.batch_annotate_images(request=request)
+    annotation = response.responses[0]
+
+    if annotation.error.message:
+        raise RuntimeError(f"Google Vision error: {annotation.error.message}")
+
+    if not annotation.text_annotations:
+        return {"card_number": None, "name": None}
+
+    raw_text = annotation.text_annotations[0].description
+    logger.info("Naruto OCR raw text:\n%s", raw_text)
+    return _parse_naruto_card_text(raw_text)
