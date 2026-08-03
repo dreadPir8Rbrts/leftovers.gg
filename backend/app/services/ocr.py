@@ -394,7 +394,7 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         if "©" in line or "2002MK" in line or "2007SP" in line:
             continue
         # Skip quoted flavor text or sound effects (e.g. OCR drops the leading “ from “Grrrrrr”)
-        if line[0] in (‘”’, ““”, “’”, “‘”):
+        if line[0] in ('"', '“', '”', "'", '‘', '’'):
             continue
         if _REPEATED_CHAR.search(line):
             continue
