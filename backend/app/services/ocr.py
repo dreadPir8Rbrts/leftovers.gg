@@ -343,9 +343,12 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
 # game-mechanic keyword starters, symbol-only lines, score boxes.
 _NARUTO_SKIP = re.compile(
     r"^(1st Edition|2nd Edition|\d+|©|Requirements?:|Effect:|Valid:|Even:|Odd:|"
-    r"[XO]$|0/X|X/0|\[|●|JUTSU|MISSION|CLIENT|PERMANENT)",
+    r"[XO]$|0/X|X/0|\[|●|NINJA|JUTSU|MISSION|CLIENT|PERMANENT)",
     re.IGNORECASE,
 )
+
+# Matches flavor text / sound effects where a character repeats 5+ times (e.g. "Grrrrrrrr")
+_REPEATED_CHAR = re.compile(r"(.)\1{4,}")
 
 
 def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
@@ -390,8 +393,10 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
             continue
         if "©" in line or "2002MK" in line or "2007SP" in line:
             continue
-        # Skip quoted flavor text
-        if line[0] in ('"', "“", "‘", "'"):
+        # Skip quoted flavor text or sound effects (e.g. OCR drops the leading “ from “Grrrrrr”)
+        if line[0] in (‘”’, ““”, “’”, “‘”):
+            continue
+        if _REPEATED_CHAR.search(line):
             continue
         # Skip stat/attribute pipe lines: "Akatsuki | Rain | Male | ..."
         if " | " in line:
