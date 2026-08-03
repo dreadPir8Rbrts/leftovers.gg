@@ -153,10 +153,12 @@ def _normalize_local_id(local_id: str) -> str:
     return local_id.lstrip("0") or "0"
 
 
-def _extract_image_url(images: Optional[list]) -> Optional[str]:
-    """Pull the small image URL from the V2 API images array (suitable for thumbnails)."""
+def _extract_image_url(images) -> Optional[str]:
+    """Pull the small image URL from the images field (dict or list of dicts)."""
     if not images:
         return None
+    if isinstance(images, dict):
+        return images.get("small") or images.get("large")
     if isinstance(images, list) and images:
         return images[0].get("small") or images[0].get("large")
     return None
