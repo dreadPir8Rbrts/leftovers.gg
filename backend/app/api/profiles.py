@@ -64,9 +64,13 @@ def _public_profile_response(profile: Profile) -> Dict[str, Any]:
 
 
 def _image_url(images: Any) -> Optional[str]:
-    if not images or not isinstance(images, list):
+    if not images:
         return None
-    return images[0].get("small") or images[0].get("large")
+    if isinstance(images, dict):
+        return images.get("small") or images.get("large")
+    if isinstance(images, list):
+        return images[0].get("small") or images[0].get("large")
+    return None
 
 
 def _inventory_item_response(inv: Inventory, card: Optional[CardV2], expansion: Optional[ExpansionV2]) -> Dict[str, Any]:

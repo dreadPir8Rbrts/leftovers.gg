@@ -372,10 +372,11 @@ def delete_inventory_item(
     db.commit()
 
 
-def _extract_image_url(images: Optional[list]) -> Optional[str]:
-    """Pull the small image URL from the V2 API images array (suitable for thumbnails)."""
+def _extract_image_url(images) -> Optional[str]:
     if not images:
         return None
+    if isinstance(images, dict):
+        return images.get("small") or images.get("large")
     if isinstance(images, list) and images:
         return images[0].get("small") or images[0].get("large")
     return None

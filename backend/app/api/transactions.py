@@ -141,9 +141,13 @@ def _compute_value(
 
 
 def _card_image_url(images) -> Optional[str]:
-    if not images or not isinstance(images, list):
+    if not images:
         return None
-    return images[0].get("small") or images[0].get("large")
+    if isinstance(images, dict):
+        return images.get("small") or images.get("large")
+    if isinstance(images, list):
+        return images[0].get("small") or images[0].get("large")
+    return None
 
 
 def _build_card_out(tc: TransactionCard, card: Optional[CardV2]) -> dict:
