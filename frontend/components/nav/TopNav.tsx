@@ -6,7 +6,6 @@
  */
 
 import Link from "next/link";
-import { CalendarDays } from "lucide-react";
 import { AvatarDropdown } from "./AvatarDropdown";
 import { GlobalSearch } from "./GlobalSearch";
 import type { ProfileData } from "@/lib/api/profiles";

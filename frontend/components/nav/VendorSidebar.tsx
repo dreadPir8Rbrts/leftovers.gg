@@ -11,7 +11,6 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Package,
-  CalendarDays,
   ArrowLeftRight,
   UserCircle,
   Compass,

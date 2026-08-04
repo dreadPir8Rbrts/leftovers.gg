@@ -348,9 +348,10 @@ function UserDiscoverTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Show tab
+// Show tab — paused
 // ---------------------------------------------------------------------------
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ShowDiscoverTab() {
   const [shows, setShows] = useState<CardShow[]>([]);
   const [showFilter, setShowFilter] = useState("");

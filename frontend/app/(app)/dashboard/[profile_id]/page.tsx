@@ -17,12 +17,10 @@ import { useParams } from "next/navigation";
 import {
   getInventory,
   getTransactions,
-  getMyRegisteredShows,
   type InventoryItemWithCard,
   type TransactionOut,
-  type CardShow,
 } from "@/lib/api";
-import { Loader2, TrendingUp, TrendingDown, Minus, MapPin, ArrowLeftRight, AlertCircle } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, ArrowLeftRight, AlertCircle } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,12 +52,6 @@ function cutoffDate(days: WindowDays): Date {
   d.setDate(d.getDate() - days);
   d.setHours(0, 0, 0, 0);
   return d;
-}
-
-function formatShowDate(dateStr: string): string {
-  return new Date(dateStr + "T12:00:00").toLocaleDateString("en-US", {
-    weekday: "short", month: "short", day: "numeric", year: "numeric",
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +108,6 @@ export default function DashboardPage() {
 
   const [inventory,  setInventory]  = useState<InventoryItemWithCard[]>([]);
   const [txs,        setTxs]        = useState<TransactionOut[]>([]);
-  const [shows,      setShows]      = useState<CardShow[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [window,     setWindow]     = useState<WindowDays>(30);
 
@@ -124,11 +115,9 @@ export default function DashboardPage() {
     Promise.all([
       getInventory(),
       getTransactions({ limit: 200 }),
-      getMyRegisteredShows(),
-    ]).then(([inv, t, s]) => {
+    ]).then(([inv, t]) => {
       setInventory(inv);
       setTxs(t);
-      setShows(s);
     }).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
@@ -180,12 +169,6 @@ export default function DashboardPage() {
 
     return { count: inWindow.length, cashFlow, txValue, txValueCount, byType, capped: txs.length >= 200 };
   }, [txs, window]);
-
-  // ---------------------------------------------------------------------------
-  // Next show
-  // ---------------------------------------------------------------------------
-
-  const nextShow = shows[0] ?? null;
 
   // ---------------------------------------------------------------------------
   // Render

@@ -9,7 +9,6 @@ import {
   Package,
   ArrowLeftRight,
   BarChart2,
-  Check,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/lib/hooks/useProfile";

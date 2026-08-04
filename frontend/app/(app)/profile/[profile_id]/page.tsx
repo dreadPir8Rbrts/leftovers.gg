@@ -19,13 +19,10 @@ import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
 import { RoleToggle } from "@/components/shared/RoleToggle";
 import Image from "next/image";
 import {
-  getRegisteredShows,
   getOwnWishlist,
   getPublicWishlist,
-  patchInventoryItem,
   formatVariantName,
   type InventoryItemWithCard,
-  type CardShow,
   type WishlistItemWithCard,
 } from "@/lib/api";
 import { InventoryEditPanel } from "@/components/inventory/InventoryEditPanel";
@@ -69,7 +66,6 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<AnyProfile | null>(null);
   const [inventory, setInventory] = useState<InventoryItemWithCard[]>([]);
   const [wishlist, setWishlist] = useState<WishlistItemWithCard[]>([]);
-  const [registeredShows, setRegisteredShows] = useState<CardShow[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<"background" | "avatar" | null>(null);
@@ -129,7 +125,6 @@ export default function ProfilePage() {
       import("@/lib/api").then(({ getInventory }) => {
         getInventory().then(setInventory).catch(() => {});
       });
-      getRegisteredShows().then(setRegisteredShows).catch(() => {});
     } else {
       fetch(`${API}/api/v1/profiles/${params.profile_id}/inventory`)
         .then((r) => r.ok ? r.json() : Promise.reject())
