@@ -445,6 +445,7 @@ export default function InventoryPage() {
   const [filterStatus, setFilterStatus] = useState("");
   const [filterSet, setFilterSet] = useState("");
   const [filterHasAskingPrice, setFilterHasAskingPrice] = useState("");
+  const [filterGame, setFilterGame] = useState("");
 
   useEffect(() => {
     getInventory()
@@ -482,6 +483,7 @@ export default function InventoryPage() {
     setFilterStatus("");
     setFilterSet("");
     setFilterHasAskingPrice("");
+    setFilterGame("");
   }
 
   const filteredInventory = useMemo(() => {
@@ -510,6 +512,7 @@ export default function InventoryPage() {
     if (filterSet) result = result.filter((i) => i.set_name === filterSet);
     if (filterHasAskingPrice === "yes") result = result.filter((i) => i.asking_price != null);
     if (filterHasAskingPrice === "no") result = result.filter((i) => i.asking_price == null);
+    if (filterGame) result = result.filter((i) => i.game === filterGame);
 
     const sorted = [...result];
     switch (sortBy) {
@@ -524,7 +527,7 @@ export default function InventoryPage() {
   }, [
     inventory, inventorySearch, sortBy,
     filterConditionType, filterCondition, filterGradingCompany, filterGrade,
-    filterLanguage, filterVisibility, filterStatus, filterSet, filterHasAskingPrice,
+    filterLanguage, filterVisibility, filterStatus, filterSet, filterHasAskingPrice, filterGame,
   ]);
 
   function handleItemUpdated(id: string, patch: Partial<InventoryItemWithCard>) {
@@ -540,14 +543,39 @@ export default function InventoryPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-5">
-      <h1 className="text-2xl font-bold">Inventory</h1>
+    <div className="p-6 w-[80%] mx-auto space-y-5">
+      {/* Header row: title + card count */}
+      <div className="flex items-baseline gap-3">
+        <h1 className="text-2xl font-bold">Inventory</h1>
+        <span className="text-sm text-muted-foreground">
+          {loadingInventory ? "Loading…" : `${filteredInventory.length} card${filteredInventory.length !== 1 ? "s" : ""}`}
+        </span>
+      </div>
+
+      {/* Game filter pills */}
+      <div className="flex items-center gap-2">
+        {(["pokemon", "naruto_ccg"] as const).map((game) => {
+          const label = game === "pokemon" ? "Pokémon" : "Naruto";
+          const active = filterGame === game;
+          return (
+            <button
+              key={game}
+              type="button"
+              onClick={() => setFilterGame(active ? "" : game)}
+              className={`px-3 py-1 rounded-full text-sm font-medium border transition-colors ${
+                active
+                  ? "bg-foreground text-background border-foreground"
+                  : "bg-background text-muted-foreground border-black/20 hover:border-black/50 hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-sm text-muted-foreground shrink-0 mr-auto">
-          {loadingInventory ? "Loading…" : `${filteredInventory.length} card${filteredInventory.length !== 1 ? "s" : ""}`}
-        </p>
 
         {/* Sort */}
         <select
