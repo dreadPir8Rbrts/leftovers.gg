@@ -146,7 +146,7 @@ export default function TransactionsPage() {
   }
 
   return (
-    <div className="p-6 w-[80%] mx-auto">
+    <div className="p-6 w-[95%] md:w-[80%] mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Transactions</h1>

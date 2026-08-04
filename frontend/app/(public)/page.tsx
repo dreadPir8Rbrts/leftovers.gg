@@ -51,7 +51,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
         <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "#BF40BF" }}>
           Built for TCG vendors &amp; hobbyists
         </p>
-        <div className="flex items-center justify-center gap-14 w-[80%]">
+        <div className="flex items-center justify-center gap-14 w-[95%] md:w-[80%]">
           {/* Left card — Naruto */}
           <div className="hidden lg:block flex-shrink-0 w-[166px] xl:w-[202px] aspect-[3/4] relative rounded-xl overflow-hidden shadow-2xl rotate-[-6deg]">
             <Image
@@ -98,7 +98,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
 
       {/* Value props */}
       <section className="border-t border-white/10 px-6 py-24">
-        <div className="w-[80%] mx-auto">
+        <div className="w-[95%] md:w-[80%] mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-4">
             Everything you need to run your hobby like a business
           </h2>
@@ -126,7 +126,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
 
       {/* Price estimator callout */}
       <section className="border-t border-white/10 px-6 py-24 bg-white/[0.02]">
-        <div className="w-[80%] mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+        <div className="w-[95%] md:w-[80%] mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
             <p className="text-sm font-medium tracking-widest uppercase mb-4" style={{ color: "#BF40BF" }}>
               Price Estimator

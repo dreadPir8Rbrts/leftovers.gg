@@ -542,7 +542,7 @@ export default function ProfilePage() {
       )}
 
       {/* Tabs */}
-      <div className="w-[80%] mx-auto mt-8 pb-12">
+      <div className="w-[95%] md:w-[80%] mx-auto mt-8 pb-12">
         <div className="flex border-b">
           {(["inventory", "wishlist" /*, "shows"*/] as const).map((tab) => (
             <button

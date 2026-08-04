@@ -543,7 +543,7 @@ export default function InventoryPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-6 w-[80%] mx-auto space-y-5">
+    <div className="p-6 w-[95%] md:w-[80%] mx-auto space-y-5">
       {/* Header row: title + card count */}
       <div className="flex items-baseline gap-3">
         <h1 className="text-2xl font-bold">Inventory</h1>

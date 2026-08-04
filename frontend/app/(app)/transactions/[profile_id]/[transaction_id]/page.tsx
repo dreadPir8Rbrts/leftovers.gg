@@ -125,7 +125,7 @@ export default function TransactionDetailPage() {
 
   if (loading) {
     return (
-      <div className="p-6 w-[80%] mx-auto">
+      <div className="p-6 w-[95%] md:w-[80%] mx-auto">
         <p className="text-muted-foreground text-sm">Loading…</p>
       </div>
     );
@@ -133,7 +133,7 @@ export default function TransactionDetailPage() {
 
   if (error || !tx) {
     return (
-      <div className="p-6 w-[80%] mx-auto">
+      <div className="p-6 w-[95%] md:w-[80%] mx-auto">
         <p className="text-destructive text-sm">{error ?? "Transaction not found."}</p>
         <Link href={`/transactions/${params.profile_id}`} className="text-sm underline mt-2 block">
           ← Back to transactions
@@ -150,7 +150,7 @@ export default function TransactionDetailPage() {
   const isPartial = liveData && liveData.cards_total > 0 && liveData.cards_priced < liveData.cards_total;
 
   return (
-    <div className="p-4 w-[80%] mx-auto pb-16">
+    <div className="p-4 w-[95%] md:w-[80%] mx-auto pb-16">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <Link href={`/transactions/${params.profile_id}`} className="text-muted-foreground hover:text-foreground">
