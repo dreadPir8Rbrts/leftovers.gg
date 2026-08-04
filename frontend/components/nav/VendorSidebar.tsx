@@ -51,7 +51,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
 
   const topItems = [
     { href: "/discover",   label: "Discover",   icon: Compass },
-    { href: "/card-shows", label: "Card Shows", icon: CalendarDays },
+    // { href: "/card-shows", label: "Card Shows", icon: CalendarDays },  // paused
   ];
 
   const bottomItems = [

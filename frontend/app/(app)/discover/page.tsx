@@ -618,7 +618,7 @@ export default function DiscoverPage() {
   const tabs: { key: DiscoverTab; label: string }[] = [
     { key: "card", label: "By Card" },
     { key: "user", label: "By User" },
-    { key: "show", label: "By Show" },
+    // { key: "show", label: "By Show" },  // paused
   ];
 
   return (
@@ -643,7 +643,7 @@ export default function DiscoverPage() {
 
       {tab === "card" && <CardDiscoverTab />}
       {tab === "user" && <UserDiscoverTab />}
-      {tab === "show" && <ShowDiscoverTab />}
+      {/* tab === "show" && <ShowDiscoverTab /> */}
     </div>
   );
 }

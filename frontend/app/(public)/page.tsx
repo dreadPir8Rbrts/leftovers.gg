@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   TrendingUp,
   Package,
   ArrowLeftRight,
-  MapPin,
   BarChart2,
   Check,
 } from "lucide-react";
@@ -19,40 +19,26 @@ import { MobileBottomNav } from "@/components/nav/MobileBottomNav";
 const FEATURES = [
   {
     icon: TrendingUp,
-    title: "Real-time price estimates",
-    body: "Every estimate is backed by actual eBay sold listings from the last 90 days — not a static database number that's two weeks old.",
+    title: "Pricing insights from Scrydex",
+    body: "Card prices are powered by Scrydex, one of the most comprehensive TCG market data sources available — covering graded and ungraded values across Pokémon and more.",
   },
   {
     icon: Package,
     title: "Inventory without the spreadsheet",
-    body: "Add cards through the catalog, log conditions, and always know what you're holding and what it's worth at current market prices.",
+    body: "Add cards with the built-in scanner on mobile or search the catalog from any device. Always know what you're holding and what it's worth at current market prices.",
   },
   {
     icon: ArrowLeftRight,
     title: "Log every transaction in seconds",
-    body: "Buys, sells, and trades — including complex multi-card trades with cash components. Inventory and P&L update automatically.",
+    body: "Scan a card on mobile or search by name to log buys, sells, and trades — including complex multi-card deals with cash on either side. Inventory and P&L update automatically.",
   },
   {
-    icon: MapPin,
-    title: "Find and prep for card shows",
-    body: "See upcoming shows near you, register as a vendor, and let customers know what you're bringing before they walk in the door.",
+    icon: BarChart2,
+    title: "Track your performance",
+    body: "Stay on top of how your collection or business is doing. The analytics dashboard tracks transaction history, estimated portfolio value, and P&L across all your activity.",
   },
 ];
 
-const VENDOR_BULLETS = [
-  "Price any card instantly against real sold data",
-  "Track inventory across shows and online",
-  "Log buys, sells, and trades in seconds",
-  "Dashboard P&L and per-show performance",
-  "Let customers browse your inventory before the show",
-];
-
-const COLLECTOR_BULLETS = [
-  "Search and price cards by condition",
-  "Maintain a wishlist and track market prices",
-  "Find vendors selling what you want at upcoming shows",
-  "Browse show listings before you arrive",
-];
 
 function MarketingContent({ showCtas }: { showCtas: boolean }) {
   return (
@@ -64,13 +50,37 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
         }`}
       >
         <p className="text-sm font-medium tracking-widest uppercase mb-6" style={{ color: "#BF40BF" }}>
-          Built for TCG vendors
+          Built for TCG vendors &amp; hobbyists
         </p>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight">
-          The Operating System for Pokémon Card Vendors
-        </h1>
+        <div className="flex items-center justify-center gap-14 w-[80%]">
+          {/* Left card — Naruto */}
+          <div className="hidden lg:block flex-shrink-0 w-[166px] xl:w-[202px] aspect-[3/4] relative rounded-xl overflow-hidden shadow-2xl rotate-[-6deg]">
+            <Image
+              src="https://cardops-vendor-photos.s3.us-east-2.amazonaws.com/naruto-ccg/1662/707488.jpg"
+              alt="Naruto CCG card"
+              fill
+              sizes="202px"
+              className="object-contain"
+            />
+          </div>
+
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight max-w-3xl leading-tight">
+            The Operating System for TCG Vendors &amp; Hobbyists
+          </h1>
+
+          {/* Right card — Pokémon */}
+          <div className="hidden lg:block flex-shrink-0 w-[166px] xl:w-[202px] aspect-[3/4] relative rounded-xl overflow-hidden shadow-2xl rotate-[6deg]">
+            <Image
+              src="https://images.scrydex.com/pokemon/miscp_ja-76/small"
+              alt="Pokémon card"
+              fill
+              sizes="202px"
+              className="object-contain"
+            />
+          </div>
+        </div>
         <p className="mt-6 text-lg text-gray-400 max-w-xl">
-          Price lookups, inventory, transactions, and card shows — all in one place. Stop juggling five tabs and a spreadsheet.
+          Price lookups, inventory, transactions, and analytics — all in one place. Stop juggling five tabs and a spreadsheet.
         </p>
         {showCtas && (
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
@@ -89,7 +99,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
 
       {/* Value props */}
       <section className="border-t border-white/10 px-6 py-24">
-        <div className="max-w-5xl mx-auto">
+        <div className="w-[80%] mx-auto">
           <h2 className="text-2xl sm:text-3xl font-bold text-center mb-4">
             Everything you need to run your hobby like a business
           </h2>
@@ -117,7 +127,7 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
 
       {/* Price estimator callout */}
       <section className="border-t border-white/10 px-6 py-24 bg-white/[0.02]">
-        <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
+        <div className="w-[80%] mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
             <p className="text-sm font-medium tracking-widest uppercase mb-4" style={{ color: "#BF40BF" }}>
               Price Estimator
@@ -163,46 +173,6 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
                   <span className="text-xs text-gray-400 w-10 text-right">{p}</span>
                 </div>
               ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Who it's for */}
-      <section className="border-t border-white/10 px-6 py-24">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-14">
-            Built for vendors. Useful for collectors.
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="rounded-xl border p-8" style={{ borderColor: "#BF40BF55", backgroundColor: "#BF40BF08" }}>
-              <div className="flex items-center gap-3 mb-6">
-                <BarChart2 size={20} style={{ color: "#BF40BF" }} />
-                <p className="font-semibold text-lg">For Vendors</p>
-                <span className="ml-auto text-xs px-2 py-0.5 rounded" style={{ backgroundColor: "#BF40BF22", color: "#BF40BF" }}>Primary</span>
-              </div>
-              <ul className="space-y-3">
-                {VENDOR_BULLETS.map((b) => (
-                  <li key={b} className="flex items-start gap-3 text-sm text-gray-300">
-                    <Check size={15} className="flex-shrink-0 mt-0.5" style={{ color: "#BF40BF" }} />
-                    {b}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="rounded-xl border border-white/10 p-8 bg-white/[0.02]">
-              <div className="flex items-center gap-3 mb-6">
-                <Package size={20} className="text-gray-400" />
-                <p className="font-semibold text-lg">For Collectors</p>
-              </div>
-              <ul className="space-y-3">
-                {COLLECTOR_BULLETS.map((b) => (
-                  <li key={b} className="flex items-start gap-3 text-sm text-gray-300">
-                    <Check size={15} className="flex-shrink-0 mt-0.5 text-gray-500" />
-                    {b}
-                  </li>
-                ))}
-              </ul>
             </div>
           </div>
         </div>

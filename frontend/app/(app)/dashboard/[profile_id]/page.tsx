@@ -357,11 +357,11 @@ export default function DashboardPage() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Next show + transaction total                                       */}
+      {/* Transaction total                                                   */}
       {/* ------------------------------------------------------------------ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
 
-        {/* Next show */}
+        {/* Next show — paused
         <div className="border rounded-xl p-5 space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next Registered Show</p>
           {loading ? (
@@ -385,6 +385,7 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+        */}
 
         {/* Transaction total */}
         <div className="border rounded-xl p-5 space-y-2">

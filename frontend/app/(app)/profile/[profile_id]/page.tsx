@@ -23,6 +23,7 @@ import {
   getOwnWishlist,
   getPublicWishlist,
   patchInventoryItem,
+  formatVariantName,
   type InventoryItemWithCard,
   type CardShow,
   type WishlistItemWithCard,
@@ -546,9 +547,9 @@ export default function ProfilePage() {
       )}
 
       {/* Tabs */}
-      <div className="max-w-2xl mx-auto mt-8 pb-12">
+      <div className="w-[80%] mx-auto mt-8 pb-12">
         <div className="flex border-b">
-          {(["inventory", "wishlist", "shows"] as const).map((tab) => (
+          {(["inventory", "wishlist" /*, "shows"*/] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -560,8 +561,6 @@ export default function ProfilePage() {
             >
               {tab === "inventory"
                 ? `Inventory${inventory.length > 0 ? ` (${inventory.length})` : ""}`
-                : tab === "shows"
-                ? "Shows"
                 : `Wishlist${wishlist.length > 0 ? ` (${wishlist.length})` : ""}`}
             </button>
           ))}
@@ -662,78 +661,83 @@ export default function ProfilePage() {
                 </p>
               )}
 
-              <div className="space-y-1">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {filteredInventory.map((item) => (
-                  <div key={item.id} className="border rounded-lg overflow-hidden">
+                  <div key={item.id} className="flex flex-col">
                     <div
-                      className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-muted/40 transition-colors"
+                      className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
                       onClick={() => router.push(`/cards/${item.card_id}`)}
                     >
-                      {item.image_url ? (
-                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
-                          <Image src={item.image_url} alt={item.card_name} fill sizes="40px" className="object-contain" />
-                        </div>
-                      ) : (
-                        <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {item.card_name}{item.language_code === "JA" && item.card_name_en ? ` (${item.card_name_en})` : ""}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {item.set_name}{item.language_code === "JA" && item.set_name_en ? ` (${item.set_name_en})` : ""} · #{item.card_num}
-                        </p>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="secondary" className="text-xs">{formatCondition(item)}</Badge>
-                          {item.rarity && <span className="text-xs text-muted-foreground">{item.rarity}</span>}
-                        </div>
+                      {/* Card image */}
+                      <div className="relative w-full aspect-[3/4] bg-muted">
+                        {item.image_url ? (
+                          <Image
+                            src={item.image_url}
+                            alt={item.card_name}
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                            className="object-contain p-1"
+                          />
+                        ) : (
+                          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
+                        )}
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        {item.asking_price != null && (
-                          <p className="text-sm font-medium">${Number(item.asking_price).toFixed(2)}</p>
-                        )}
-                        {item.estimated_value != null && (
-                          <p className="text-xs text-muted-foreground">est. ${Number(item.estimated_value).toFixed(2)}</p>
-                        )}
-                        {item.acquired_price != null && (
-                          <p className="text-xs text-muted-foreground">cost ${Number(item.acquired_price).toFixed(2)}</p>
-                        )}
-                        <div className="flex gap-1 mt-1 justify-end items-center">
-                          <span className="text-xs text-muted-foreground">
-                            {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
-                          </span>
+
+                      {/* Card info */}
+                      <div className="flex flex-col flex-1 p-2.5 gap-1.5">
+                        <p className="text-xs font-semibold leading-tight line-clamp-2">
+                          {item.card_name}
+                          {item.language_code === "JA" && item.card_name_en ? (
+                            <span className="font-normal text-muted-foreground"> ({item.card_name_en})</span>
+                          ) : null}
+                          {item.card_num ? (
+                            <span className="font-normal text-muted-foreground"> #{item.card_num}</span>
+                          ) : null}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <Badge variant="secondary" className="text-xs w-fit px-1.5 py-0">{formatCondition(item)}</Badge>
+                          {item.variant && (
+                            <span className="text-xs text-muted-foreground">{formatVariantName(item.variant)}</span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col gap-0.5">
+                          {item.estimated_value != null && (
+                            <p className="text-xs text-muted-foreground">est. ${Number(item.estimated_value).toFixed(2)}</p>
+                          )}
+                          {item.asking_price != null && (
+                            <p className="text-xs font-semibold">${Number(item.asking_price).toFixed(2)}</p>
+                          )}
+                        </div>
+
+                        {/* Status + Public + edit (owner only) */}
+                        <div className="mt-auto pt-1.5 flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium px-1.5 py-0.5 rounded border border-black/20 bg-muted uppercase">
+                              {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
+                            </span>
+                            <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
+                              <input type="checkbox" checked={item.is_public} readOnly className="rounded w-3 h-3" />
+                              Public
+                            </label>
+                          </div>
                           {isOwner && (
-                            <>
-                              <label className="flex items-center gap-1 cursor-pointer ml-1" onClick={(e) => e.stopPropagation()}>
-                                <input
-                                  type="checkbox"
-                                  checked={!item.is_public}
-                                  onChange={async (e) => {
-                                    const next = !e.target.checked;
-                                    setInventory((prev) => prev.map((i) => i.id === item.id ? { ...i, is_public: next } : i));
-                                    try {
-                                      await patchInventoryItem(item.id, { is_public: next });
-                                    } catch {
-                                      setInventory((prev) => prev.map((i) => i.id === item.id ? { ...i, is_public: !next } : i));
-                                    }
-                                  }}
-                                  className="accent-primary"
-                                />
-                                <span className="text-xs text-muted-foreground">Make private</span>
-                              </label>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); setEditingItemId(editingItemId === item.id ? null : item.id); }}
-                                className="ml-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                                title="Edit"
-                              >
-                                ✎
-                              </button>
-                            </>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setEditingItemId(editingItemId === item.id ? null : item.id); }}
+                              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                              title="Edit"
+                            >
+                              ✎
+                            </button>
                           )}
                         </div>
                       </div>
                     </div>
+
+                    {/* Inline edit panel below card */}
                     {isOwner && editingItemId === item.id && (
                       <InventoryEditPanel
                         item={item}
@@ -755,29 +759,43 @@ export default function ProfilePage() {
                   {isOwner ? "No cards in your wishlist yet." : "No wishlist items."}
                 </p>
               ) : (
-                <div className="space-y-1">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                   {wishlist.map((item) => (
-                    <div key={item.id} className="border rounded-lg overflow-hidden">
-                      <div className="flex items-start gap-3 px-3 py-2.5">
-                        {item.image_url ? (
-                          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative mt-0.5">
-                            <Image src={item.image_url} alt={item.card_name ?? "Card"} fill sizes="40px" className="object-contain" />
-                          </div>
-                        ) : (
-                          <div className="w-10 aspect-[3/4] flex-shrink-0 rounded border bg-muted mt-0.5" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
+                    <div key={item.id} className="flex flex-col">
+                      <div
+                        className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
+                        onClick={() => router.push(`/cards/${item.card_id}`)}
+                      >
+                        {/* Card image */}
+                        <div className="relative w-full aspect-[3/4] bg-muted">
+                          {item.image_url ? (
+                            <Image
+                              src={item.image_url}
+                              alt={item.card_name ?? "Card"}
+                              fill
+                              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                              className="object-contain p-1"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
+                          )}
+                        </div>
+
+                        {/* Card info */}
+                        <div className="flex flex-col flex-1 p-2.5 gap-1.5">
+                          <p className="text-xs font-semibold leading-tight line-clamp-2">
                             {item.card_name ?? item.card_id}
-                            {item.language_code === "JA" && item.card_name_en ? ` (${item.card_name_en})` : ""}
+                            {item.language_code === "JA" && item.card_name_en ? (
+                              <span className="font-normal text-muted-foreground"> ({item.card_name_en})</span>
+                            ) : null}
+                            {item.card_num ? (
+                              <span className="font-normal text-muted-foreground"> #{item.card_num}</span>
+                            ) : null}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            {item.set_name ?? ""}
-                            {item.language_code === "JA" && item.set_name_en ? ` (${item.set_name_en})` : ""}
-                            {item.card_num ? ` · #${item.card_num}` : ""}
-                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{item.set_name ?? ""}</p>
+
                           {item.conditions.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-1.5">
+                            <div className="flex flex-wrap gap-1">
                               {item.conditions.map((c) => {
                                 const label =
                                   c.condition_type === "ungraded"
@@ -791,24 +809,30 @@ export default function ProfilePage() {
                               })}
                             </div>
                           )}
+
                           {(item.max_price != null || item.notes) && (
-                            <div className="flex gap-3 mt-1.5 text-xs text-muted-foreground">
+                            <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                               {item.max_price != null && <span>Max ${item.max_price.toFixed(2)}</span>}
-                              {item.notes && <span>{item.notes}</span>}
+                              {item.notes && <span className="truncate">{item.notes}</span>}
+                            </div>
+                          )}
+
+                          {isOwner && (
+                            <div className="mt-auto pt-1.5 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditingWishlistItemId(editingWishlistItemId === item.id ? null : item.id); }}
+                                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                                title="Edit"
+                              >
+                                ✎
+                              </button>
                             </div>
                           )}
                         </div>
-                        {isOwner && (
-                          <button
-                            type="button"
-                            onClick={() => setEditingWishlistItemId(editingWishlistItemId === item.id ? null : item.id)}
-                            className="text-xs text-muted-foreground hover:text-foreground transition-colors flex-shrink-0 mt-0.5"
-                            title="Edit"
-                          >
-                            ✎
-                          </button>
-                        )}
                       </div>
+
+                      {/* Inline edit panel below card */}
                       {isOwner && editingWishlistItemId === item.id && (
                         <WishlistEditPanel
                           item={item}
@@ -830,6 +854,7 @@ export default function ProfilePage() {
             </>
           )}
 
+          {/* Shows tab — paused
           {activeTab === "shows" && isOwner && (
             <>
               {registeredShows.length === 0 ? (
@@ -871,6 +896,7 @@ export default function ProfilePage() {
           {activeTab === "shows" && !isOwner && (
             <p className="text-sm text-muted-foreground">Shows not available on public profiles.</p>
           )}
+          */}
         </div>
       </div>
     </main>

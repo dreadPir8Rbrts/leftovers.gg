@@ -25,6 +25,7 @@ export function TopNav({ profile }: TopNavProps) {
         <GlobalSearch />
       </div>
       <div className="flex md:hidden flex-1" />
+      {/* Card Shows mobile link — paused
       <Link
         href="/card-shows"
         className="md:hidden flex items-center gap-1.5 text-white/70 hover:text-white transition-colors text-sm"
@@ -32,6 +33,7 @@ export function TopNav({ profile }: TopNavProps) {
         <CalendarDays size={16} />
         <span>Card Shows</span>
       </Link>
+      */}
       <AvatarDropdown profile={profile ?? null} />
     </header>
   );

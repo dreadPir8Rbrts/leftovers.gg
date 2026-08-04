@@ -377,6 +377,11 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
             if m:
                 card_number = m.group(1)
                 break
+        # Promo cards: "PR 096 ©2002MK..." — © may be garbled by OCR into noise
+        m = re.match(r"^PR\s+(\d{3,4})\b", line, re.IGNORECASE)
+        if m:
+            card_number = m.group(1)
+            break
 
     # Fallback: lone 3-4 digit number on its own line
     if card_number is None:
