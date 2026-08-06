@@ -41,6 +41,14 @@ import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useParams, useRouter } from "next/navigation";
+import {
+  getOwnLinks,
+  getPublicLinks,
+  createLink,
+  deleteLink,
+  uploadLinkAvatar,
+  type ProfileLink,
+} from "@/lib/api/links";
 
 type AnyProfile = ProfileData | PublicProfileData;
 
@@ -89,8 +97,19 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Links state
+  const [links, setLinks] = useState<ProfileLink[]>([]);
+  const [showAddLink, setShowAddLink] = useState(false);
+  const [addLinkName, setAddLinkName] = useState("");
+  const [addLinkUrl, setAddLinkUrl] = useState("");
+  const [addLinkSaving, setAddLinkSaving] = useState(false);
+  const [addLinkError, setAddLinkError] = useState<string | null>(null);
+  const [linkAvatarLoading, setLinkAvatarLoading] = useState<string | null>(null);
+  const [uploadingForLinkId, setUploadingForLinkId] = useState<string | null>(null);
+
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const linkAvatarInputRef = useRef<HTMLInputElement>(null);
 
   const API = process.env.NEXT_PUBLIC_API_URL!;
 
@@ -116,6 +135,13 @@ export default function ProfilePage() {
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingProfile(false));
   }, [params.profile_id, isOwner, currentUserProfile?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load links
+  useEffect(() => {
+    if (!profile) return;
+    const linkFetch = isOwner ? getOwnLinks() : getPublicLinks(params.profile_id);
+    linkFetch.then(setLinks).catch(() => {});
+  }, [profile, isOwner, params.profile_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load inventory and shows for the profile
   useEffect(() => {
@@ -150,6 +176,44 @@ export default function ProfilePage() {
       setError(`Failed to upload ${imageType} image.`);
     } finally {
       setUploading(null);
+    }
+  }
+
+  async function handleCreateLink() {
+    if (!addLinkName.trim() || !addLinkUrl.trim()) return;
+    setAddLinkSaving(true);
+    setAddLinkError(null);
+    try {
+      const newLink = await createLink({ name: addLinkName.trim(), url: addLinkUrl.trim() });
+      setLinks((prev) => [...prev, newLink]);
+      setAddLinkName("");
+      setAddLinkUrl("");
+      setShowAddLink(false);
+    } catch (err: unknown) {
+      setAddLinkError(err instanceof Error ? err.message : "Failed to add link");
+    } finally {
+      setAddLinkSaving(false);
+    }
+  }
+
+  async function handleDeleteLink(linkId: string) {
+    try {
+      await deleteLink(linkId);
+      setLinks((prev) => prev.filter((l) => l.id !== linkId));
+    } catch {
+      // silent — link still shows, user can retry
+    }
+  }
+
+  async function handleLinkAvatarUpload(file: File, linkId: string) {
+    setLinkAvatarLoading(linkId);
+    try {
+      const { avatar_url } = await uploadLinkAvatar(linkId, file);
+      setLinks((prev) => prev.map((l) => l.id === linkId ? { ...l, avatar_url } : l));
+    } catch {
+      // silent
+    } finally {
+      setLinkAvatarLoading(null);
     }
   }
 
@@ -274,6 +338,18 @@ export default function ProfilePage() {
               e.target.value = "";
             }}
           />
+          <input
+            ref={linkAvatarInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f && uploadingForLinkId) handleLinkAvatarUpload(f, uploadingForLinkId);
+              setUploadingForLinkId(null);
+              e.target.value = "";
+            }}
+          />
         </>
       )}
 
@@ -369,6 +445,32 @@ export default function ProfilePage() {
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
       </div>
 
+      {/* Links row */}
+      {links.length > 0 && (
+        <div className="flex flex-wrap justify-center gap-5 mt-5 px-6">
+          {links.map((link) => (
+            <a
+              key={link.id}
+              href={link.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-col items-center gap-1.5 group"
+            >
+              <div className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center group-hover:border-foreground/40 transition-colors">
+                {link.avatar_url ? (
+                  <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
+                ) : (
+                  <span className="text-lg">🔗</span>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors w-16 truncate text-center">
+                {link.name}
+              </span>
+            </a>
+          ))}
+        </div>
+      )}
+
       {/* Profile details */}
       <div className="max-w-xl mx-auto px-6 mt-6 space-y-4">
         {!editing ? (
@@ -405,6 +507,98 @@ export default function ProfilePage() {
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {/* Links management (owner only) */}
+            {isOwner && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground font-medium text-center">Links</p>
+                {links.map((link) => (
+                  <div key={link.id} className="flex items-center gap-3 border rounded-lg p-2.5">
+                    <button
+                      type="button"
+                      title="Upload icon"
+                      disabled={linkAvatarLoading === link.id}
+                      onClick={() => {
+                        setUploadingForLinkId(link.id);
+                        linkAvatarInputRef.current?.click();
+                      }}
+                      className="relative w-8 h-8 rounded-full border bg-muted overflow-hidden shrink-0 flex items-center justify-center hover:border-foreground/50 transition-colors"
+                    >
+                      {linkAvatarLoading === link.id ? (
+                        <span className="text-xs text-muted-foreground">…</span>
+                      ) : link.avatar_url ? (
+                        <Image src={link.avatar_url} alt={link.name} fill sizes="32px" className="object-cover" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">+</span>
+                      )}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{link.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{link.url}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteLink(link.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 text-sm leading-none"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                {showAddLink ? (
+                  <div className="border rounded-lg p-3 space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Name (e.g. My eBay Store)"
+                      value={addLinkName}
+                      onChange={(e) => setAddLinkName(e.target.value)}
+                      maxLength={100}
+                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+                    />
+                    <input
+                      type="url"
+                      placeholder="URL (https://…)"
+                      value={addLinkUrl}
+                      onChange={(e) => setAddLinkUrl(e.target.value)}
+                      maxLength={2000}
+                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+                    />
+                    {addLinkError && <p className="text-xs text-destructive">{addLinkError}</p>}
+                    <div className="flex gap-2 justify-end">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setShowAddLink(false);
+                          setAddLinkName("");
+                          setAddLinkUrl("");
+                          setAddLinkError(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleCreateLink}
+                        disabled={addLinkSaving || !addLinkName.trim() || !addLinkUrl.trim()}
+                      >
+                        {addLinkSaving ? "Adding…" : "Add"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : links.length < 5 ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowAddLink(true)}
+                    className="w-full border border-dashed rounded-lg p-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
+                  >
+                    + Add link{links.length > 0 ? ` (${links.length}/5)` : ""}
+                  </button>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-center">5/5 links — delete one to add another</p>
+                )}
               </div>
             )}
 

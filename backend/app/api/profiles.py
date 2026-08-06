@@ -26,6 +26,7 @@ from app.dependencies import get_current_profile
 from app.models.catalog_v2 import CardV2, ExpansionV2
 from app.models.collector import Wishlist
 from app.models.inventory import Inventory
+from app.models.profile_link import ProfileLink
 from app.models.profiles import Profile
 
 router = APIRouter(tags=["profiles"])
@@ -380,3 +381,172 @@ def _wishlist_item_response(
         ],
         "created_at": item.created_at.isoformat(),
     }
+
+
+# ---------------------------------------------------------------------------
+# Profile links (Linktree-style, max 5 per profile)
+# ---------------------------------------------------------------------------
+
+_MAX_LINKS = 5
+
+
+class LinkCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    url: str = Field(..., min_length=1, max_length=2000)
+
+
+class LinkUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    url: Optional[str] = Field(None, min_length=1, max_length=2000)
+    display_order: Optional[int] = None
+
+
+def _link_response(link: ProfileLink) -> Dict[str, Any]:
+    return {
+        "id": link.id,
+        "profile_id": link.profile_id,
+        "name": link.name,
+        "url": link.url,
+        "avatar_url": link.avatar_url,
+        "display_order": link.display_order,
+        "created_at": link.created_at.isoformat(),
+    }
+
+
+@router.get("/profiles/me/links")
+def list_own_links(
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    links = (
+        db.query(ProfileLink)
+        .filter(ProfileLink.profile_id == profile.id)
+        .order_by(ProfileLink.display_order, ProfileLink.created_at)
+        .all()
+    )
+    return [_link_response(link) for link in links]
+
+
+@router.post("/profiles/me/links", status_code=status.HTTP_201_CREATED)
+def create_link(
+    body: LinkCreate,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    count = db.query(ProfileLink).filter(ProfileLink.profile_id == profile.id).count()
+    if count >= _MAX_LINKS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Maximum {_MAX_LINKS} links allowed",
+        )
+    link = ProfileLink(
+        profile_id=profile.id,
+        name=body.name,
+        url=body.url,
+        display_order=count,
+    )
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return _link_response(link)
+
+
+@router.patch("/profiles/me/links/{link_id}")
+def update_link(
+    link_id: str,
+    body: LinkUpdate,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    link = (
+        db.query(ProfileLink)
+        .filter(ProfileLink.id == link_id, ProfileLink.profile_id == profile.id)
+        .first()
+    )
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    for key, value in body.model_dump(exclude_none=True).items():
+        setattr(link, key, value)
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return _link_response(link)
+
+
+@router.delete("/profiles/me/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_link(
+    link_id: str,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> None:
+    link = (
+        db.query(ProfileLink)
+        .filter(ProfileLink.id == link_id, ProfileLink.profile_id == profile.id)
+        .first()
+    )
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    db.delete(link)
+    db.commit()
+
+
+@router.post("/profiles/me/links/{link_id}/avatar")
+def upload_link_avatar(
+    link_id: str,
+    image: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> Dict[str, str]:
+    link = (
+        db.query(ProfileLink)
+        .filter(ProfileLink.id == link_id, ProfileLink.profile_id == profile.id)
+        .first()
+    )
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found")
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+    image_bytes = image.file.read()
+    if len(image_bytes) > 2 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Link avatar must be under 2 MB")
+    if not settings.aws_s3_bucket:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Image storage not configured",
+        )
+    s3 = boto3.client(
+        "s3",
+        region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+    )
+    key = f"profile-links/{profile.id}/{link_id}.jpg"
+    s3.put_object(
+        Bucket=settings.aws_s3_bucket,
+        Key=key,
+        Body=image_bytes,
+        ContentType=image.content_type,
+    )
+    url = f"https://{settings.aws_s3_bucket}.s3.amazonaws.com/{key}"
+    link.avatar_url = url
+    db.add(link)
+    db.commit()
+    return {"avatar_url": url}
+
+
+@router.get("/profiles/{profile_id}/links")
+def list_profile_links(
+    profile_id: str,
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Public: return links for a public profile."""
+    profile = db.get(Profile, profile_id)
+    if profile is None or not profile.is_public:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
+    links = (
+        db.query(ProfileLink)
+        .filter(ProfileLink.profile_id == profile_id)
+        .order_by(ProfileLink.display_order, ProfileLink.created_at)
+        .all()
+    )
+    return [_link_response(link) for link in links]
