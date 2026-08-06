@@ -92,6 +92,15 @@ export async function getPublicProfile(profileId: string): Promise<PublicProfile
   return res.json();
 }
 
+export async function checkDisplayNameAvailable(name: string): Promise<boolean> {
+  const res = await fetch(
+    `${API}/api/v1/profiles/check-display-name?name=${encodeURIComponent(name)}`
+  );
+  if (!res.ok) return true; // fail open — let submit-time validation catch it
+  const data = await res.json();
+  return data.available as boolean;
+}
+
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
   const token = await getAccessToken();
   const formData = new FormData();

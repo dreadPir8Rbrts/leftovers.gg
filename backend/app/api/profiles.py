@@ -15,9 +15,9 @@ from decimal import Decimal
 from typing import Optional, List, Dict, Any
 
 import boto3
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from pydantic import BaseModel, Field
-from sqlalchemy import cast
+from sqlalchemy import cast, func
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Session
 
@@ -34,7 +34,7 @@ _VALID_ROLES = {"vendor", "collector"}
 
 
 class ProfileUpdate(BaseModel):
-    display_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    display_name: Optional[str] = Field(None, min_length=1, max_length=16)
     role: Optional[str] = None
     bio: Optional[str] = None
     tcg_interests: Optional[List[str]] = None
@@ -156,6 +156,23 @@ def update_profile(
             detail=f"Invalid role. Must be one of: {', '.join(sorted(_VALID_ROLES))}",
         )
 
+    # Check display_name uniqueness before writing (case-insensitive)
+    if "display_name" in update_data:
+        new_name = update_data["display_name"]
+        conflict = (
+            db.query(Profile)
+            .filter(
+                func.lower(Profile.display_name) == new_name.lower(),
+                Profile.id != profile.id,
+            )
+            .first()
+        )
+        if conflict:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Display name is already taken",
+            )
+
     for key, value in update_data.items():
         setattr(profile, key, value)
 
@@ -243,6 +260,24 @@ def upload_avatar(
     db.add(profile)
     db.commit()
     return {"avatar_url": url}
+
+
+# ---------------------------------------------------------------------------
+# Display name availability check (no auth required)
+# ---------------------------------------------------------------------------
+
+@router.get("/profiles/check-display-name")
+def check_display_name(
+    name: str = Query(..., min_length=1, max_length=16),
+    db: Session = Depends(get_db),
+) -> Dict[str, bool]:
+    """Return {available: true} if the display name is not taken (case-insensitive)."""
+    taken = (
+        db.query(Profile)
+        .filter(func.lower(Profile.display_name) == name.lower())
+        .first()
+    )
+    return {"available": taken is None}
 
 
 # ---------------------------------------------------------------------------
