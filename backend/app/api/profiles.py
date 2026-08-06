@@ -34,7 +34,8 @@ _VALID_ROLES = {"vendor", "collector"}
 
 
 class ProfileUpdate(BaseModel):
-    display_name: Optional[str] = Field(None, min_length=1, max_length=16)
+    username: Optional[str] = Field(None, min_length=1, max_length=30)
+    display_name: Optional[str] = Field(None, min_length=1, max_length=50)
     role: Optional[str] = None
     bio: Optional[str] = None
     tcg_interests: Optional[List[str]] = None
@@ -52,6 +53,7 @@ def _public_profile_response(profile: Profile) -> Dict[str, Any]:
     return {
         "id": profile.id,
         "role": profile.role,
+        "username": profile.username,
         "display_name": profile.display_name,
         "bio": profile.bio,
         "tcg_interests": profile.tcg_interests,
@@ -100,6 +102,7 @@ def _profile_response(profile: Profile) -> Dict[str, Any]:
     return {
         "id": profile.id,
         "role": profile.role,
+        "username": profile.username,
         "display_name": profile.display_name,
         "bio": profile.bio,
         "tcg_interests": profile.tcg_interests,
@@ -156,13 +159,13 @@ def update_profile(
             detail=f"Invalid role. Must be one of: {', '.join(sorted(_VALID_ROLES))}",
         )
 
-    # Check display_name uniqueness before writing (case-insensitive)
-    if "display_name" in update_data:
-        new_name = update_data["display_name"]
+    # Check username uniqueness before writing (case-insensitive)
+    if "username" in update_data:
+        new_username = update_data["username"]
         conflict = (
             db.query(Profile)
             .filter(
-                func.lower(Profile.display_name) == new_name.lower(),
+                func.lower(Profile.username) == new_username.lower(),
                 Profile.id != profile.id,
             )
             .first()
@@ -170,7 +173,7 @@ def update_profile(
         if conflict:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Display name is already taken",
+                detail="Username is already taken",
             )
 
     for key, value in update_data.items():
@@ -263,18 +266,18 @@ def upload_avatar(
 
 
 # ---------------------------------------------------------------------------
-# Display name availability check (no auth required)
+# Username availability check (no auth required)
 # ---------------------------------------------------------------------------
 
-@router.get("/profiles/check-display-name")
-def check_display_name(
-    name: str = Query(..., min_length=1, max_length=16),
+@router.get("/profiles/check-username")
+def check_username(
+    name: str = Query(..., min_length=1, max_length=30),
     db: Session = Depends(get_db),
 ) -> Dict[str, bool]:
-    """Return {available: true} if the display name is not taken (case-insensitive)."""
+    """Return {available: true} if the username is not taken (case-insensitive)."""
     taken = (
         db.query(Profile)
-        .filter(func.lower(Profile.display_name) == name.lower())
+        .filter(func.lower(Profile.username) == name.lower())
         .first()
     )
     return {"available": taken is None}

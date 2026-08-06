@@ -15,6 +15,7 @@ async function authHeaders(): Promise<HeadersInit> {
 export interface PublicProfileData {
   id: string;
   role: "vendor" | "collector";
+  username: string | null;
   display_name: string | null;
   bio: string | null;
   tcg_interests: string[] | null;
@@ -28,6 +29,7 @@ export interface PublicProfileData {
 export interface ProfileData {
   id: string;
   role: "vendor" | "collector";
+  username: string | null;
   display_name: string | null;
   bio: string | null;
   tcg_interests: string[] | null;
@@ -42,6 +44,7 @@ export interface ProfileData {
 }
 
 export interface ProfileUpdate {
+  username?: string;
   display_name?: string;
   role?: "vendor" | "collector";
   bio?: string;
@@ -92,9 +95,9 @@ export async function getPublicProfile(profileId: string): Promise<PublicProfile
   return res.json();
 }
 
-export async function checkDisplayNameAvailable(name: string): Promise<boolean> {
+export async function checkUsernameAvailable(name: string): Promise<boolean> {
   const res = await fetch(
-    `${API}/api/v1/profiles/check-display-name?name=${encodeURIComponent(name)}`
+    `${API}/api/v1/profiles/check-username?name=${encodeURIComponent(name)}`
   );
   if (!res.ok) return true; // fail open — let submit-time validation catch it
   const data = await res.json();

@@ -4,7 +4,7 @@ import { useState, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { updateProfile, checkDisplayNameAvailable } from "@/lib/api/profiles";
+import { updateProfile, checkUsernameAvailable } from "@/lib/api/profiles";
 import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,9 +19,9 @@ function setOnboardingCookie() {
 
 // Instagram-style: letters, numbers, underscores, periods only.
 // Cannot start/end with a period or have consecutive periods.
-function validateDisplayName(name: string): string | null {
+function validateUsername(name: string): string | null {
   if (!name) return null;
-  if (name.length > 16) return "Maximum 16 characters";
+  if (name.length > 30) return "Maximum 30 characters";
   if (!/^[a-zA-Z0-9._]+$/.test(name))
     return "Only letters, numbers, underscores ( _ ), and periods ( . ) allowed";
   if (name.startsWith(".")) return "Cannot start with a period";
@@ -62,7 +62,6 @@ function getPasswordStrength(pw: string): PasswordStrength {
 function StrengthBar({ strength }: { strength: PasswordStrength }) {
   return (
     <div className="space-y-1.5 mt-1.5">
-      {/* Bar */}
       <div className="flex gap-1">
         {[0, 1, 2, 3].map((i) => (
           <div
@@ -73,11 +72,9 @@ function StrengthBar({ strength }: { strength: PasswordStrength }) {
           />
         ))}
       </div>
-      {/* Label */}
       <p className="text-xs text-muted-foreground">
         Strength: <span className="font-medium text-foreground">{strength.label}</span>
       </p>
-      {/* Requirements */}
       <ul className="space-y-0.5">
         {strength.criteria.map((c) => (
           <li key={c.label} className={`flex items-center gap-1.5 text-xs ${c.met ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`}>
@@ -98,10 +95,11 @@ export default function SignupPage() {
   const router = useRouter();
   const { setActiveRole } = useActiveRoleStore();
 
+  const [username, setUsername] = useState("");
+  const [usernameTouched, setUsernameTouched] = useState(false);
+  const [usernameTaken, setUsernameTaken] = useState(false);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [displayName, setDisplayName] = useState("");
-  const [displayNameTouched, setDisplayNameTouched] = useState(false);
-  const [displayNameTaken, setDisplayNameTaken] = useState(false);
-  const [checkingName, setCheckingName] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -110,37 +108,37 @@ export default function SignupPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const displayNameFormatError = useMemo(() => validateDisplayName(displayName), [displayName]);
+  const usernameFormatError = useMemo(() => validateUsername(username), [username]);
   const passwordStrength = useMemo(() => getPasswordStrength(password), [password]);
   const passwordValid = passwordStrength.score === 4;
 
-  // Derived: what error message to show for display name
-  const displayNameError = displayNameFormatError ?? (displayNameTaken ? "Display name is already taken" : null);
+  const usernameError = usernameFormatError ?? (usernameTaken ? "Username is already taken" : null);
 
   const canSubmit =
+    username.trim().length > 0 &&
+    !usernameError &&
+    !checkingUsername &&
     displayName.trim().length > 0 &&
-    !displayNameError &&
-    !checkingName &&
     email.trim().length > 0 &&
     passwordValid &&
     !loading;
 
   // Debounced uniqueness check — fires 400 ms after the user stops typing
-  const scheduleNameCheck = useCallback((name: string) => {
+  const scheduleUsernameCheck = useCallback((name: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setDisplayNameTaken(false);
-    if (!name || validateDisplayName(name)) return; // skip if format is invalid
+    setUsernameTaken(false);
+    if (!name || validateUsername(name)) return;
     debounceRef.current = setTimeout(async () => {
-      setCheckingName(true);
-      const available = await checkDisplayNameAvailable(name);
-      setCheckingName(false);
-      setDisplayNameTaken(!available);
+      setCheckingUsername(true);
+      const available = await checkUsernameAvailable(name);
+      setCheckingUsername(false);
+      setUsernameTaken(!available);
     }, 400);
   }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setDisplayNameTouched(true);
+    setUsernameTouched(true);
     setPasswordTouched(true);
     if (!canSubmit) return;
 
@@ -158,15 +156,19 @@ export default function SignupPage() {
     const userId = data.user?.id ?? "";
 
     try {
-      await updateProfile({ display_name: displayName.trim(), onboarding_complete: true });
+      await updateProfile({
+        username: username.trim(),
+        display_name: displayName.trim(),
+        onboarding_complete: true,
+      });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "";
       if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already")) {
-        setError("That display name is already taken. Please choose another.");
+        setError("That username is already taken. Please choose another.");
         setLoading(false);
         return;
       }
-      // Other failures are non-blocking — user can set display name from profile
+      // Other failures are non-blocking — user can set details from profile
     }
 
     setActiveRole("vendor");
@@ -182,33 +184,33 @@ export default function SignupPage() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
 
-          {/* Display name */}
+          {/* Username */}
           <div className="space-y-1">
-            <label className="text-sm font-medium">Display name</label>
+            <label className="text-sm font-medium">Username</label>
             <div className="relative">
               <input
                 type="text"
                 required
-                maxLength={16}
-                value={displayName}
+                maxLength={30}
+                value={username}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setDisplayName(val);
-                  setDisplayNameTouched(true);
-                  scheduleNameCheck(val);
+                  setUsername(val);
+                  setUsernameTouched(true);
+                  scheduleUsernameCheck(val);
                 }}
-                onBlur={() => setDisplayNameTouched(true)}
+                onBlur={() => setUsernameTouched(true)}
                 placeholder="e.g. card_trader92"
                 className={`w-full border rounded-md px-3 py-2 text-sm bg-background transition-colors pr-8 ${
-                  displayNameTouched && displayNameError ? "border-destructive" : ""
+                  usernameTouched && usernameError ? "border-destructive" : ""
                 }`}
               />
               {/* Availability indicator */}
-              {displayNameTouched && displayName && !displayNameFormatError && (
+              {usernameTouched && username && !usernameFormatError && (
                 <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs">
-                  {checkingName ? (
+                  {checkingUsername ? (
                     <span className="text-muted-foreground">…</span>
-                  ) : displayNameTaken ? (
+                  ) : usernameTaken ? (
                     <span className="text-destructive">✗</span>
                   ) : (
                     <span className="text-green-600 dark:text-green-400">✓</span>
@@ -217,11 +219,28 @@ export default function SignupPage() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Max 16 characters — letters, numbers, underscores, and periods only.
+              Your unique handle — letters, numbers, underscores, and periods only.
             </p>
-            {displayNameTouched && displayNameError && (
-              <p className="text-xs text-destructive">{displayNameError}</p>
+            {usernameTouched && usernameError && (
+              <p className="text-xs text-destructive">{usernameError}</p>
             )}
+          </div>
+
+          {/* Display name */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Display name</label>
+            <input
+              type="text"
+              required
+              maxLength={50}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="e.g. John's Cards"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            />
+            <p className="text-xs text-muted-foreground">
+              Your public name — shown on your profile.
+            </p>
           </div>
 
           {/* Email */}

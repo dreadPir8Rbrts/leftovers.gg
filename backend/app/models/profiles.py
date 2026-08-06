@@ -24,6 +24,7 @@ class Profile(Base):
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     role: Mapped[str] = mapped_column(String(50), nullable=False)
+    username: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     display_name: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     tcg_interests: Mapped[Optional[List[str]]] = mapped_column(JSONB, nullable=True)
