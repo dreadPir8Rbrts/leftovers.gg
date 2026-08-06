@@ -43,6 +43,7 @@ import {
   getOwnLinks,
   getPublicLinks,
   createLink,
+  updateLink,
   deleteLink,
   uploadLinkAvatar,
   type ProfileLink,
@@ -61,6 +62,13 @@ function formatCondition(item: InventoryItemWithCard): string {
   return `${company} ${item.grade ?? ""}`.trim();
 }
 
+
+const LINK_PRESETS = [
+  { id: "ebay", label: "eBay" },
+  { id: "ig", label: "IG" },
+  { id: "whatnot", label: "Whatnot" },
+  { id: "fb", label: "FB" },
+];
 
 export default function ProfilePage() {
   const params = useParams<{ profile_id: string }>();
@@ -101,12 +109,25 @@ export default function ProfilePage() {
   const [addLinkUrl, setAddLinkUrl] = useState("");
   const [addLinkSaving, setAddLinkSaving] = useState(false);
   const [addLinkError, setAddLinkError] = useState<string | null>(null);
+  const [addLinkAvatarPreset, setAddLinkAvatarPreset] = useState<string | null>(null);
+  const [addLinkAvatarFile, setAddLinkAvatarFile] = useState<File | null>(null);
+  const [addLinkAvatarPreview, setAddLinkAvatarPreview] = useState<string | null>(null);
   const [linkAvatarLoading, setLinkAvatarLoading] = useState<string | null>(null);
   const [uploadingForLinkId, setUploadingForLinkId] = useState<string | null>(null);
+  const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
+  const [editLinkName, setEditLinkName] = useState("");
+  const [editLinkUrl, setEditLinkUrl] = useState("");
+  const [editLinkAvatarPreset, setEditLinkAvatarPreset] = useState<string | null>(null);
+  const [editLinkAvatarFile, setEditLinkAvatarFile] = useState<File | null>(null);
+  const [editLinkAvatarPreview, setEditLinkAvatarPreview] = useState<string | null>(null);
+  const [editLinkSaving, setEditLinkSaving] = useState(false);
+  const [editLinkError, setEditLinkError] = useState<string | null>(null);
 
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const linkAvatarInputRef = useRef<HTMLInputElement>(null);
+  const addLinkCustomInputRef = useRef<HTMLInputElement>(null);
+  const editLinkCustomInputRef = useRef<HTMLInputElement>(null);
 
   const API = process.env.NEXT_PUBLIC_API_URL!;
 
@@ -172,20 +193,63 @@ export default function ProfilePage() {
     }
   }
 
+  function resetAddLinkForm() {
+    setAddLinkName("");
+    setAddLinkUrl("");
+    setAddLinkError(null);
+    setAddLinkAvatarPreset(null);
+    setAddLinkAvatarFile(null);
+    setAddLinkAvatarPreview(null);
+    setShowAddLink(false);
+  }
+
   async function handleCreateLink() {
     if (!addLinkName.trim() || !addLinkUrl.trim()) return;
     setAddLinkSaving(true);
     setAddLinkError(null);
     try {
       const newLink = await createLink({ name: addLinkName.trim(), url: addLinkUrl.trim() });
-      setLinks((prev) => [...prev, newLink]);
-      setAddLinkName("");
-      setAddLinkUrl("");
-      setShowAddLink(false);
+      let finalLink = newLink;
+      if (addLinkAvatarFile) {
+        const { avatar_url } = await uploadLinkAvatar(newLink.id, addLinkAvatarFile);
+        finalLink = { ...newLink, avatar_url };
+      }
+      setLinks((prev) => [...prev, finalLink]);
+      resetAddLinkForm();
     } catch (err: unknown) {
       setAddLinkError(err instanceof Error ? err.message : "Failed to add link");
     } finally {
       setAddLinkSaving(false);
+    }
+  }
+
+  function resetEditLinkForm() {
+    setEditingLinkId(null);
+    setEditLinkName("");
+    setEditLinkUrl("");
+    setEditLinkError(null);
+    setEditLinkAvatarPreset(null);
+    setEditLinkAvatarFile(null);
+    setEditLinkAvatarPreview(null);
+  }
+
+  async function handleSaveLink() {
+    if (!editingLinkId || !editLinkName.trim() || !editLinkUrl.trim()) return;
+    setEditLinkSaving(true);
+    setEditLinkError(null);
+    try {
+      const updated = await updateLink(editingLinkId, { name: editLinkName.trim(), url: editLinkUrl.trim() });
+      let finalLink = updated;
+      if (editLinkAvatarFile) {
+        const { avatar_url } = await uploadLinkAvatar(editingLinkId, editLinkAvatarFile);
+        finalLink = { ...updated, avatar_url };
+      }
+      setLinks((prev) => prev.map((l) => l.id === editingLinkId ? finalLink : l));
+      resetEditLinkForm();
+    } catch (err: unknown) {
+      setEditLinkError(err instanceof Error ? err.message : "Failed to update link");
+    } finally {
+      setEditLinkSaving(false);
     }
   }
 
@@ -491,15 +555,19 @@ export default function ProfilePage() {
                           </button>
                           <button
                             type="button"
-                            title="Change icon"
-                            disabled={linkAvatarLoading === link.id}
+                            title="Edit link"
                             onClick={() => {
-                              setUploadingForLinkId(link.id);
-                              linkAvatarInputRef.current?.click();
+                              setEditingLinkId(link.id);
+                              setEditLinkName(link.name);
+                              setEditLinkUrl(link.url);
+                              setEditLinkAvatarPreset(null);
+                              setEditLinkAvatarFile(null);
+                              setEditLinkAvatarPreview(null);
+                              setEditLinkError(null);
                             }}
                             className="absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm"
                           >
-                            {linkAvatarLoading === link.id ? "…" : "✎"}
+                            ✎
                           </button>
                         </>
                       )}
@@ -977,7 +1045,7 @@ export default function ProfilePage() {
       {isOwner && showAddLink && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          onClick={() => { setShowAddLink(false); setAddLinkName(""); setAddLinkUrl(""); setAddLinkError(null); }}
+          onClick={resetAddLinkForm}
         >
           <div
             className="bg-background border rounded-xl shadow-lg w-full max-w-sm mx-4 p-6 space-y-4"
@@ -1008,14 +1076,63 @@ export default function ProfilePage() {
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
                 />
               </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Avatar (optional)</label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {LINK_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setAddLinkAvatarPreset(addLinkAvatarPreset === p.id ? null : p.id);
+                        setAddLinkAvatarFile(null);
+                        setAddLinkAvatarPreview(null);
+                      }}
+                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-[9px] font-medium leading-tight transition-colors ${
+                        addLinkAvatarPreset === p.id
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => addLinkCustomInputRef.current?.click()}
+                    className={`relative w-12 h-12 rounded-full border-2 overflow-hidden flex items-center justify-center text-[9px] font-medium transition-colors ${
+                      addLinkAvatarFile
+                        ? "border-foreground"
+                        : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                    }`}
+                  >
+                    {addLinkAvatarPreview ? (
+                      <Image src={addLinkAvatarPreview} alt="Custom" fill sizes="48px" className="object-cover" />
+                    ) : (
+                      "Custom"
+                    )}
+                  </button>
+                  <input
+                    ref={addLinkCustomInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setAddLinkAvatarFile(file);
+                        setAddLinkAvatarPreset(null);
+                        setAddLinkAvatarPreview(URL.createObjectURL(file));
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              </div>
             </div>
             {addLinkError && <p className="text-xs text-destructive">{addLinkError}</p>}
             <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setShowAddLink(false); setAddLinkName(""); setAddLinkUrl(""); setAddLinkError(null); }}
-              >
+              <Button variant="outline" size="sm" onClick={resetAddLinkForm}>
                 Cancel
               </Button>
               <Button
@@ -1024,6 +1141,112 @@ export default function ProfilePage() {
                 disabled={addLinkSaving || !addLinkName.trim() || !addLinkUrl.trim()}
               >
                 {addLinkSaving ? "Adding…" : "Add"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit link modal */}
+      {isOwner && editingLinkId && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={resetEditLinkForm}
+        >
+          <div
+            className="bg-background border rounded-xl shadow-lg w-full max-w-sm mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold">Edit link</h2>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. My eBay Store"
+                  value={editLinkName}
+                  onChange={(e) => setEditLinkName(e.target.value)}
+                  maxLength={100}
+                  autoFocus
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">URL</label>
+                <input
+                  type="url"
+                  placeholder="https://…"
+                  value={editLinkUrl}
+                  onChange={(e) => setEditLinkUrl(e.target.value)}
+                  maxLength={2000}
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Avatar (optional)</label>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {LINK_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setEditLinkAvatarPreset(editLinkAvatarPreset === p.id ? null : p.id);
+                        setEditLinkAvatarFile(null);
+                        setEditLinkAvatarPreview(null);
+                      }}
+                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-[9px] font-medium leading-tight transition-colors ${
+                        editLinkAvatarPreset === p.id
+                          ? "border-foreground bg-foreground text-background"
+                          : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => editLinkCustomInputRef.current?.click()}
+                    className={`relative w-12 h-12 rounded-full border-2 overflow-hidden flex items-center justify-center text-[9px] font-medium transition-colors ${
+                      editLinkAvatarFile
+                        ? "border-foreground"
+                        : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                    }`}
+                  >
+                    {editLinkAvatarPreview ? (
+                      <Image src={editLinkAvatarPreview} alt="Custom" fill sizes="48px" className="object-cover" />
+                    ) : (
+                      "Custom"
+                    )}
+                  </button>
+                  <input
+                    ref={editLinkCustomInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setEditLinkAvatarFile(file);
+                        setEditLinkAvatarPreset(null);
+                        setEditLinkAvatarPreview(URL.createObjectURL(file));
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+            {editLinkError && <p className="text-xs text-destructive">{editLinkError}</p>}
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" size="sm" onClick={resetEditLinkForm}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleSaveLink}
+                disabled={editLinkSaving || !editLinkName.trim() || !editLinkUrl.trim()}
+              >
+                {editLinkSaving ? "Saving…" : "Save"}
               </Button>
             </div>
           </div>
