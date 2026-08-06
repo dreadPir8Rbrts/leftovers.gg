@@ -7,6 +7,8 @@ import Link from "next/link";
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { ArrowLeft, Loader2, ArrowLeftRight, Plus, Heart, ChevronDown, ChevronUp, RotateCcw, Search, LayoutList, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { VendorSidebar } from "@/components/nav/VendorSidebar";
+import { MobileBottomNav } from "@/components/nav/MobileBottomNav";
 import {
   getCard,
   getCardScrydexPrices,
@@ -133,6 +135,7 @@ export default function CardDetailPage() {
   // Auth
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [showSignupGate, setShowSignupGate] = useState(false);
 
   // Scan context — "Not the right card?" banner
   const { q: scanContextQ, clearScanContext } = useScanContext();
@@ -939,19 +942,27 @@ export default function CardDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-background pb-32">
+    <div className="min-h-screen bg-background">
 
-      {/* ── Top bar ── */}
-      <div className="sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-black/20 flex items-center gap-3 px-4 py-3">
-        <button onClick={() => window.history.back()} className="text-muted-foreground hover:text-foreground">
-          <ArrowLeft size={20} />
-        </button>
-        <p className="text-sm font-semibold truncate flex-1">{card.name}</p>
-      </div>
+      {/* ── Sidebar + content ── */}
+      <div className="flex">
+        {isLoggedIn && (
+          <div className="hidden md:block sticky top-14 h-[calc(100vh-56px)] self-start shrink-0">
+            <VendorSidebar profileId={profileId ?? undefined} />
+          </div>
+        )}
 
-      {/* ── Main layout ── */}
-      <div className="max-w-5xl mx-auto px-4 pt-6 pb-4">
-        <div className="flex flex-col md:grid md:grid-cols-[2fr_3fr] md:gap-10 gap-6">
+        <div className="flex-1 min-w-0 pb-10">
+          {/* ── Main layout ── */}
+          <div className="max-w-5xl mx-auto px-4 pt-6 pb-4">
+            <button
+              onClick={() => window.history.back()}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+            >
+              <ArrowLeft size={16} />
+              Back
+            </button>
+            <div className="flex flex-col md:grid md:grid-cols-[2fr_3fr] md:gap-10 gap-6">
 
           {/* ── Left: large card image ── */}
           <div className="md:sticky md:top-20 md:self-start">
@@ -1001,10 +1012,173 @@ export default function CardDetailPage() {
               {activeTab === "pricing" && marketPriceSection}
               {activeTab === "ebay" && ebayCompsSection}
             </div>
+
           </div>
 
         </div>
-      </div>
+
+        {/* ── Action buttons (centered below both columns) ── */}
+        {(priceCategory === "RAW" || selectedEntry) && (
+          <div className="pt-6 border-t border-black/10">
+            <div className="max-w-xs mx-auto space-y-2">
+              {addSuccess && (
+                <p className="text-xs text-green-600 text-center">Added to inventory ✓</p>
+              )}
+              <p className="text-xs text-muted-foreground text-center">{selectedConditionLabel()}</p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={isLoggedIn ? openAddModal : () => setShowSignupGate(true)}
+                >
+                  <Plus size={14} className="mr-1.5" />
+                  Add to Inventory
+                </Button>
+                <Button
+                  className="flex-1"
+                  onClick={isLoggedIn ? handleAddToTransaction : () => setShowSignupGate(true)}
+                  disabled={isLoggedIn && !profileId}
+                >
+                  <ArrowLeftRight size={14} className="mr-1.5" />
+                  Add to Transaction
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-muted-foreground"
+                onClick={isLoggedIn ? handleAddToWishlist : () => setShowSignupGate(true)}
+                disabled={isLoggedIn && (wishlistLoading || wishlistAdded)}
+              >
+                <Heart size={14} className={`mr-1.5 ${wishlistAdded ? "fill-current text-[#BF40BF]" : ""}`} />
+                {wishlistAdded ? "Added to Wishlist" : wishlistLoading ? "Adding…" : "Add to Wishlist"}
+              </Button>
+              {wishlistError && (
+                <p className="text-xs text-destructive text-center">{wishlistError}</p>
+              )}
+              {/* Not the right card? — shown when arriving from scan */}
+              {scanQ && (
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => { setNotRightOpen((o) => !o); setSimilarCards(null); setReported(false); }}
+                    className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1.5 transition-colors"
+                  >
+                    Not the right card?
+                    {notRightOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                  {notRightOpen && (
+                    <div className="space-y-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => profileId && router.push(`/scan/${profileId}`)}
+                        className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                      >
+                        <RotateCcw className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Try again</p>
+                          <p className="text-xs text-muted-foreground">Go back and scan another photo</p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => router.push("/vendor/card-search")}
+                        className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                      >
+                        <Search className="h-4 w-4 text-muted-foreground shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium">Manual search</p>
+                          <p className="text-xs text-muted-foreground">Search by name, set, or card number</p>
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleViewSimilar}
+                        disabled={loadingSimilar}
+                        className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors disabled:opacity-50"
+                      >
+                        {loadingSimilar
+                          ? <Loader2 className="h-4 w-4 text-muted-foreground shrink-0 animate-spin" />
+                          : <LayoutList className="h-4 w-4 text-muted-foreground shrink-0" />
+                        }
+                        <div>
+                          <p className="text-sm font-medium">View similar results</p>
+                          <p className="text-xs text-muted-foreground">Browse cards that match the scan data</p>
+                        </div>
+                      </button>
+                      {reported ? (
+                        <p className="text-xs text-muted-foreground text-center py-2">Thanks — we&apos;ll review this scan.</p>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setReported(true)}
+                          className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
+                        >
+                          <Flag className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium">Report unidentifiable card</p>
+                            <p className="text-xs text-muted-foreground">Let us know this card couldn&apos;t be identified</p>
+                          </div>
+                        </button>
+                      )}
+                      {/* Similar results list */}
+                      {(loadingSimilar || similarCards !== null) && (
+                        <div className="rounded-lg border overflow-hidden">
+                          {loadingSimilar && (
+                            <div className="flex items-center justify-center py-6">
+                              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                            </div>
+                          )}
+                          {!loadingSimilar && similarCards !== null && (
+                            <>
+                              <div className="flex items-center justify-between px-3 py-2 border-b">
+                                <p className="text-xs font-medium text-muted-foreground">
+                                  {similarCards.length > 0
+                                    ? `${similarCards.length} similar card${similarCards.length !== 1 ? "s" : ""}`
+                                    : "No similar cards found"}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setSimilarCards(null)}
+                                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                  ✕ Close
+                                </button>
+                              </div>
+                              <div className="max-h-72 overflow-y-auto">
+                                {similarCards.map((c) => (
+                                  <button
+                                    key={c.id}
+                                    onClick={() => router.push(`/cards/${c.id}`)}
+                                    className="w-full flex items-center gap-3 px-3 py-2 border-b last:border-b-0 hover:bg-muted/50 transition-colors text-left"
+                                  >
+                                    {c.image_url && (
+                                      <div className="relative w-8 h-11 shrink-0 rounded overflow-hidden border">
+                                        <Image src={c.image_url} alt={c.name} fill sizes="32px" className="object-contain" />
+                                      </div>
+                                    )}
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-medium truncate">{c.name}</p>
+                                      <p className="text-xs text-muted-foreground truncate">{c.set_name} · #{c.card_num}</p>
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+          </div> {/* end max-w-5xl */}
+        </div> {/* end flex-1 content */}
+      </div> {/* end flex sidebar+content */}
 
       {/* ── Add to Inventory modal ── */}
       {addModalOpen && (
@@ -1185,177 +1359,40 @@ export default function CardDetailPage() {
         </div>
       )}
 
-      {/* ── Sticky action bar ── */}
-      <div
-        className="fixed bottom-0 left-0 right-0 z-40 bg-background/95 backdrop-blur border-t border-black/20 px-4 py-3"
-        style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 0.75rem)" }}
-      >
-        {addSuccess && (
-          <p className="text-xs text-green-600 text-center mb-2">Added to inventory ✓</p>
-        )}
-        {!isLoggedIn ? (
-          <Link href="/login">
-            <Button className="w-full" variant="outline">Sign in to add to inventory or transaction</Button>
-          </Link>
-        ) : (priceCategory === "RAW" || selectedEntry) ? (
-          <div className="space-y-2 max-w-lg mx-auto">
-            <p className="text-xs text-muted-foreground text-center">{selectedConditionLabel()}</p>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={openAddModal}
-              >
-                <Plus size={14} className="mr-1.5" />
-                Add to Inventory
+      {/* ── Sign-up gate modal (anonymous users) ── */}
+      {showSignupGate && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => setShowSignupGate(false)}
+        >
+          <div
+            className="bg-background border rounded-xl shadow-lg w-full max-w-sm mx-4 p-6 space-y-4 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold">Create a free account</h2>
+            <p className="text-sm text-muted-foreground">
+              Sign up to add cards to your inventory, log transactions, and track your collection.
+            </p>
+            <div className="flex flex-col gap-2 pt-1">
+              <Button asChild style={{ backgroundColor: "#BF40BF", color: "#fff" }} className="hover:opacity-90">
+                <Link href="/signup">Sign up — it&apos;s free</Link>
               </Button>
-              <Button className="flex-1" onClick={handleAddToTransaction} disabled={!profileId}>
-                <ArrowLeftRight size={14} className="mr-1.5" />
-                Add to Transaction
+              <Button variant="outline" asChild>
+                <Link href="/login">Sign in</Link>
               </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full text-muted-foreground"
-              onClick={handleAddToWishlist}
-              disabled={wishlistLoading || wishlistAdded}
+            <button
+              type="button"
+              onClick={() => setShowSignupGate(false)}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Heart size={14} className={`mr-1.5 ${wishlistAdded ? "fill-current text-[#BF40BF]" : ""}`} />
-              {wishlistAdded ? "Added to Wishlist" : wishlistLoading ? "Adding…" : "Add to Wishlist"}
-            </Button>
-            {wishlistError && (
-              <p className="text-xs text-destructive text-center">{wishlistError}</p>
-            )}
-
-            {/* Not the right card? — shown when arriving from scan */}
-            {scanQ && (
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => { setNotRightOpen((o) => !o); setSimilarCards(null); setReported(false); }}
-                  className="w-full text-xs text-muted-foreground hover:text-foreground flex items-center justify-center gap-1 py-1.5 transition-colors"
-                >
-                  Not the right card?
-                  {notRightOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                </button>
-
-                {notRightOpen && (
-                  <div className="space-y-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => profileId && router.push(`/scan/${profileId}`)}
-                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
-                    >
-                      <RotateCcw className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">Try again</p>
-                        <p className="text-xs text-muted-foreground">Go back and scan another photo</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => router.push("/vendor/card-search")}
-                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
-                    >
-                      <Search className="h-4 w-4 text-muted-foreground shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium">Manual search</p>
-                        <p className="text-xs text-muted-foreground">Search by name, set, or card number</p>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleViewSimilar}
-                      disabled={loadingSimilar}
-                      className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors disabled:opacity-50"
-                    >
-                      {loadingSimilar
-                        ? <Loader2 className="h-4 w-4 text-muted-foreground shrink-0 animate-spin" />
-                        : <LayoutList className="h-4 w-4 text-muted-foreground shrink-0" />
-                      }
-                      <div>
-                        <p className="text-sm font-medium">View similar results</p>
-                        <p className="text-xs text-muted-foreground">Browse cards that match the scan data</p>
-                      </div>
-                    </button>
-
-                    {reported ? (
-                      <p className="text-xs text-muted-foreground text-center py-2">Thanks — we&apos;ll review this scan.</p>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setReported(true)}
-                        className="w-full flex items-center gap-3 rounded-lg border p-3 text-left hover:border-foreground/50 transition-colors"
-                      >
-                        <Flag className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <div>
-                          <p className="text-sm font-medium">Report unidentifiable card</p>
-                          <p className="text-xs text-muted-foreground">Let us know this card couldn&apos;t be identified</p>
-                        </div>
-                      </button>
-                    )}
-
-                    {/* Similar results list */}
-                    {(loadingSimilar || similarCards !== null) && (
-                      <div className="rounded-lg border overflow-hidden">
-                        {loadingSimilar && (
-                          <div className="flex items-center justify-center py-6">
-                            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                          </div>
-                        )}
-                        {!loadingSimilar && similarCards !== null && (
-                          <>
-                            <div className="flex items-center justify-between px-3 py-2 border-b">
-                              <p className="text-xs font-medium text-muted-foreground">
-                                {similarCards.length > 0
-                                  ? `${similarCards.length} similar card${similarCards.length !== 1 ? "s" : ""}`
-                                  : "No similar cards found"}
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => setSimilarCards(null)}
-                                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                ✕ Close
-                              </button>
-                            </div>
-                            <div className="max-h-72 overflow-y-auto">
-                              {similarCards.map((c) => (
-                                <button
-                                  key={c.id}
-                                  onClick={() => router.push(`/cards/${c.id}`)}
-                                  className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted transition-colors border-b last:border-b-0"
-                                >
-                                  {c.image_url ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img src={c.image_url} alt={c.name} className="h-14 w-10 rounded object-cover shrink-0" />
-                                  ) : (
-                                    <div className="h-14 w-10 rounded bg-muted shrink-0" />
-                                  )}
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium truncate">{c.name}</p>
-                                    <p className="text-xs text-muted-foreground">{c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}</p>
-                                    <p className="text-xs text-muted-foreground">{c.language_code === "JA" ? "Japanese" : "English"}</p>
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+              Maybe later
+            </button>
           </div>
-        ) : (
-          <p className="text-xs text-muted-foreground text-center">Select a condition above</p>
-        )}
-      </div>
+        </div>
+      )}
+
+      {isLoggedIn && <MobileBottomNav profileId={profileId ?? undefined} />}
     </div>
   );
 }

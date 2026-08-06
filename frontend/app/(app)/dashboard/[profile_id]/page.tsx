@@ -175,7 +175,7 @@ export default function DashboardPage() {
   // ---------------------------------------------------------------------------
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-8">
+    <div className="p-6 w-[95%] md:w-[80%] mx-auto space-y-8">
       <h1 className="text-2xl font-bold">Dashboard</h1>
 
       {/* ------------------------------------------------------------------ */}

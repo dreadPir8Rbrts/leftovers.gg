@@ -86,12 +86,6 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
             <Button size="lg" asChild style={{ backgroundColor: "#BF40BF", color: "#fff" }} className="hover:opacity-90">
               <Link href="/signup">Get Started Free</Link>
             </Button>
-            <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
-              <Link href="/price-estimator">Price Estimator</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild className="border-white/20 text-white hover:bg-white/10">
-              <Link href="/browse-shows">Browse Shows</Link>
-            </Button>
           </div>
         )}
       </section>

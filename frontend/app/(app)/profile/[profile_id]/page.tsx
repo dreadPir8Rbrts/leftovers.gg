@@ -325,6 +325,9 @@ export default function ProfilePage() {
 
       {/* Display name + role badge */}
       <div className="mt-16 text-center px-6 relative">
+        {profile.username && (
+          <p className="text-sm text-muted-foreground mb-1">@{profile.username}</p>
+        )}
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
         <span className="inline-block mt-1 text-xs text-muted-foreground capitalize">
           {isOwner ? activeRole : profile.role}
@@ -392,34 +395,18 @@ export default function ProfilePage() {
               </div>
             )}
 
-            {(profile.tcg_interests?.length || isOwner) ? (
-              <div className="grid grid-cols-2 gap-3 items-start">
-                {profile.tcg_interests && profile.tcg_interests.length > 0 ? (
-                  <div className="flex flex-col items-center">
-                    <p className="text-xs text-muted-foreground mb-2">TCG interests</p>
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {profile.tcg_interests.map((interest) => (
-                        <span key={interest} className="px-2 py-1 text-xs rounded-full border bg-muted">
-                          {interest}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ) : <div />}
-                {isOwner && (
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => setShowPricingModal(true)}
-                      className="rounded-lg px-4 py-2 text-xs font-medium text-white transition-opacity hover:opacity-80"
-                      style={{ background: "#000000", border: "1.5px solid #c9104f" }}
-                    >
-                      Default Pricing Formula
-                    </button>
-                  </div>
-                )}
+            {profile.tcg_interests && profile.tcg_interests.length > 0 && (
+              <div className="flex flex-col items-center">
+                <p className="text-xs text-muted-foreground mb-2">TCG interests</p>
+                <div className="flex flex-wrap gap-2 justify-center">
+                  {profile.tcg_interests.map((interest) => (
+                    <span key={interest} className="px-2 py-1 text-xs rounded-full border bg-muted">
+                      {interest}
+                    </span>
+                  ))}
+                </div>
               </div>
-            ) : null}
+            )}
 
             {isOwner && (
               <div className="flex justify-center pt-1">

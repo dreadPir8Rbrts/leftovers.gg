@@ -173,7 +173,7 @@ export default function SignupPage() {
 
     setActiveRole("vendor");
     setOnboardingCookie();
-    router.push(`/dashboard/${userId}`);
+    router.push(`/profile/${userId}`);
   }
 
   return (
