@@ -15,8 +15,6 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useActiveRoleStore } from "@/lib/stores/useActiveRoleStore";
-import { RoleToggle } from "@/components/shared/RoleToggle";
 import Image from "next/image";
 import {
   getOwnWishlist,
@@ -68,7 +66,6 @@ export default function ProfilePage() {
   const params = useParams<{ profile_id: string }>();
   const router = useRouter();
   const { data: currentUserProfile } = useProfile();
-  const { activeRole } = useActiveRoleStore();
   const isOwner = currentUserProfile?.id === params.profile_id;
 
   const [profile, setProfile] = useState<AnyProfile | null>(null);
@@ -91,9 +88,9 @@ export default function ProfilePage() {
 
   // Edit state (owner only)
   const [editing, setEditing] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
   const [editBio, setEditBio] = useState("");
-  const [editBuyingRate, setEditBuyingRate] = useState("");
-  const [editTradeRate, setEditTradeRate] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -124,13 +121,9 @@ export default function ProfilePage() {
     profileFetch
       .then((p) => {
         setProfile(p);
+        setEditDisplayName(p.display_name ?? "");
+        setEditUsername(p.username ?? "");
         setEditBio(p.bio ?? "");
-        setEditBuyingRate(
-          p.buying_rate != null ? String(Math.round(p.buying_rate * 100)) : ""
-        );
-        setEditTradeRate(
-          p.trade_rate != null ? String(Math.round(p.trade_rate * 100)) : ""
-        );
       })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoadingProfile(false));
@@ -221,22 +214,21 @@ export default function ProfilePage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const buyingRateNum = editBuyingRate !== "" ? parseFloat(editBuyingRate) / 100 : undefined;
-      const tradeRateNum = editTradeRate !== "" ? parseFloat(editTradeRate) / 100 : undefined;
-
-      if (buyingRateNum !== undefined && (buyingRateNum < 0 || buyingRateNum > 1)) {
-        setSaveError("Buying rate must be between 0 and 100.");
-        return;
+      const usernameVal = editUsername.trim();
+      if (usernameVal) {
+        if (!/^[a-zA-Z0-9._]+$/.test(usernameVal)) {
+          setSaveError("Username: only letters, numbers, underscores, and periods allowed");
+          return;
+        }
+        if (usernameVal.startsWith(".") || usernameVal.endsWith(".") || /\.\./.test(usernameVal)) {
+          setSaveError("Username: cannot start/end with a period or have consecutive periods");
+          return;
+        }
       }
-      if (tradeRateNum !== undefined && (tradeRateNum < 0 || tradeRateNum > 1)) {
-        setSaveError("Trade rate must be between 0 and 100.");
-        return;
-      }
-
       const updated = await updateProfile({
+        display_name: editDisplayName.trim() || undefined,
+        username: usernameVal || undefined,
         bio: editBio || undefined,
-        buying_rate: buyingRateNum,
-        trade_rate: tradeRateNum,
       });
       setProfile(updated);
       setEditing(false);
@@ -399,77 +391,50 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Public / Private toggle — below banner, right-aligned */}
+      {isOwner && (
+        <div className="flex justify-end px-3 pt-2">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <span className="text-xs text-muted-foreground">
+              {(profile as ProfileData).is_public ? "Public" : "Private"}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={(profile as ProfileData).is_public}
+              onClick={async (e) => {
+                e.preventDefault();
+                const next = !(profile as ProfileData).is_public;
+                setProfile((prev) => prev ? { ...prev, is_public: next } : prev);
+                try {
+                  const updated = await updateProfile({ is_public: next });
+                  setProfile(updated);
+                } catch {
+                  setProfile((prev) => prev ? { ...prev, is_public: !next } : prev);
+                }
+              }}
+              className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
+                (profile as ProfileData).is_public ? "bg-primary" : "bg-muted border"
+              }`}
+            >
+              <span
+                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
+                  (profile as ProfileData).is_public ? "translate-x-4" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </label>
+        </div>
+      )}
+
       {/* Display name + role badge */}
       <div className="mt-16 text-center px-6 relative">
         {profile.username && (
           <p className="text-sm text-muted-foreground mb-1">@{profile.username}</p>
         )}
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
-        <span className="inline-block mt-1 text-xs text-muted-foreground capitalize">
-          {isOwner ? activeRole : profile.role}
-        </span>
-        {isOwner && (
-          <div className="mt-3 flex flex-col items-center gap-2">
-            <RoleToggle />
-            <label className="flex items-center gap-2 cursor-pointer select-none">
-              <span className="text-xs text-muted-foreground">
-                {(profile as ProfileData).is_public ? "Public profile" : "Private profile"}
-              </span>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={(profile as ProfileData).is_public}
-                onClick={async () => {
-                  const next = !(profile as ProfileData).is_public;
-                  setProfile((prev) => prev ? { ...prev, is_public: next } : prev);
-                  try {
-                    const updated = await updateProfile({ is_public: next });
-                    setProfile(updated);
-                  } catch {
-                    setProfile((prev) => prev ? { ...prev, is_public: !next } : prev);
-                  }
-                }}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${
-                  (profile as ProfileData).is_public ? "bg-primary" : "bg-muted border"
-                }`}
-              >
-                <span
-                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
-                    (profile as ProfileData).is_public ? "translate-x-4" : "translate-x-1"
-                  }`}
-                />
-              </button>
-            </label>
-          </div>
-        )}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
       </div>
-
-      {/* Links row */}
-      {links.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-5 mt-5 px-6">
-          {links.map((link) => (
-            <a
-              key={link.id}
-              href={link.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center gap-1.5 group"
-            >
-              <div className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center group-hover:border-foreground/40 transition-colors">
-                {link.avatar_url ? (
-                  <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
-                ) : (
-                  <span className="text-lg">🔗</span>
-                )}
-              </div>
-              <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors w-16 truncate text-center">
-                {link.name}
-              </span>
-            </a>
-          ))}
-        </div>
-      )}
 
       {/* Profile details */}
       <div className="max-w-xl mx-auto px-6 mt-6 space-y-4">
@@ -479,140 +444,115 @@ export default function ProfilePage() {
               <p className="text-sm text-muted-foreground text-center">{profile.bio}</p>
             )}
 
-            {(isOwner ? activeRole === "vendor" : profile.role === "vendor") &&
-              (profile.buying_rate != null || profile.trade_rate != null) && (
-              <div className="grid grid-cols-2 gap-3">
-                {profile.buying_rate != null && (
-                  <div className="border rounded-lg p-3 text-center">
-                    <p className="text-xs text-muted-foreground mb-1">Buying rate</p>
-                    <p className="text-sm font-medium">{Math.round(profile.buying_rate * 100)}% of market</p>
-                  </div>
-                )}
-                {profile.trade_rate != null && (
-                  <div className="border rounded-lg p-3 text-center">
-                    <p className="text-xs text-muted-foreground mb-1">Trade rate</p>
-                    <p className="text-sm font-medium">{Math.round(profile.trade_rate * 100)}% of market</p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {profile.tcg_interests && profile.tcg_interests.length > 0 && (
-              <div className="flex flex-col items-center">
-                <p className="text-xs text-muted-foreground mb-2">TCG interests</p>
-                <div className="flex flex-wrap gap-2 justify-center">
-                  {profile.tcg_interests.map((interest) => (
-                    <span key={interest} className="px-2 py-1 text-xs rounded-full border bg-muted">
-                      {interest}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Links management (owner only) */}
-            {isOwner && (
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground font-medium text-center">Links</p>
-                {links.map((link) => (
-                  <div key={link.id} className="flex items-center gap-3 border rounded-lg p-2.5">
-                    <button
-                      type="button"
-                      title="Upload icon"
-                      disabled={linkAvatarLoading === link.id}
-                      onClick={() => {
-                        setUploadingForLinkId(link.id);
-                        linkAvatarInputRef.current?.click();
-                      }}
-                      className="relative w-8 h-8 rounded-full border bg-muted overflow-hidden shrink-0 flex items-center justify-center hover:border-foreground/50 transition-colors"
-                    >
-                      {linkAvatarLoading === link.id ? (
-                        <span className="text-xs text-muted-foreground">…</span>
-                      ) : link.avatar_url ? (
-                        <Image src={link.avatar_url} alt={link.name} fill sizes="32px" className="object-cover" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">+</span>
-                      )}
-                    </button>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{link.name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{link.url}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteLink(link.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 text-sm leading-none"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ))}
-                {showAddLink ? (
-                  <div className="border rounded-lg p-3 space-y-2">
-                    <input
-                      type="text"
-                      placeholder="Name (e.g. My eBay Store)"
-                      value={addLinkName}
-                      onChange={(e) => setAddLinkName(e.target.value)}
-                      maxLength={100}
-                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
-                    />
-                    <input
-                      type="url"
-                      placeholder="URL (https://…)"
-                      value={addLinkUrl}
-                      onChange={(e) => setAddLinkUrl(e.target.value)}
-                      maxLength={2000}
-                      className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
-                    />
-                    {addLinkError && <p className="text-xs text-destructive">{addLinkError}</p>}
-                    <div className="flex gap-2 justify-end">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setShowAddLink(false);
-                          setAddLinkName("");
-                          setAddLinkUrl("");
-                          setAddLinkError(null);
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        size="sm"
-                        onClick={handleCreateLink}
-                        disabled={addLinkSaving || !addLinkName.trim() || !addLinkUrl.trim()}
-                      >
-                        {addLinkSaving ? "Adding…" : "Add"}
-                      </Button>
-                    </div>
-                  </div>
-                ) : links.length < 5 ? (
-                  <button
-                    type="button"
-                    onClick={() => setShowAddLink(true)}
-                    className="w-full border border-dashed rounded-lg p-2 text-xs text-muted-foreground hover:text-foreground hover:border-foreground/40 transition-colors"
-                  >
-                    + Add link{links.length > 0 ? ` (${links.length}/5)` : ""}
-                  </button>
-                ) : (
-                  <p className="text-xs text-muted-foreground text-center">5/5 links — delete one to add another</p>
-                )}
-              </div>
-            )}
-
             {isOwner && (
               <div className="flex justify-center pt-1">
-                <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                  ✎ Edit details
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="rounded-full">
+                  ✎ Edit profile
                 </Button>
+              </div>
+            )}
+
+            {/* Links row */}
+            {(isOwner || links.length > 0) && (
+              <div className="flex flex-wrap justify-center gap-5 pt-2">
+                {links.map((link) => (
+                  <div key={link.id} className="flex flex-col items-center gap-1.5">
+                    <div className="relative">
+                      {isOwner ? (
+                        <div className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center">
+                          {link.avatar_url ? (
+                            <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
+                          ) : (
+                            <span className="text-lg">🔗</span>
+                          )}
+                        </div>
+                      ) : (
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center hover:border-foreground/40 transition-colors block"
+                        >
+                          {link.avatar_url ? (
+                            <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
+                          ) : (
+                            <span className="text-lg">🔗</span>
+                          )}
+                        </a>
+                      )}
+                      {isOwner && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteLink(link.id)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-destructive transition-colors shadow-sm"
+                          >
+                            ×
+                          </button>
+                          <button
+                            type="button"
+                            title="Change icon"
+                            disabled={linkAvatarLoading === link.id}
+                            onClick={() => {
+                              setUploadingForLinkId(link.id);
+                              linkAvatarInputRef.current?.click();
+                            }}
+                            className="absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm"
+                          >
+                            {linkAvatarLoading === link.id ? "…" : "✎"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    <span className="text-xs text-muted-foreground w-16 truncate text-center">
+                      {link.name}
+                    </span>
+                  </div>
+                ))}
+
+                {isOwner && links.length < 5 && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddLink(true)}
+                      className="w-12 h-12 rounded-full border-2 border-dashed border-border bg-muted flex items-center justify-center text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
+                    >
+                      <span className="text-xl leading-none">+</span>
+                    </button>
+                    <span className="text-xs text-muted-foreground">Add link</span>
+                  </div>
+                )}
               </div>
             )}
           </>
         ) : (
           <div className="border rounded-lg p-4 space-y-4">
             <h2 className="text-sm font-semibold">Edit profile details</h2>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Display name</label>
+              <input
+                type="text"
+                maxLength={50}
+                value={editDisplayName}
+                onChange={(e) => setEditDisplayName(e.target.value)}
+                placeholder="e.g. John's Cards"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Username</label>
+              <input
+                type="text"
+                maxLength={30}
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value)}
+                placeholder="e.g. card_trader92"
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              />
+              <p className="text-xs text-muted-foreground">Letters, numbers, underscores, and periods only</p>
+            </div>
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Bio</label>
@@ -626,41 +566,6 @@ export default function ProfilePage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Buying rate (%)</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editBuyingRate}
-                    onChange={(e) => setEditBuyingRate(e.target.value)}
-                    placeholder="e.g. 70"
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-background pr-8"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                </div>
-                <p className="text-xs text-muted-foreground">% of market price you pay</p>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-muted-foreground">Trade rate (%)</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={editTradeRate}
-                    onChange={(e) => setEditTradeRate(e.target.value)}
-                    placeholder="e.g. 85"
-                    className="w-full border rounded-md px-3 py-2 text-sm bg-background pr-8"
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">%</span>
-                </div>
-                <p className="text-xs text-muted-foreground">% of market price for trades</p>
-              </div>
-            </div>
-
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
             <div className="flex gap-2 justify-end">
@@ -670,17 +575,9 @@ export default function ProfilePage() {
                 onClick={() => {
                   setEditing(false);
                   setSaveError(null);
+                  setEditDisplayName(profile.display_name ?? "");
+                  setEditUsername(profile.username ?? "");
                   setEditBio(profile.bio ?? "");
-                  setEditBuyingRate(
-                    profile.buying_rate != null
-                      ? String(Math.round(profile.buying_rate * 100))
-                      : ""
-                  );
-                  setEditTradeRate(
-                    profile.trade_rate != null
-                      ? String(Math.round(profile.trade_rate * 100))
-                      : ""
-                  );
                 }}
               >
                 Cancel
@@ -1075,6 +972,63 @@ export default function ProfilePage() {
           */}
         </div>
       </div>
+
+      {/* Add link modal */}
+      {isOwner && showAddLink && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+          onClick={() => { setShowAddLink(false); setAddLinkName(""); setAddLinkUrl(""); setAddLinkError(null); }}
+        >
+          <div
+            className="bg-background border rounded-xl shadow-lg w-full max-w-sm mx-4 p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold">Add link</h2>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. My eBay Store"
+                  value={addLinkName}
+                  onChange={(e) => setAddLinkName(e.target.value)}
+                  maxLength={100}
+                  autoFocus
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">URL</label>
+                <input
+                  type="url"
+                  placeholder="https://…"
+                  value={addLinkUrl}
+                  onChange={(e) => setAddLinkUrl(e.target.value)}
+                  maxLength={2000}
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                />
+              </div>
+            </div>
+            {addLinkError && <p className="text-xs text-destructive">{addLinkError}</p>}
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setShowAddLink(false); setAddLinkName(""); setAddLinkUrl(""); setAddLinkError(null); }}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleCreateLink}
+                disabled={addLinkSaving || !addLinkName.trim() || !addLinkUrl.trim()}
+              >
+                {addLinkSaving ? "Adding…" : "Add"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
