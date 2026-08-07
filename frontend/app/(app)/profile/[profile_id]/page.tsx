@@ -503,11 +503,18 @@ export default function ProfilePage() {
 
       {/* Display name + role badge */}
       <div className="mt-16 text-center px-6 relative">
+        {/* Owner: follower count sits above handle, below avatar */}
+        {isOwner && (
+          <p className="text-xs text-muted-foreground mb-2">
+            {followerCount} {followerCount === 1 ? "follower" : "followers"}
+          </p>
+        )}
         {profile.username && (
           <p className="text-sm text-muted-foreground mb-1">@{profile.username}</p>
         )}
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
-        {(isOwner || followerCount > 0) && (
+        {/* Visitor view: follower count below display name (only when > 0) */}
+        {!isOwner && followerCount > 0 && (
           <p className="text-xs text-muted-foreground mt-1">
             {followerCount} {followerCount === 1 ? "follower" : "followers"}
           </p>
