@@ -284,6 +284,36 @@ def check_username(
     return {"available": taken is None}
 
 
+@router.get("/profiles/search")
+def search_profiles(
+    q: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(8, le=20),
+    db: Session = Depends(get_db),
+) -> List[Dict[str, Any]]:
+    """Search profiles by username or display_name (case-insensitive prefix/substring match)."""
+    pattern = f"%{q.lower()}%"
+    rows = (
+        db.query(Profile)
+        .filter(
+            Profile.is_public.is_(True),
+            func.lower(Profile.username).like(pattern)
+            | func.lower(Profile.display_name).like(pattern),
+        )
+        .order_by(func.lower(Profile.username))
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": p.id,
+            "username": p.username,
+            "display_name": p.display_name,
+            "avatar_url": p.avatar_url,
+        }
+        for p in rows
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Public profile endpoints (no auth required)
 # NOTE: these routes must be declared AFTER /profiles/me to avoid shadowing it.
