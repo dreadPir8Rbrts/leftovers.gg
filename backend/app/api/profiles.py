@@ -399,6 +399,7 @@ class LinkUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     url: Optional[str] = Field(None, min_length=1, max_length=2000)
     display_order: Optional[int] = None
+    avatar_url: Optional[str] = Field(None, max_length=2000)
 
 
 def _link_response(link: ProfileLink) -> Dict[str, Any]:

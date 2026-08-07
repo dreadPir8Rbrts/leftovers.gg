@@ -43,7 +43,7 @@ export async function createLink(data: { name: string; url: string }): Promise<P
 
 export async function updateLink(
   linkId: string,
-  data: { name?: string; url?: string; display_order?: number }
+  data: { name?: string; url?: string; display_order?: number; avatar_url?: string }
 ): Promise<ProfileLink> {
   const res = await fetch(`${API}/api/v1/profiles/me/links/${linkId}`, {
     method: "PATCH",

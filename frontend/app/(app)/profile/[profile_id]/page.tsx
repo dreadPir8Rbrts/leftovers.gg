@@ -64,10 +64,10 @@ function formatCondition(item: InventoryItemWithCard): string {
 
 
 const LINK_PRESETS = [
-  { id: "ebay", label: "eBay" },
-  { id: "ig", label: "IG" },
-  { id: "whatnot", label: "Whatnot" },
-  { id: "fb", label: "FB" },
+  { id: "ebay",    label: "eBay",      logo: "/images/link-presets/ebay.jpg" },
+  { id: "ig",      label: "Instagram", logo: "/images/link-presets/instagram.jpg" },
+  { id: "whatnot", label: "Whatnot",   logo: "/images/link-presets/whatnot.jpg" },
+  { id: "fb",      label: "Facebook",  logo: "/images/link-presets/facebook.jpg" },
 ];
 
 export default function ProfilePage() {
@@ -210,7 +210,13 @@ export default function ProfilePage() {
     try {
       const newLink = await createLink({ name: addLinkName.trim(), url: addLinkUrl.trim() });
       let finalLink = newLink;
-      if (addLinkAvatarFile) {
+      if (addLinkAvatarPreset) {
+        const preset = LINK_PRESETS.find((p) => p.id === addLinkAvatarPreset);
+        if (preset) {
+          const updated = await updateLink(newLink.id, { avatar_url: preset.logo });
+          finalLink = updated;
+        }
+      } else if (addLinkAvatarFile) {
         const { avatar_url } = await uploadLinkAvatar(newLink.id, addLinkAvatarFile);
         finalLink = { ...newLink, avatar_url };
       }
@@ -238,7 +244,15 @@ export default function ProfilePage() {
     setEditLinkSaving(true);
     setEditLinkError(null);
     try {
-      const updated = await updateLink(editingLinkId, { name: editLinkName.trim(), url: editLinkUrl.trim() });
+      const patchData: { name: string; url: string; avatar_url?: string } = {
+        name: editLinkName.trim(),
+        url: editLinkUrl.trim(),
+      };
+      if (editLinkAvatarPreset) {
+        const preset = LINK_PRESETS.find((p) => p.id === editLinkAvatarPreset);
+        if (preset) patchData.avatar_url = preset.logo;
+      }
+      const updated = await updateLink(editingLinkId, patchData);
       let finalLink = updated;
       if (editLinkAvatarFile) {
         const { avatar_url } = await uploadLinkAvatar(editingLinkId, editLinkAvatarFile);
@@ -525,7 +539,7 @@ export default function ProfilePage() {
                       {isOwner ? (
                         <div className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center">
                           {link.avatar_url ? (
-                            <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
+                            <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-lg">🔗</span>
                           )}
@@ -538,7 +552,7 @@ export default function ProfilePage() {
                           className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center hover:border-foreground/40 transition-colors block"
                         >
                           {link.avatar_url ? (
-                            <Image src={link.avatar_url} alt={link.name} fill sizes="48px" className="object-cover" />
+                            <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
                           ) : (
                             <span className="text-lg">🔗</span>
                           )}
@@ -1088,13 +1102,13 @@ export default function ProfilePage() {
                         setAddLinkAvatarFile(null);
                         setAddLinkAvatarPreview(null);
                       }}
-                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-[9px] font-medium leading-tight transition-colors ${
+                      className={`relative w-12 h-12 rounded-full border-2 overflow-hidden transition-colors ${
                         addLinkAvatarPreset === p.id
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                          ? "border-foreground ring-2 ring-foreground ring-offset-1"
+                          : "border-border hover:border-foreground/40"
                       }`}
                     >
-                      {p.label}
+                      <img src={p.logo} alt={p.label} className="w-full h-full object-cover" />
                     </button>
                   ))}
                   <button
@@ -1194,13 +1208,13 @@ export default function ProfilePage() {
                         setEditLinkAvatarFile(null);
                         setEditLinkAvatarPreview(null);
                       }}
-                      className={`w-12 h-12 rounded-full border-2 flex items-center justify-center text-[9px] font-medium leading-tight transition-colors ${
+                      className={`relative w-12 h-12 rounded-full border-2 overflow-hidden transition-colors ${
                         editLinkAvatarPreset === p.id
-                          ? "border-foreground bg-foreground text-background"
-                          : "border-border bg-muted text-muted-foreground hover:border-foreground/40"
+                          ? "border-foreground ring-2 ring-foreground ring-offset-1"
+                          : "border-border hover:border-foreground/40"
                       }`}
                     >
-                      {p.label}
+                      <img src={p.logo} alt={p.label} className="w-full h-full object-cover" />
                     </button>
                   ))}
                   <button
