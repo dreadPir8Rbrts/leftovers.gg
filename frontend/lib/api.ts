@@ -315,6 +315,7 @@ export interface WishlistItemWithCard extends WishlistItem {
   rarity: string | null;
   image_url: string | null;
   language_code: string | null;
+  game?: string | null;
 }
 
 export async function getOwnWishlist(): Promise<WishlistItemWithCard[]> {

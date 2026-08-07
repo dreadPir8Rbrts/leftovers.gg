@@ -89,14 +89,17 @@ export default function ProfilePage() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<"background" | "avatar" | null>(null);
-  const [activeTab, setActiveTab] = useState<"inventory" | "wishlist" | "shows">("inventory");
+  const [activeTab, setActiveTab] = useState<"fs_ft" | "pc" | "wishlist">("fs_ft");
   const [search, setSearch] = useState("");
+  const [tcgFilter, setTcgFilter] = useState<"" | "pokemon" | "naruto_ccg">("");
+  const [cardTypeFilter, setCardTypeFilter] = useState<"" | "graded" | "ungraded">("");
   const [showFilters, setShowFilters] = useState(false);
-  const [filterType, setFilterType] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [showSort, setShowSort] = useState(false);
   const [filterGradingCo, setFilterGradingCo] = useState("");
+  const [filterCondition, setFilterCondition] = useState("");
   const [filterLanguage, setFilterLanguage] = useState("");
   const [filterAskingPrice, setFilterAskingPrice] = useState("");
+  const [sortBy, setSortBy] = useState("name_az");
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingWishlistItemId, setEditingWishlistItemId] = useState<string | null>(null);
   const [showPricingModal, setShowPricingModal] = useState(false);
@@ -137,6 +140,7 @@ export default function ProfilePage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const addLinkCustomInputRef = useRef<HTMLInputElement>(null);
   const editLinkCustomInputRef = useRef<HTMLInputElement>(null);
+  const sortRef = useRef<HTMLDivElement>(null);
 
   const API = process.env.NEXT_PUBLIC_API_URL!;
 
@@ -194,6 +198,17 @@ export default function ProfilePage() {
     const wishlistFetch = isOwner ? getOwnWishlist() : getPublicWishlist(params.profile_id);
     wishlistFetch.then(setWishlist).catch(() => {});
   }, [profile, isOwner, params.profile_id, API]);
+
+  // Close sort dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setShowSort(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   async function handleImageUpload(file: File, imageType: "background" | "avatar") {
     setUploading(imageType);
@@ -335,23 +350,54 @@ export default function ProfilePage() {
     setEditingItemId(null);
   }
 
-  const languageOptions = useMemo(
-    () => Array.from(new Set(inventory.map((i) => i.language_code).filter(Boolean))).sort() as string[],
+  // Split inventory by tab
+  const fsFtInventory = useMemo(
+    () => inventory.filter((i) => i.card_status !== "pc"),
+    [inventory]
+  );
+  const pcInventory = useMemo(
+    () => inventory.filter((i) => i.card_status === "pc"),
     [inventory]
   );
 
-  const activeFilterCount = [filterType, filterStatus, filterGradingCo, filterLanguage, filterAskingPrice].filter(Boolean).length;
+  const inventoryLanguageOptions = useMemo(
+    () => Array.from(new Set(inventory.map((i) => i.language_code).filter(Boolean))).sort() as string[],
+    [inventory]
+  );
+  const wishlistLanguageOptions = useMemo(
+    () => Array.from(new Set(wishlist.map((i) => i.language_code).filter(Boolean))).sort() as string[],
+    [wishlist]
+  );
+  const currentLanguageOptions = activeTab === "wishlist" ? wishlistLanguageOptions : inventoryLanguageOptions;
+
+  const activeFilterCount = [filterGradingCo, filterCondition, filterLanguage, filterAskingPrice].filter(Boolean).length;
 
   function clearFilters() {
-    setFilterType("");
-    setFilterStatus("");
     setFilterGradingCo("");
+    setFilterCondition("");
     setFilterLanguage("");
     setFilterAskingPrice("");
   }
 
-  const filteredInventory = useMemo(() => {
-    let result = inventory;
+  const SORT_INVENTORY = [
+    { value: "name_az",      label: "Name A → Z" },
+    { value: "name_za",      label: "Name Z → A" },
+    { value: "asking_asc",   label: "Asking price: Low → High" },
+    { value: "asking_desc",  label: "Asking price: High → Low" },
+    { value: "est_asc",      label: "Est. value: Low → High" },
+    { value: "est_desc",     label: "Est. value: High → Low" },
+  ];
+  const SORT_WISHLIST = [
+    { value: "name_az",  label: "Name A → Z" },
+    { value: "name_za",  label: "Name Z → A" },
+    { value: "est_asc",  label: "Max price: Low → High" },
+    { value: "est_desc", label: "Max price: High → Low" },
+  ];
+  const sortOptions = activeTab === "wishlist" ? SORT_WISHLIST : SORT_INVENTORY;
+
+  const currentInventory = useMemo(() => {
+    const base = activeTab === "fs_ft" ? fsFtInventory : pcInventory;
+    let result = base;
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
@@ -364,14 +410,71 @@ export default function ProfilePage() {
           (item.card_num ?? "").includes(q)
       );
     }
-    if (filterType) result = result.filter((i) => i.condition_type === filterType);
-    if (filterStatus) result = result.filter((i) => i.card_status === filterStatus);
+    if (tcgFilter) result = result.filter((i) => i.game === tcgFilter);
+    if (cardTypeFilter) result = result.filter((i) => i.condition_type === cardTypeFilter);
     if (filterGradingCo) result = result.filter((i) => i.grading_company === filterGradingCo);
+    if (filterCondition) result = result.filter((i) => (i.condition_ungraded ?? "").toUpperCase() === filterCondition);
     if (filterLanguage) result = result.filter((i) => i.language_code === filterLanguage);
     if (filterAskingPrice === "yes") result = result.filter((i) => i.asking_price != null);
     if (filterAskingPrice === "no") result = result.filter((i) => i.asking_price == null);
-    return result;
-  }, [inventory, search, filterType, filterStatus, filterGradingCo, filterLanguage, filterAskingPrice]);
+    return [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "name_az":     return (a.card_name ?? "").localeCompare(b.card_name ?? "");
+        case "name_za":     return (b.card_name ?? "").localeCompare(a.card_name ?? "");
+        case "asking_asc":  return (a.asking_price ?? Infinity) - (b.asking_price ?? Infinity);
+        case "asking_desc": return (b.asking_price ?? -Infinity) - (a.asking_price ?? -Infinity);
+        case "est_asc":     return (a.estimated_value ?? Infinity) - (b.estimated_value ?? Infinity);
+        case "est_desc":    return (b.estimated_value ?? -Infinity) - (a.estimated_value ?? -Infinity);
+        default: return 0;
+      }
+    });
+  }, [activeTab, fsFtInventory, pcInventory, search, tcgFilter, cardTypeFilter, filterGradingCo, filterCondition, filterLanguage, filterAskingPrice, sortBy]);
+
+  const currentWishlist = useMemo(() => {
+    let result = wishlist;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (item) =>
+          (item.card_name ?? "").toLowerCase().includes(q) ||
+          (item.card_name_en ?? "").toLowerCase().includes(q) ||
+          (item.set_name ?? "").toLowerCase().includes(q) ||
+          (item.card_num ?? "").includes(q)
+      );
+    }
+    if (tcgFilter) result = result.filter((i) => i.game === tcgFilter);
+    if (cardTypeFilter) {
+      result = result.filter((i) =>
+        i.conditions.length === 0 ||
+        i.conditions.some((c) => c.condition_type === cardTypeFilter)
+      );
+    }
+    if (filterLanguage) result = result.filter((i) => i.language_code === filterLanguage);
+    if (filterCondition) {
+      result = result.filter((i) =>
+        i.conditions.some(
+          (c) => c.condition_type === "ungraded" &&
+                 (c.condition_ungraded ?? "").toUpperCase() === filterCondition
+        )
+      );
+    }
+    if (filterGradingCo) {
+      result = result.filter((i) =>
+        i.conditions.some(
+          (c) => c.condition_type === "graded" && c.grading_company === filterGradingCo
+        )
+      );
+    }
+    return [...result].sort((a, b) => {
+      switch (sortBy) {
+        case "name_az":  return (a.card_name ?? "").localeCompare(b.card_name ?? "");
+        case "name_za":  return (b.card_name ?? "").localeCompare(a.card_name ?? "");
+        case "est_asc":  return (a.max_price ?? Infinity) - (b.max_price ?? Infinity);
+        case "est_desc": return (b.max_price ?? -Infinity) - (a.max_price ?? -Infinity);
+        default: return 0;
+      }
+    });
+  }, [wishlist, search, tcgFilter, cardTypeFilter, filterLanguage, filterCondition, filterGradingCo, sortBy]);
 
   if (loadingProfile || currentUserProfile === undefined) {
     return (
@@ -765,225 +868,303 @@ export default function ProfilePage() {
 
       {/* Tabs */}
       <div className="w-[95%] md:w-[80%] mx-auto mt-8 pb-12">
+        {/* Tab strip */}
         <div className="flex border-b">
-          {(["inventory", "wishlist" /*, "shows"*/] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-3 text-sm font-medium tracking-wide uppercase transition-colors
-                ${activeTab === tab
-                  ? "bg-foreground text-background"
-                  : "bg-muted text-muted-foreground hover:text-foreground"
+          {(["fs_ft", "pc", "wishlist"] as const).map((tab) => {
+            const count =
+              tab === "fs_ft" ? fsFtInventory.length :
+              tab === "pc" ? pcInventory.length :
+              wishlist.length;
+            const label = tab === "fs_ft" ? "FS / FT" : tab === "pc" ? "PC" : "Wishlist";
+            return (
+              <button
+                key={tab}
+                onClick={() => {
+                  setActiveTab(tab);
+                  setEditingItemId(null);
+                  setEditingWishlistItemId(null);
+                }}
+                className={`flex-1 py-3 text-sm font-medium tracking-wide uppercase transition-colors ${
+                  activeTab === tab
+                    ? "bg-foreground text-background"
+                    : "bg-muted text-muted-foreground hover:text-foreground"
                 }`}
-            >
-              {tab === "inventory"
-                ? `Inventory${inventory.length > 0 ? ` (${inventory.length})` : ""}`
-                : `Wishlist${wishlist.length > 0 ? ` (${wishlist.length})` : ""}`}
-            </button>
-          ))}
+              >
+                {label}{count > 0 ? ` (${count})` : ""}
+              </button>
+            );
+          })}
         </div>
 
         <div className="border border-t-0 rounded-b-lg p-4">
-          {activeTab === "inventory" && (
-            <>
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  placeholder="Search by name, set, or number…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="flex-1 border rounded-md px-3 py-2 text-sm bg-background"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowFilters((v) => !v)}
-                  className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm transition-colors shrink-0 ${
-                    showFilters ? "bg-foreground text-background" : "bg-background hover:bg-muted"
-                  }`}
-                >
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] leading-none" style={{ backgroundColor: "#BF40BF" }}>
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-
-              {showFilters && (
-                <div className="border rounded-lg p-3 mb-3 bg-muted/20 space-y-2">
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {/* Type */}
-                    <div>
-                      <label className="text-xs text-muted-foreground">Type</label>
-                      <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
-                        <option value="">All</option>
-                        <option value="ungraded">Ungraded</option>
-                        <option value="graded">Graded</option>
-                      </select>
-                    </div>
-                    {/* Status */}
-                    <div>
-                      <label className="text-xs text-muted-foreground">Status</label>
-                      <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
-                        <option value="">All</option>
-                        <option value="pc">PC</option>
-                        <option value="fs_ft">FS/FT</option>
-                        <option value="fs">FS</option>
-                        <option value="ft">FT</option>
-                      </select>
-                    </div>
-                    {/* Grading co. */}
-                    <div>
-                      <label className="text-xs text-muted-foreground">Grading co.</label>
-                      <select value={filterGradingCo} onChange={(e) => setFilterGradingCo(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
-                        <option value="">All</option>
-                        <option value="psa">PSA</option>
-                        <option value="bgs">BGS</option>
-                        <option value="cgc">CGC</option>
-                        <option value="sgc">SGC</option>
-                        <option value="hga">HGA</option>
-                        <option value="other">Other</option>
-                      </select>
-                    </div>
-                    {/* Language */}
-                    <div>
-                      <label className="text-xs text-muted-foreground">Language</label>
-                      <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
-                        <option value="">All</option>
-                        {languageOptions.map((l) => <option key={l} value={l}>{l}</option>)}
-                      </select>
-                    </div>
-                    {/* Asking price */}
-                    <div>
-                      <label className="text-xs text-muted-foreground">Asking price</label>
-                      <select value={filterAskingPrice} onChange={(e) => setFilterAskingPrice(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
-                        <option value="">All</option>
-                        <option value="yes">Has price</option>
-                        <option value="no">No price set</option>
-                      </select>
-                    </div>
-                  </div>
-                  {activeFilterCount > 0 && (
-                    <button type="button" onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground underline">
-                      Clear all filters
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {filteredInventory.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  {search || activeFilterCount > 0 ? "No cards match your search or filters." : "No cards in inventory yet."}
-                </p>
-              )}
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                {filteredInventory.map((item) => (
-                  <div key={item.id} className="flex flex-col">
-                    <div
-                      className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
-                      onClick={() => router.push(`/cards/${item.card_id}`)}
-                    >
-                      {/* Card image */}
-                      <div className="relative w-full aspect-[3/4] bg-muted">
-                        {item.image_url ? (
-                          <Image
-                            src={item.image_url}
-                            alt={item.card_name}
-                            fill
-                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                            className="object-contain p-1"
-                          />
-                        ) : (
-                          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
-                        )}
-                      </div>
-
-                      {/* Card info */}
-                      <div className="flex flex-col flex-1 p-2.5 gap-1.5">
-                        <p className="text-xs font-semibold leading-tight line-clamp-2">
-                          {item.card_name}
-                          {item.language_code === "JA" && item.card_name_en ? (
-                            <span className="font-normal text-muted-foreground"> ({item.card_name_en})</span>
-                          ) : null}
-                          {item.card_num ? (
-                            <span className="font-normal text-muted-foreground"> #{item.card_num}</span>
-                          ) : null}
-                        </p>
-                        <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
-
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <Badge variant="secondary" className="text-xs w-fit px-1.5 py-0">{formatCondition(item)}</Badge>
-                          {item.variant && (
-                            <span className="text-xs text-muted-foreground">{formatVariantName(item.variant)}</span>
-                          )}
-                        </div>
-
-                        <div className="flex flex-col gap-0.5">
-                          {item.estimated_value != null && (
-                            <p className="text-xs text-muted-foreground">est. ${Number(item.estimated_value).toFixed(2)}</p>
-                          )}
-                          {item.asking_price != null && (
-                            <p className="text-xs font-semibold">${Number(item.asking_price).toFixed(2)}</p>
-                          )}
-                        </div>
-
-                        {/* Status + Public + edit (owner only) */}
-                        <div className="mt-auto pt-1.5 flex items-center justify-between gap-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-medium px-1.5 py-0.5 rounded border border-black/20 bg-muted uppercase">
-                              {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
-                            </span>
-                            <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
-                              <input type="checkbox" checked={item.is_public} readOnly className="rounded w-3 h-3" />
-                              Public
-                            </label>
-                          </div>
-                          {isOwner && (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); setEditingItemId(editingItemId === item.id ? null : item.id); }}
-                              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                              title="Edit"
-                            >
-                              ✎
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Inline edit panel below card */}
-                    {isOwner && editingItemId === item.id && (
-                      <InventoryEditPanel
-                        item={item}
-                        onSaved={(patch) => handleItemUpdated(item.id, patch)}
-                        onDeleted={() => handleItemDeleted(item.id)}
-                        onClose={() => setEditingItemId(null)}
-                      />
-                    )}
-                  </div>
+          {/* TCG + Card Type toggle rows */}
+          <div className="flex flex-col sm:flex-row gap-4 mb-4">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">TCG</p>
+              <div className="flex gap-1.5">
+                {(["pokemon", "naruto_ccg"] as const).map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => setTcgFilter(tcgFilter === g ? "" : g)}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      tcgFilter === g
+                        ? "bg-foreground text-background border-foreground"
+                        : "text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                    }`}
+                  >
+                    {g === "pokemon" ? "Pokémon" : "Naruto"}
+                  </button>
                 ))}
               </div>
-            </>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">Card Type</p>
+              <div className="flex gap-1.5">
+                {(["graded", "ungraded"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => {
+                      const next = cardTypeFilter === t ? "" : t;
+                      setCardTypeFilter(next);
+                      if (next !== "graded") setFilterGradingCo("");
+                      if (next !== "ungraded") setFilterCondition("");
+                    }}
+                    className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                      cardTypeFilter === t
+                        ? "bg-foreground text-background border-foreground"
+                        : "text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                    }`}
+                  >
+                    {t === "graded" ? "Graded" : "Ungraded"}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Search + Filters + Sort */}
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              placeholder="Search by name, set, or number…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="flex-1 border rounded-md px-3 py-2 text-sm bg-background min-w-0"
+            />
+            <button
+              type="button"
+              onClick={() => { setShowFilters((v) => !v); setShowSort(false); }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-md border text-sm transition-colors shrink-0 ${
+                showFilters ? "bg-foreground text-background" : "bg-background hover:bg-muted"
+              }`}
+            >
+              Filters
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center w-4 h-4 rounded-full text-white text-[10px] leading-none" style={{ backgroundColor: "#BF40BF" }}>
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            <div ref={sortRef} className="relative shrink-0">
+              <button
+                type="button"
+                onClick={() => { setShowSort((v) => !v); setShowFilters(false); }}
+                className={`px-3 py-2 rounded-md border text-sm transition-colors ${
+                  showSort ? "bg-foreground text-background" : "bg-background hover:bg-muted"
+                }`}
+              >
+                Sort
+              </button>
+              {showSort && (
+                <div className="absolute right-0 top-full mt-1 z-20 bg-background border rounded-xl shadow-lg py-1 w-52">
+                  {sortOptions.map((opt) => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => { setSortBy(opt.value); setShowSort(false); }}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors hover:bg-muted ${
+                        sortBy === opt.value ? "font-semibold text-foreground" : "text-muted-foreground"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Filter panel */}
+          {showFilters && (
+            <div className="border rounded-lg p-3 mb-3 bg-muted/20 space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-xs text-muted-foreground">Language</label>
+                  <select value={filterLanguage} onChange={(e) => setFilterLanguage(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                    <option value="">All</option>
+                    {currentLanguageOptions.map((l) => <option key={l} value={l}>{l}</option>)}
+                  </select>
+                </div>
+                {activeTab !== "wishlist" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Asking price</label>
+                    <select value={filterAskingPrice} onChange={(e) => setFilterAskingPrice(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                      <option value="">All</option>
+                      <option value="yes">Has price</option>
+                      <option value="no">No price set</option>
+                    </select>
+                  </div>
+                )}
+                {cardTypeFilter === "graded" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Grading co.</label>
+                    <select value={filterGradingCo} onChange={(e) => setFilterGradingCo(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                      <option value="">All</option>
+                      <option value="psa">PSA</option>
+                      <option value="bgs">BGS</option>
+                      <option value="cgc">CGC</option>
+                      <option value="sgc">SGC</option>
+                      <option value="hga">HGA</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                )}
+                {cardTypeFilter === "ungraded" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground">Condition</label>
+                    <select value={filterCondition} onChange={(e) => setFilterCondition(e.target.value)} className="w-full border rounded-md px-2 py-1.5 text-sm bg-background mt-0.5">
+                      <option value="">All</option>
+                      <option value="NM">NM</option>
+                      <option value="LP">LP</option>
+                      <option value="MP">MP</option>
+                      <option value="HP">HP</option>
+                      <option value="DMG">DMG</option>
+                    </select>
+                  </div>
+                )}
+              </div>
+              {activeFilterCount > 0 && (
+                <button type="button" onClick={clearFilters} className="text-xs text-muted-foreground hover:text-foreground underline">
+                  Clear all filters
+                </button>
+              )}
+            </div>
           )}
 
-          {activeTab === "wishlist" && (
+          {/* Inventory cards (FS/FT and PC tabs) */}
+          {activeTab !== "wishlist" && (
             <>
-              {wishlist.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {isOwner ? "No cards in your wishlist yet." : "No wishlist items."}
+              {currentInventory.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">
+                  {search || activeFilterCount > 0 || tcgFilter || cardTypeFilter
+                    ? "No cards match your filters."
+                    : activeTab === "fs_ft"
+                    ? "No cards listed for sale or trade."
+                    : "No cards in personal collection."}
                 </p>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                  {wishlist.map((item) => (
+                  {currentInventory.map((item) => (
                     <div key={item.id} className="flex flex-col">
                       <div
                         className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
                         onClick={() => router.push(`/cards/${item.card_id}`)}
                       >
-                        {/* Card image */}
+                        <div className="relative w-full aspect-[3/4] bg-muted">
+                          {item.image_url ? (
+                            <Image
+                              src={item.image_url}
+                              alt={item.card_name}
+                              fill
+                              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                              className="object-contain p-1"
+                            />
+                          ) : (
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
+                          )}
+                        </div>
+                        <div className="flex flex-col flex-1 p-2.5 gap-1.5">
+                          <p className="text-xs font-semibold leading-tight line-clamp-2">
+                            {item.card_name}
+                            {item.language_code === "JA" && item.card_name_en ? (
+                              <span className="font-normal text-muted-foreground"> ({item.card_name_en})</span>
+                            ) : null}
+                            {item.card_num ? (
+                              <span className="font-normal text-muted-foreground"> #{item.card_num}</span>
+                            ) : null}
+                          </p>
+                          <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <Badge variant="secondary" className="text-xs w-fit px-1.5 py-0">{formatCondition(item)}</Badge>
+                            {item.variant && (
+                              <span className="text-xs text-muted-foreground">{formatVariantName(item.variant)}</span>
+                            )}
+                          </div>
+                          <div className="flex flex-col gap-0.5">
+                            {item.estimated_value != null && (
+                              <p className="text-xs text-muted-foreground">est. ${Number(item.estimated_value).toFixed(2)}</p>
+                            )}
+                            {item.asking_price != null && (
+                              <p className="text-xs font-semibold">${Number(item.asking_price).toFixed(2)}</p>
+                            )}
+                          </div>
+                          <div className="mt-auto pt-1.5 flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium px-1.5 py-0.5 rounded border border-black/20 bg-muted uppercase">
+                                {item.card_status === "fs_ft" ? "FS/FT" : item.card_status.toUpperCase()}
+                              </span>
+                              <label className="flex items-center gap-1 text-xs text-muted-foreground pointer-events-none select-none">
+                                <input type="checkbox" checked={item.is_public} readOnly className="rounded w-3 h-3" />
+                                Public
+                              </label>
+                            </div>
+                            {isOwner && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setEditingItemId(editingItemId === item.id ? null : item.id); }}
+                                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                                title="Edit"
+                              >
+                                ✎
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      {isOwner && editingItemId === item.id && (
+                        <InventoryEditPanel
+                          item={item}
+                          onSaved={(patch) => handleItemUpdated(item.id, patch)}
+                          onDeleted={() => handleItemDeleted(item.id)}
+                          onClose={() => setEditingItemId(null)}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Wishlist cards */}
+          {activeTab === "wishlist" && (
+            <>
+              {currentWishlist.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4">
+                  {search || activeFilterCount > 0 || tcgFilter || cardTypeFilter
+                    ? "No items match your filters."
+                    : isOwner ? "No cards in your wishlist yet." : "No wishlist items."}
+                </p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                  {currentWishlist.map((item) => (
+                    <div key={item.id} className="flex flex-col">
+                      <div
+                        className="relative flex flex-col rounded-xl border border-black/20 bg-card overflow-hidden hover:border-black/60 hover:shadow-md transition-all cursor-pointer"
+                        onClick={() => router.push(`/cards/${item.card_id}`)}
+                      >
                         <div className="relative w-full aspect-[3/4] bg-muted">
                           {item.image_url ? (
                             <Image
@@ -997,8 +1178,6 @@ export default function ProfilePage() {
                             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
                           )}
                         </div>
-
-                        {/* Card info */}
                         <div className="flex flex-col flex-1 p-2.5 gap-1.5">
                           <p className="text-xs font-semibold leading-tight line-clamp-2">
                             {item.card_name ?? item.card_id}
@@ -1010,7 +1189,6 @@ export default function ProfilePage() {
                             ) : null}
                           </p>
                           <p className="text-xs text-muted-foreground truncate">{item.set_name ?? ""}</p>
-
                           {item.conditions.length > 0 && (
                             <div className="flex flex-wrap gap-1">
                               {item.conditions.map((c) => {
@@ -1026,14 +1204,12 @@ export default function ProfilePage() {
                               })}
                             </div>
                           )}
-
                           {(item.max_price != null || item.notes) && (
                             <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
                               {item.max_price != null && <span>Max ${item.max_price.toFixed(2)}</span>}
                               {item.notes && <span className="truncate">{item.notes}</span>}
                             </div>
                           )}
-
                           {isOwner && (
                             <div className="mt-auto pt-1.5 flex justify-end">
                               <button
@@ -1048,8 +1224,6 @@ export default function ProfilePage() {
                           )}
                         </div>
                       </div>
-
-                      {/* Inline edit panel below card */}
                       {isOwner && editingWishlistItemId === item.id && (
                         <WishlistEditPanel
                           item={item}
@@ -1070,50 +1244,6 @@ export default function ProfilePage() {
               )}
             </>
           )}
-
-          {/* Shows tab — paused
-          {activeTab === "shows" && isOwner && (
-            <>
-              {registeredShows.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No upcoming shows registered.</p>
-              ) : (
-                <div className="space-y-2">
-                  {registeredShows.map((show) => {
-                    const dateStr = new Date(show.date_start + "T00:00:00").toLocaleDateString("en-US", {
-                      month: "short", day: "numeric", year: "numeric",
-                    });
-                    return (
-                      <a
-                        key={show.id}
-                        href={`/card-shows/${show.id}`}
-                        className="flex items-center gap-3 border rounded-lg px-3 py-2 hover:bg-muted transition-colors"
-                      >
-                        {show.poster_url ? (
-                          <div className="w-12 aspect-square flex-shrink-0 rounded overflow-hidden border bg-muted relative">
-                            <Image src={show.poster_url} alt={show.name} fill unoptimized sizes="48px" className="object-cover" />
-                          </div>
-                        ) : (
-                          <div className="w-12 aspect-square flex-shrink-0 rounded border bg-muted" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{show.name}</p>
-                          <p className="text-xs text-muted-foreground">{dateStr}</p>
-                          {show.venue_name && (
-                            <p className="text-xs text-muted-foreground truncate">{show.venue_name}</p>
-                          )}
-                        </div>
-                      </a>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          )}
-
-          {activeTab === "shows" && !isOwner && (
-            <p className="text-sm text-muted-foreground">Shows not available on public profiles.</p>
-          )}
-          */}
         </div>
       </div>
 
