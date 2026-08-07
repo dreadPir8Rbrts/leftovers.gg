@@ -89,7 +89,7 @@ export default function ProfilePage() {
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState<"background" | "avatar" | null>(null);
-  const [activeTab, setActiveTab] = useState<"fs_ft" | "pc" | "wishlist">("fs_ft");
+  const [activeTab, setActiveTab] = useState<"fs_ft" | "pc" | "wishlist" | "refs">("fs_ft");
   const [search, setSearch] = useState("");
   const [tcgFilter, setTcgFilter] = useState<"" | "pokemon" | "naruto_ccg">("");
   const [cardTypeFilter, setCardTypeFilter] = useState<"" | "graded" | "ungraded">("");
@@ -870,12 +870,13 @@ export default function ProfilePage() {
       <div className="w-[95%] md:w-[80%] mx-auto mt-8 pb-12">
         {/* Tab strip */}
         <div className="flex border-b">
-          {(["fs_ft", "pc", "wishlist"] as const).map((tab) => {
+          {(["fs_ft", "pc", "wishlist", "refs"] as const).map((tab) => {
             const count =
               tab === "fs_ft" ? fsFtInventory.length :
               tab === "pc" ? pcInventory.length :
-              wishlist.length;
-            const label = tab === "fs_ft" ? "FS / FT" : tab === "pc" ? "PC" : "Wishlist";
+              tab === "wishlist" ? wishlist.length :
+              0;
+            const label = tab === "fs_ft" ? "FS / FT" : tab === "pc" ? "PC" : tab === "wishlist" ? "Wishlist" : "Refs";
             return (
               <button
                 key={tab}
@@ -897,7 +898,8 @@ export default function ProfilePage() {
         </div>
 
         <div className="border border-t-0 rounded-b-lg p-4">
-          {/* TCG + Card Type toggle rows */}
+          {/* TCG + Card Type toggles, search, and filters — hidden on Refs tab */}
+          {activeTab !== "refs" && (<>
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <div>
               <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">TCG</p>
@@ -1052,9 +1054,10 @@ export default function ProfilePage() {
               )}
             </div>
           )}
+          </>)}
 
           {/* Inventory cards (FS/FT and PC tabs) */}
-          {activeTab !== "wishlist" && (
+          {(activeTab === "fs_ft" || activeTab === "pc") && (
             <>
               {currentInventory.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4">
@@ -1243,6 +1246,11 @@ export default function ProfilePage() {
                 </div>
               )}
             </>
+          )}
+
+          {/* Refs tab */}
+          {activeTab === "refs" && (
+            <p className="text-sm text-muted-foreground py-4">Coming soon</p>
           )}
         </div>
       </div>
