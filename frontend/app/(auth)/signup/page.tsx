@@ -99,7 +99,6 @@ export default function SignupPage() {
   const [usernameTouched, setUsernameTouched] = useState(false);
   const [usernameTaken, setUsernameTaken] = useState(false);
   const [checkingUsername, setCheckingUsername] = useState(false);
-  const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordTouched, setPasswordTouched] = useState(false);
@@ -118,7 +117,6 @@ export default function SignupPage() {
     username.trim().length > 0 &&
     !usernameError &&
     !checkingUsername &&
-    displayName.trim().length > 0 &&
     email.trim().length > 0 &&
     passwordValid &&
     !loading;
@@ -158,7 +156,6 @@ export default function SignupPage() {
     try {
       await updateProfile({
         username: username.trim(),
-        display_name: displayName.trim(),
         onboarding_complete: true,
       });
     } catch (err: unknown) {
@@ -224,23 +221,6 @@ export default function SignupPage() {
             {usernameTouched && usernameError && (
               <p className="text-xs text-destructive">{usernameError}</p>
             )}
-          </div>
-
-          {/* Display name */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Display name</label>
-            <input
-              type="text"
-              required
-              maxLength={50}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g. John's Cards"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-            />
-            <p className="text-xs text-muted-foreground">
-              Your public name — shown on your profile.
-            </p>
           </div>
 
           {/* Email */}
