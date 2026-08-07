@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
 
 /**
@@ -112,8 +113,6 @@ export default function ProfilePage() {
   const [addLinkAvatarPreset, setAddLinkAvatarPreset] = useState<string | null>(null);
   const [addLinkAvatarFile, setAddLinkAvatarFile] = useState<File | null>(null);
   const [addLinkAvatarPreview, setAddLinkAvatarPreview] = useState<string | null>(null);
-  const [linkAvatarLoading, setLinkAvatarLoading] = useState<string | null>(null);
-  const [uploadingForLinkId, setUploadingForLinkId] = useState<string | null>(null);
   const [editingLinkId, setEditingLinkId] = useState<string | null>(null);
   const [editLinkName, setEditLinkName] = useState("");
   const [editLinkUrl, setEditLinkUrl] = useState("");
@@ -125,7 +124,6 @@ export default function ProfilePage() {
 
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
-  const linkAvatarInputRef = useRef<HTMLInputElement>(null);
   const addLinkCustomInputRef = useRef<HTMLInputElement>(null);
   const editLinkCustomInputRef = useRef<HTMLInputElement>(null);
 
@@ -276,18 +274,6 @@ export default function ProfilePage() {
     }
   }
 
-  async function handleLinkAvatarUpload(file: File, linkId: string) {
-    setLinkAvatarLoading(linkId);
-    try {
-      const { avatar_url } = await uploadLinkAvatar(linkId, file);
-      setLinks((prev) => prev.map((l) => l.id === linkId ? { ...l, avatar_url } : l));
-    } catch {
-      // silent
-    } finally {
-      setLinkAvatarLoading(null);
-    }
-  }
-
   async function handleSaveDetails() {
     setSaving(true);
     setSaveError(null);
@@ -405,18 +391,6 @@ export default function ProfilePage() {
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) handleImageUpload(f, "avatar");
-              e.target.value = "";
-            }}
-          />
-          <input
-            ref={linkAvatarInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f && uploadingForLinkId) handleLinkAvatarUpload(f, uploadingForLinkId);
-              setUploadingForLinkId(null);
               e.target.value = "";
             }}
           />
