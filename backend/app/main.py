@@ -9,8 +9,10 @@ from app.api import catalog
 from app.api import collector
 from app.api import dev
 from app.api import discover
+from app.api import messaging
 from app.api import pricing
 from app.api import profiles
+from app.api import social
 from app.api import vendor
 from app.api import scans
 from app.api import shows
@@ -36,8 +38,10 @@ app.include_router(catalog.router, prefix="/api/v1")
 app.include_router(collector.router, prefix="/api/v1")
 app.include_router(discover.router, prefix="/api/v1")
 app.include_router(dev.router, prefix="/api/v1")
+app.include_router(messaging.router, prefix="/api/v1")
 app.include_router(pricing.router, prefix="/api/v1")
 app.include_router(profiles.router, prefix="/api/v1")
+app.include_router(social.router, prefix="/api/v1")
 app.include_router(vendor.router, prefix="/api/v1")
 app.include_router(scans.router, prefix="/api/v1")
 app.include_router(shows.router, prefix="/api/v1")

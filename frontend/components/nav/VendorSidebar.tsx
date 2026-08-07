@@ -14,6 +14,7 @@ import {
   ArrowLeftRight,
   UserCircle,
   Compass,
+  MessageCircle,
 } from "lucide-react";
 
 interface NavLinkProps {
@@ -57,6 +58,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
     { href: p ? `/dashboard/${p}`    : "#", label: "Dashboard",    icon: LayoutDashboard },
     { href: p ? `/transactions/${p}` : "#", label: "Transactions", icon: ArrowLeftRight },
     { href: p ? `/inventory/${p}`    : "#", label: "Inventory",    icon: Package },
+    { href: "/messages",                    label: "Messages",      icon: MessageCircle },
     { href: p ? `/profile/${p}`      : "#", label: "Profile",      icon: UserCircle },
   ];
 

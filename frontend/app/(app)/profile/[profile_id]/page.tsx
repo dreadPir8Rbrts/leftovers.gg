@@ -49,6 +49,12 @@ import {
   uploadLinkAvatar,
   type ProfileLink,
 } from "@/lib/api/links";
+import {
+  getFollowStatus,
+  followProfile,
+  unfollowProfile,
+} from "@/lib/api/social";
+import { startOrFindConversation } from "@/lib/api/messaging";
 
 type AnyProfile = ProfileData | PublicProfileData;
 
@@ -122,6 +128,11 @@ export default function ProfilePage() {
   const [editLinkSaving, setEditLinkSaving] = useState(false);
   const [editLinkError, setEditLinkError] = useState<string | null>(null);
 
+  // Follow state
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [followLoading, setFollowLoading] = useState(false);
+
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const addLinkCustomInputRef = useRef<HTMLInputElement>(null);
@@ -154,6 +165,17 @@ export default function ProfilePage() {
     const linkFetch = isOwner ? getOwnLinks() : getPublicLinks(params.profile_id);
     linkFetch.then(setLinks).catch(() => {});
   }, [profile, isOwner, params.profile_id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load follow status (only when viewing someone else's profile while logged in)
+  useEffect(() => {
+    if (isOwner || !currentUserProfile) return;
+    getFollowStatus(params.profile_id)
+      .then(({ following, follower_count }) => {
+        setIsFollowing(following);
+        setFollowerCount(follower_count);
+      })
+      .catch(() => {});
+  }, [params.profile_id, isOwner, currentUserProfile]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Load inventory and shows for the profile
   useEffect(() => {
@@ -485,7 +507,59 @@ export default function ProfilePage() {
           <p className="text-sm text-muted-foreground mb-1">@{profile.username}</p>
         )}
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
+        {followerCount > 0 && !isOwner && (
+          <p className="text-xs text-muted-foreground mt-1">
+            {followerCount} {followerCount === 1 ? "follower" : "followers"}
+          </p>
+        )}
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
+
+        {/* Follow + Message buttons — visitors only */}
+        {!isOwner && currentUserProfile && (
+          <div className="flex items-center justify-center gap-2 mt-3">
+            <Button
+              size="sm"
+              variant={isFollowing ? "outline" : "default"}
+              className="rounded-full"
+              disabled={followLoading}
+              onClick={async () => {
+                setFollowLoading(true);
+                try {
+                  if (isFollowing) {
+                    await unfollowProfile(params.profile_id);
+                    setIsFollowing(false);
+                    setFollowerCount((c) => Math.max(0, c - 1));
+                  } else {
+                    await followProfile(params.profile_id);
+                    setIsFollowing(true);
+                    setFollowerCount((c) => c + 1);
+                  }
+                } catch {
+                  // silent
+                } finally {
+                  setFollowLoading(false);
+                }
+              }}
+            >
+              {followLoading ? "…" : isFollowing ? "Following" : "Follow"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="rounded-full"
+              onClick={async () => {
+                try {
+                  const conv = await startOrFindConversation(params.profile_id);
+                  router.push(`/messages/${conv.id}`);
+                } catch {
+                  // silent
+                }
+              }}
+            >
+              Message
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Profile details */}
