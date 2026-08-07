@@ -166,9 +166,9 @@ export default function ProfilePage() {
     linkFetch.then(setLinks).catch(() => {});
   }, [profile, isOwner, params.profile_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Load follow status (only when viewing someone else's profile while logged in)
+  // Load follow status — always fetch when logged in (owner needs follower count too)
   useEffect(() => {
-    if (isOwner || !currentUserProfile) return;
+    if (!currentUserProfile) return;
     getFollowStatus(params.profile_id)
       .then(({ following, follower_count }) => {
         setIsFollowing(following);
@@ -507,7 +507,7 @@ export default function ProfilePage() {
           <p className="text-sm text-muted-foreground mb-1">@{profile.username}</p>
         )}
         <h1 className="text-xl font-bold">{profile.display_name ?? "—"}</h1>
-        {followerCount > 0 && !isOwner && (
+        {(isOwner || followerCount > 0) && (
           <p className="text-xs text-muted-foreground mt-1">
             {followerCount} {followerCount === 1 ? "follower" : "followers"}
           </p>
@@ -570,6 +570,31 @@ export default function ProfilePage() {
               <p className="text-sm text-muted-foreground text-center">{profile.bio}</p>
             )}
 
+            {/* Links row — read-only, clickable for everyone, no edit controls */}
+            {links.length > 0 && (
+              <div className="flex flex-wrap justify-center gap-5 pt-2">
+                {links.map((link) => (
+                  <div key={link.id} className="flex flex-col items-center gap-1.5">
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center hover:border-foreground/40 transition-colors block"
+                    >
+                      {link.avatar_url ? (
+                        <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-lg">🔗</span>
+                      )}
+                    </a>
+                    <span className="text-xs text-muted-foreground w-16 truncate text-center">
+                      {link.name}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {isOwner && (
               <div className="flex justify-center pt-1">
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} className="rounded-full">
@@ -577,87 +602,10 @@ export default function ProfilePage() {
                 </Button>
               </div>
             )}
-
-            {/* Links row */}
-            {(isOwner || links.length > 0) && (
-              <div className="flex flex-wrap justify-center gap-5 pt-2">
-                {links.map((link) => (
-                  <div key={link.id} className="flex flex-col items-center gap-1.5">
-                    <div className="relative">
-                      {isOwner ? (
-                        <div className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center">
-                          {link.avatar_url ? (
-                            <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-lg">🔗</span>
-                          )}
-                        </div>
-                      ) : (
-                        <a
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="relative w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center hover:border-foreground/40 transition-colors block"
-                        >
-                          {link.avatar_url ? (
-                            <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="text-lg">🔗</span>
-                          )}
-                        </a>
-                      )}
-                      {isOwner && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteLink(link.id)}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-destructive transition-colors shadow-sm"
-                          >
-                            ×
-                          </button>
-                          <button
-                            type="button"
-                            title="Edit link"
-                            onClick={() => {
-                              setEditingLinkId(link.id);
-                              setEditLinkName(link.name);
-                              setEditLinkUrl(link.url);
-                              setEditLinkAvatarPreset(null);
-                              setEditLinkAvatarFile(null);
-                              setEditLinkAvatarPreview(null);
-                              setEditLinkError(null);
-                            }}
-                            className="absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm"
-                          >
-                            ✎
-                          </button>
-                        </>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground w-16 truncate text-center">
-                      {link.name}
-                    </span>
-                  </div>
-                ))}
-
-                {isOwner && links.length < 5 && (
-                  <div className="flex flex-col items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddLink(true)}
-                      className="w-12 h-12 rounded-full border-2 border-dashed border-border bg-muted flex items-center justify-center text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
-                    >
-                      <span className="text-xl leading-none">+</span>
-                    </button>
-                    <span className="text-xs text-muted-foreground">Add link</span>
-                  </div>
-                )}
-              </div>
-            )}
           </>
         ) : (
           <div className="border rounded-lg p-4 space-y-4">
-            <h2 className="text-sm font-semibold">Edit profile details</h2>
+            <h2 className="text-sm font-semibold">Edit profile</h2>
 
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">Display name</label>
@@ -694,6 +642,65 @@ export default function ProfilePage() {
                 placeholder="Tell others about yourself..."
                 className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none"
               />
+            </div>
+
+            {/* Links — with edit controls */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground">Links</label>
+              <div className="flex flex-wrap gap-5">
+                {links.map((link) => (
+                  <div key={link.id} className="flex flex-col items-center gap-1.5">
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-full border-2 border-border bg-muted overflow-hidden flex items-center justify-center">
+                        {link.avatar_url ? (
+                          <img src={link.avatar_url} alt={link.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="text-lg">🔗</span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteLink(link.id)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-destructive transition-colors shadow-sm"
+                      >
+                        ×
+                      </button>
+                      <button
+                        type="button"
+                        title="Edit link"
+                        onClick={() => {
+                          setEditingLinkId(link.id);
+                          setEditLinkName(link.name);
+                          setEditLinkUrl(link.url);
+                          setEditLinkAvatarPreset(null);
+                          setEditLinkAvatarFile(null);
+                          setEditLinkAvatarPreview(null);
+                          setEditLinkError(null);
+                        }}
+                        className="absolute -bottom-1.5 -right-1.5 w-5 h-5 rounded-full bg-background border flex items-center justify-center text-xs text-muted-foreground hover:text-foreground transition-colors shadow-sm"
+                      >
+                        ✎
+                      </button>
+                    </div>
+                    <span className="text-xs text-muted-foreground w-16 truncate text-center">
+                      {link.name}
+                    </span>
+                  </div>
+                ))}
+
+                {links.length < 5 && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddLink(true)}
+                      className="w-12 h-12 rounded-full border-2 border-dashed border-border bg-muted flex items-center justify-center text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
+                    >
+                      <span className="text-xl leading-none">+</span>
+                    </button>
+                    <span className="text-xs text-muted-foreground">Add link</span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {saveError && <p className="text-xs text-destructive">{saveError}</p>}

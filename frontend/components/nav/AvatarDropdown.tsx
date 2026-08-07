@@ -68,6 +68,9 @@ export function AvatarDropdown({ profile }: AvatarDropdownProps) {
           <a href={profileRoute}>Profile</a>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <a href="/messages">Messages</a>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <a href="/settings">Settings</a>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
