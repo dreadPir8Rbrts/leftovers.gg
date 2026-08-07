@@ -8,6 +8,7 @@
 import Link from "next/link";
 import { AvatarDropdown } from "./AvatarDropdown";
 import { GlobalSearch } from "./GlobalSearch";
+import { NotificationBell } from "./NotificationBell";
 import type { ProfileData } from "@/lib/api/profiles";
 
 interface TopNavProps {
@@ -33,6 +34,7 @@ export function TopNav({ profile }: TopNavProps) {
         <span>Card Shows</span>
       </Link>
       */}
+      {profile && <NotificationBell profileId={profile.id} />}
       <AvatarDropdown profile={profile ?? null} />
     </header>
   );

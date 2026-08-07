@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.dependencies import get_current_profile
 from app.models.conversation import Conversation, ConversationParticipant, Message
+from app.models.notification import Notification
 from app.models.profiles import Profile
 
 router = APIRouter(tags=["messaging"])
@@ -188,6 +189,14 @@ def send_message(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     _assert_participant(db, conversation_id, current.id)
+
+    is_first = (
+        db.query(func.count(Message.id))
+        .filter(Message.conversation_id == conversation_id)
+        .scalar()
+        or 0
+    ) == 0
+
     msg = Message(
         id=str(uuid.uuid4()),
         conversation_id=conversation_id,
@@ -197,6 +206,27 @@ def send_message(
     db.add(msg)
     db.commit()
     db.refresh(msg)
+
+    if is_first:
+        other = (
+            db.query(ConversationParticipant)
+            .filter(
+                ConversationParticipant.conversation_id == conversation_id,
+                ConversationParticipant.profile_id != current.id,
+            )
+            .first()
+        )
+        if other:
+            notification = Notification(
+                id=str(uuid.uuid4()),
+                profile_id=other.profile_id,
+                type="message",
+                actor_id=current.id,
+                entity_id=conversation_id,
+            )
+            db.add(notification)
+            db.commit()
+
     return _message_out(msg)
 
 

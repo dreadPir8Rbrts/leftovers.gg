@@ -10,6 +10,7 @@ from app.api import collector
 from app.api import dev
 from app.api import discover
 from app.api import messaging
+from app.api import notifications
 from app.api import pricing
 from app.api import profiles
 from app.api import social
@@ -39,6 +40,7 @@ app.include_router(collector.router, prefix="/api/v1")
 app.include_router(discover.router, prefix="/api/v1")
 app.include_router(dev.router, prefix="/api/v1")
 app.include_router(messaging.router, prefix="/api/v1")
+app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(pricing.router, prefix="/api/v1")
 app.include_router(profiles.router, prefix="/api/v1")
 app.include_router(social.router, prefix="/api/v1")

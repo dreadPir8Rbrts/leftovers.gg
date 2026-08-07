@@ -9,6 +9,7 @@ Routes:
   GET    /profiles/{profile_id}/follow/status — is current user following this profile?
 """
 
+import uuid
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,6 +18,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.dependencies import get_current_profile
 from app.models.follow import Follow
+from app.models.notification import Notification
 from app.models.profiles import Profile
 
 router = APIRouter(tags=["social"])
@@ -51,6 +53,13 @@ def follow_profile(
         return {"following": True}
     follow = Follow(follower_id=current.id, following_id=profile_id)
     db.add(follow)
+    notification = Notification(
+        id=str(uuid.uuid4()),
+        profile_id=profile_id,
+        type="follow",
+        actor_id=current.id,
+    )
+    db.add(notification)
     db.commit()
     return {"following": True}
 
