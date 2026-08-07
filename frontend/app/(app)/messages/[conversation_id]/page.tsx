@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { ArrowLeft, Send } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import {
