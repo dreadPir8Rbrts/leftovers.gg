@@ -171,6 +171,44 @@ function MarketingContent({ showCtas }: { showCtas: boolean }) {
         </div>
       </section>
 
+      {/* TCGs Supported */}
+      <section className="border-t border-white/10 px-6 py-24">
+        <div className="w-[95%] md:w-[80%] mx-auto">
+          <h2 className="text-2xl sm:text-3xl font-bold text-center mb-4">
+            TCGs Supported
+          </h2>
+          <p className="text-center text-gray-400 mb-10 max-w-xl mx-auto text-sm">
+            More TCG to come. One Piece is next on the roadmap — here&apos;s what&apos;s available today.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="border-b border-white/10 text-left text-xs text-gray-500 uppercase tracking-wide">
+                  <th className="pb-3 pr-8 font-medium">TCG</th>
+                  <th className="pb-3 pr-8 font-medium">Languages</th>
+                  <th className="pb-3 pr-8 font-medium text-center">Card Scanner</th>
+                  <th className="pb-3 font-medium text-center">Price Insights</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                <tr>
+                  <td className="py-4 pr-8 font-medium">Pokémon</td>
+                  <td className="py-4 pr-8 text-gray-400">English, Japanese</td>
+                  <td className="py-4 pr-8 text-center text-green-500 text-base">✓</td>
+                  <td className="py-4 text-center text-green-500 text-base">✓</td>
+                </tr>
+                <tr>
+                  <td className="py-4 pr-8 font-medium">Bandai Naruto CCG</td>
+                  <td className="py-4 pr-8 text-gray-400">English</td>
+                  <td className="py-4 pr-8 text-center text-green-500 text-base">✓</td>
+                  <td className="py-4 text-center text-gray-500 text-base">✗</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       {/* Footer CTA — anonymous only */}
       {showCtas && (
         <section className="border-t border-white/10 px-6 py-24 text-center">
