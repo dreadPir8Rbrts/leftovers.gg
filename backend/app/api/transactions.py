@@ -468,8 +468,10 @@ def create_transaction(
                 Inventory.profile_id == profile.id,
             ).first()
             if inv:
+                now = datetime.now(timezone.utc)
                 inv.status = inventory_status
-                inv.updated_at = datetime.now(timezone.utc)
+                inv.deleted_at = now
+                inv.updated_at = now
 
     db.commit()
     db.refresh(tx)
