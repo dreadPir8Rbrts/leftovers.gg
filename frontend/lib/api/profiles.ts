@@ -104,7 +104,12 @@ export async function checkUsernameAvailable(name: string): Promise<boolean> {
   return data.available as boolean;
 }
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5 MB
+
 export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error("Image size too large. Please upload an image smaller than 5 MB.");
+  }
   const token = await getAccessToken();
   const formData = new FormData();
   formData.append("image", file);
@@ -113,6 +118,9 @@ export async function uploadAvatar(file: File): Promise<{ avatar_url: string }> 
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
-  if (!res.ok) throw new Error((await res.json()).detail ?? "Upload failed");
+  if (!res.ok) {
+    if (res.status === 413) throw new Error("Image size too large. Please upload an image smaller than 5 MB.");
+    throw new Error((await res.json().catch(() => ({}))).detail ?? "Upload failed");
+  }
   return res.json();
 }

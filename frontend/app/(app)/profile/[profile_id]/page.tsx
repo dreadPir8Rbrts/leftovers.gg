@@ -210,9 +210,16 @@ export default function ProfilePage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
+
   async function handleImageUpload(file: File, imageType: "background" | "avatar") {
     setUploading(imageType);
     setError(null);
+    if (file.size > MAX_IMAGE_BYTES) {
+      setError("Image size too large. Please upload an image smaller than 5 MB.");
+      setUploading(null);
+      return;
+    }
     try {
       if (imageType === "background") {
         const { background_url } = await uploadBackground(file);
@@ -523,7 +530,7 @@ export default function ProfilePage() {
       )}
 
       {/* Hero banner */}
-      <div className="relative w-full h-48 bg-muted">
+      <div className="relative w-full h-48 bg-muted md:mt-10">
         {profile.background_url && (
           <Image
             src={profile.background_url}

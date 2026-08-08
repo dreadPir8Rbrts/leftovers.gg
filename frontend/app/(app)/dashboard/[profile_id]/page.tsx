@@ -153,7 +153,7 @@ export default function DashboardPage() {
   const [inventory,  setInventory]  = useState<InventoryItemWithCard[]>([]);
   const [txs,        setTxs]        = useState<TransactionOut[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [window,     setWindow]     = useState<WindowDays>(30);
+  const [windowDays, setWindowDays] = useState<WindowDays>(30);
   const [tcgFilter,  setTcgFilter]  = useState<TcgFilter>("all");
   const [gradedFilter, setGradedFilter] = useState<GradedFilter>("all");
 
@@ -197,7 +197,7 @@ export default function DashboardPage() {
   // ---------------------------------------------------------------------------
 
   const plMetrics = useMemo(() => {
-    const cutoff = cutoffDate(window);
+    const cutoff = cutoffDate(windowDays);
     const inWindow = txs
       .filter((tx) => new Date(tx.transaction_date) >= cutoff)
       .filter((tx) => txMatchesFilters(tx, tcgFilter, gradedFilter));
@@ -255,7 +255,7 @@ export default function DashboardPage() {
       hasBuyInData,
       sellCount: sellTxs.length,
     };
-  }, [txs, window, tcgFilter, gradedFilter]);
+  }, [txs, windowDays, tcgFilter, gradedFilter]);
 
   // ---------------------------------------------------------------------------
   // Render
@@ -346,9 +346,9 @@ export default function DashboardPage() {
               {WINDOWS.map((w) => (
                 <button
                   key={w.days}
-                  onClick={() => setWindow(w.days)}
+                  onClick={() => setWindowDays(w.days)}
                   className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                    window === w.days
+                    windowDays === w.days
                       ? "bg-foreground text-background border-foreground"
                       : "bg-background hover:bg-muted border-border"
                   }`}
@@ -374,7 +374,7 @@ export default function DashboardPage() {
               <>
                 <p className="text-2xl font-bold">${fmt(plMetrics.totalBuyIn)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {plMetrics.sellCount} sell transaction{plMetrics.sellCount !== 1 ? "s" : ""} in last {window} days
+                  {plMetrics.sellCount} sell transaction{plMetrics.sellCount !== 1 ? "s" : ""} in last {windowDays} days
                 </p>
                 {!plMetrics.hasBuyInData && plMetrics.sellCount > 0 && (
                   <div className="flex items-start gap-1.5 pt-1">
@@ -451,7 +451,7 @@ export default function DashboardPage() {
                   {plMetrics.cashFlow > 0 && <TrendingUp  size={16} className="text-emerald-500" />}
                   {plMetrics.cashFlow < 0 && <TrendingDown size={16} className="text-destructive" />}
                 </div>
-                <p className="text-xs text-muted-foreground">{plMetrics.count} transaction{plMetrics.count !== 1 ? "s" : ""} in last {window} days</p>
+                <p className="text-xs text-muted-foreground">{plMetrics.count} transaction{plMetrics.count !== 1 ? "s" : ""} in last {windowDays} days</p>
                 <div className="flex items-start gap-1.5 pt-1">
                   <AlertCircle size={11} className="flex-shrink-0 mt-0.5 text-amber-500" />
                   <p className="text-xs text-amber-500/90 leading-tight">

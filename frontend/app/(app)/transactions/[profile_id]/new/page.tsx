@@ -1496,17 +1496,24 @@ export default function NewTransactionPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const cardPayload: TransactionCardIn[] = cards.map((c) => ({
-        direction: c.direction,
-        card_v2_id: c.card.id,
-        inventory_item_id: c.inventoryItemId,
-        condition_type: c.conditionType,
-        condition_ungraded: c.conditionType === "ungraded" ? c.conditionUngraded || undefined : undefined,
-        grading_company: c.conditionType === "graded" ? c.gradingCompany || undefined : undefined,
-        grade: c.conditionType === "graded" ? c.grade || undefined : undefined,
-        estimated_value: parseFloat(c.estimatedValue) || undefined,
-        quantity: c.quantity,
-      }));
+      const cardPayload: TransactionCardIn[] = cards.map((c) => {
+        let inventoryItemId = c.inventoryItemId;
+        if (!inventoryItemId && c.direction === "lost") {
+          const match = findInventoryMatch(c, inventoryItems);
+          if (match) inventoryItemId = match.id;
+        }
+        return {
+          direction: c.direction,
+          card_v2_id: c.card.id,
+          inventory_item_id: inventoryItemId,
+          condition_type: c.conditionType,
+          condition_ungraded: c.conditionType === "ungraded" ? c.conditionUngraded || undefined : undefined,
+          grading_company: c.conditionType === "graded" ? c.gradingCompany || undefined : undefined,
+          grade: c.conditionType === "graded" ? c.grade || undefined : undefined,
+          estimated_value: parseFloat(c.estimatedValue) || undefined,
+          quantity: c.quantity,
+        };
+      });
 
       const feePctDecimal = feePct !== "" ? parseFloat(feePct) / 100 : undefined;
       const result = await createTransaction({
@@ -1664,16 +1671,19 @@ export default function NewTransactionPage() {
             </div>
             <div className="flex flex-col shrink-0">
               <label className="text-xs text-muted-foreground">Fee %</label>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={feePct}
-                onChange={(e) => setFeePct(e.target.value)}
-                placeholder="0"
-                className="h-10 border rounded-md px-3 text-sm bg-background mt-1 w-20"
-              />
+              <div className="relative mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={feePct}
+                  onChange={(e) => setFeePct(e.target.value)}
+                  placeholder="13"
+                  className="h-10 border rounded-md pl-3 pr-7 text-sm bg-background w-24"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+              </div>
             </div>
           </div>
           <div>
