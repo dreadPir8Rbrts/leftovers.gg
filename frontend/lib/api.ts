@@ -60,9 +60,10 @@ export interface InventoryItemCreate {
 }
 
 export interface InventoryItemPatch {
-  acquired_price?: number;
+  acquired_price?: number | null;
   grading_cost?: number;
   asking_price?: number;
+  quantity?: number;
   card_status?: CardStatus;
   variant?: string | null;
   is_public?: boolean;
@@ -229,6 +230,14 @@ export interface InventoryItemWithCard {
 
 export async function getInventory(): Promise<InventoryItemWithCard[]> {
   const res = await fetch(`${API_URL}/api/v1/inventory`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to load inventory: ${res.status}`);
+  return res.json();
+}
+
+export async function getInventoryForCard(cardId: string): Promise<InventoryItemWithCard[]> {
+  const res = await fetch(`${API_URL}/api/v1/inventory?card_id=${encodeURIComponent(cardId)}`, {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to load inventory: ${res.status}`);

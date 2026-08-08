@@ -17,10 +17,14 @@ import {
   excludeSoldComp,
   unexcludeSoldComp,
   addInventoryItem,
+  getInventoryForCard,
+  patchInventoryItem,
   addToWishlist,
   formatVariantName,
   searchCardsSmart,
   type Card,
+  type InventoryItemWithCard,
+  type InventoryItemPatch,
   type ScrydexPriceEntry,
   type PricingReady,
   type CardStatus,
@@ -159,6 +163,12 @@ export default function CardDetailPage() {
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+
+  // Duplicate merge dialog
+  const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
+  const [mergeExistingItem, setMergeExistingItem] = useState<InventoryItemWithCard | null>(null);
+  const [mergePriceChoice, setMergePriceChoice] = useState<"keep" | "use_new" | "average">("keep");
+  const [merging, setMerging] = useState(false);
 
   // Raw pricing (Scrydex + TCGPlayer)
   const [tcgRaw, setTcgRaw] = useState<PricingReady | null>(null);
@@ -442,6 +452,40 @@ export default function CardDetailPage() {
     setAdding(true);
     setAddError(null);
     try {
+      // Check for a matching existing item (same card + condition + variant)
+      const existingItems = await getInventoryForCard(card.id);
+      const match = existingItems.find((item) => {
+        if (item.condition_type !== modalConditionType) return false;
+        if ((item.variant ?? null) !== (modalVariant ?? null)) return false;
+        if (modalConditionType === "ungraded") {
+          return item.condition_ungraded === modalConditionUngraded;
+        }
+        return item.grading_company === modalGradingCompany && item.grade === modalGrade;
+      });
+
+      if (match) {
+        setMergeExistingItem(match);
+        const newPriceRaw = parseFloat(modalAcquiredPrice);
+        const hasExistingPrice = match.acquired_price !== undefined && match.acquired_price !== null;
+        const hasNewPrice = !isNaN(newPriceRaw) && modalAcquiredPrice !== "";
+
+        if (!hasExistingPrice && !hasNewPrice) {
+          // No price on either side — auto-merge quantity silently
+          const newQty = parseInt(modalQuantity) || 1;
+          await patchInventoryItem(match.id, { quantity: match.quantity + newQty });
+          setAddSuccess(true);
+          setAddModalOpen(false);
+          setMergeExistingItem(null);
+        } else {
+          // Open price-resolution dialog
+          setMergePriceChoice("keep");
+          setAddModalOpen(false);
+          setMergeDialogOpen(true);
+        }
+        return;
+      }
+
+      // No match — create new item
       const condParams = modalConditionType === "ungraded"
         ? { condition_type: "ungraded" as const, condition_ungraded: modalConditionUngraded }
         : { condition_type: "graded" as const, grading_company: modalGradingCompany, grade: modalGrade };
@@ -460,6 +504,36 @@ export default function CardDetailPage() {
       setAddError("Failed to add to inventory.");
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function handleMergeConfirm() {
+    if (!mergeExistingItem) return;
+    setMerging(true);
+    try {
+      const newQty = parseInt(modalQuantity) || 1;
+      const totalQty = mergeExistingItem.quantity + newQty;
+      const existingPrice = mergeExistingItem.acquired_price ?? null;
+      const newPriceRaw = parseFloat(modalAcquiredPrice);
+      const newPrice = isNaN(newPriceRaw) ? null : newPriceRaw;
+
+      const patch: InventoryItemPatch = { quantity: totalQty };
+      if (mergePriceChoice === "use_new" && newPrice !== null) {
+        patch.acquired_price = newPrice;
+      } else if (mergePriceChoice === "average" && existingPrice !== null && newPrice !== null) {
+        patch.acquired_price =
+          Math.round(((existingPrice * mergeExistingItem.quantity + newPrice * newQty) / totalQty) * 100) / 100;
+      }
+
+      await patchInventoryItem(mergeExistingItem.id, patch);
+      setMergeDialogOpen(false);
+      setMergeExistingItem(null);
+      setAddSuccess(true);
+    } catch {
+      setAddError("Failed to merge inventory items.");
+      setMergeDialogOpen(false);
+    } finally {
+      setMerging(false);
     }
   }
 
@@ -1371,6 +1445,97 @@ export default function CardDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ── Duplicate merge dialog ── */}
+      {mergeDialogOpen && mergeExistingItem && (() => {
+        const newQty = parseInt(modalQuantity) || 1;
+        const totalQty = mergeExistingItem.quantity + newQty;
+        const existingPrice = mergeExistingItem.acquired_price ?? null;
+        const newPriceRaw = parseFloat(modalAcquiredPrice);
+        const newPrice = isNaN(newPriceRaw) ? null : newPriceRaw;
+        const condLabel = modalConditionType === "ungraded"
+          ? modalConditionUngraded.toUpperCase()
+          : `${modalGradingCompany.toUpperCase()} ${modalGrade}`;
+        const weightedAvg = existingPrice !== null && newPrice !== null
+          ? Math.round(((existingPrice * mergeExistingItem.quantity + newPrice * newQty) / totalQty) * 100) / 100
+          : null;
+        return (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+            onClick={() => setMergeDialogOpen(false)}
+          >
+            <div
+              className="bg-zinc-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 pt-5 pb-3">
+                <p className="font-semibold text-sm text-white">Duplicate found</p>
+                <button
+                  onClick={() => setMergeDialogOpen(false)}
+                  className="text-xl text-white/60 hover:text-white leading-none"
+                >×</button>
+              </div>
+
+              <div className="px-5 pb-5 space-y-4">
+                {/* Summary */}
+                <div className="rounded-lg p-3 bg-black space-y-1">
+                  <p className="text-xs text-white/70">
+                    You already have{" "}
+                    <span className="text-white font-medium">{mergeExistingItem.quantity}×</span>{" "}
+                    {condLabel} in your inventory.
+                  </p>
+                  <p className="text-xs text-white/70">
+                    Adding{" "}
+                    <span className="text-white font-medium">{newQty} more</span>
+                    {" "}→ total of{" "}
+                    <span className="text-white font-medium">{totalQty}</span>.
+                  </p>
+                </div>
+
+                {/* Acquired price choice */}
+                <div className="rounded-lg p-3 bg-black space-y-2.5">
+                  <p className="text-xs text-white">Acquired price — which to use?</p>
+                  {([
+                    ["keep", `Keep $${existingPrice?.toFixed(2) ?? "—"} (original)`],
+                    ["use_new", `Use $${newPrice?.toFixed(2) ?? "—"} (new)`],
+                    ...(weightedAvg !== null
+                      ? [["average", `Weighted average $${weightedAvg.toFixed(2)}`] as [string, string]]
+                      : []),
+                  ] as [string, string][]).map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-2.5 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="mergePriceChoice"
+                        value={value}
+                        checked={mergePriceChoice === value}
+                        onChange={() => setMergePriceChoice(value as "keep" | "use_new" | "average")}
+                        className="accent-primary w-3.5 h-3.5"
+                      />
+                      <span className="text-sm text-white">{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {addError && <p className="text-xs text-destructive">{addError}</p>}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setMergeDialogOpen(false)}
+                    disabled={merging}
+                  >
+                    Cancel
+                  </Button>
+                  <Button className="flex-1" onClick={handleMergeConfirm} disabled={merging}>
+                    {merging ? "Merging…" : "Merge"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Sign-up gate modal (anonymous users) ── */}
       {showSignupGate && (

@@ -324,6 +324,8 @@ def patch_inventory_item(
         item.grading_cost = body.grading_cost
     if body.asking_price is not None:
         item.asking_price = body.asking_price
+    if body.quantity is not None:
+        item.quantity = body.quantity
     if body.card_status is not None:
         item.card_status = body.card_status
     if body.variant is not None:

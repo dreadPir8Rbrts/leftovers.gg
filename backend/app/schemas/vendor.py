@@ -127,6 +127,7 @@ class InventoryItemPatch(BaseModel):
     acquired_price: Optional[Decimal] = Field(None, ge=0)
     grading_cost: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
+    quantity: Optional[int] = Field(None, ge=1)
     card_status: Optional[str] = None
     variant: Optional[str] = None
     is_public: Optional[bool] = None
