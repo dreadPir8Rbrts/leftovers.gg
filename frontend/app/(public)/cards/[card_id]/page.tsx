@@ -519,6 +519,15 @@ export default function CardDetailPage() {
     );
   }
 
+  const isNaruto = card.game === "naruto_ccg";
+
+  const noInsightsMsg = (
+    <div className="border border-black/20 rounded-xl p-4">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Price Insights</p>
+      <p className="text-sm text-muted-foreground">Price insights are not currently available for Bandai Naruto CCG.</p>
+    </div>
+  );
+
   // Shared card info chips used in both mobile and desktop layouts
   const cardChips = (
     <div className="flex flex-wrap gap-1.5">
@@ -988,29 +997,33 @@ export default function CardDetailPage() {
 
             {/* Mobile: pricing only, no tabs */}
             <div className="md:hidden">
-              {marketPriceSection}
+              {isNaruto ? noInsightsMsg : marketPriceSection}
             </div>
 
             {/* Desktop: tab layout */}
             <div className="hidden md:flex md:flex-col md:gap-4">
-              <div className="flex border-b border-black/20">
-                {(["pricing", "ebay"] as const).map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                      activeTab === tab
-                        ? "border-foreground text-foreground"
-                        : "border-transparent text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    {tab === "pricing" ? "Pricing" : "eBay Comps"}
-                  </button>
-                ))}
-              </div>
-              {activeTab === "pricing" && marketPriceSection}
-              {activeTab === "ebay" && ebayCompsSection}
+              {isNaruto ? noInsightsMsg : (
+                <>
+                  <div className="flex border-b border-black/20">
+                    {(["pricing", "ebay"] as const).map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                          activeTab === tab
+                            ? "border-foreground text-foreground"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        }`}
+                      >
+                        {tab === "pricing" ? "Pricing" : "eBay Comps"}
+                      </button>
+                    ))}
+                  </div>
+                  {activeTab === "pricing" && marketPriceSection}
+                  {activeTab === "ebay" && ebayCompsSection}
+                </>
+              )}
             </div>
 
           </div>

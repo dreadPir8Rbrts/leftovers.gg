@@ -590,14 +590,33 @@ function parseSearchQuery(raw: string) {
   };
 }
 
+function invItemToCard(item: InventoryItemWithCard): Card {
+  return {
+    id: item.card_id,
+    name: item.card_name,
+    en_name: item.card_name_en,
+    card_num: item.card_num,
+    rarity: item.rarity,
+    image_url: item.image_url,
+    set_name: item.set_name,
+    set_name_en: item.set_name_en,
+    game: item.game,
+    language_code: item.language_code,
+  };
+}
+
 function CardPickerModal({
   direction,
   onSelect,
   onClose,
+  inventoryItems = [],
+  lostDraftCards = [],
 }: {
   direction: TransactionDirection;
-  onSelect: (card: Card, direction: TransactionDirection, condition: ConditionParams) => void;
+  onSelect: (card: Card, direction: TransactionDirection, condition: ConditionParams, inventoryItemId?: string) => void;
   onClose: () => void;
+  inventoryItems?: InventoryItemWithCard[];
+  lostDraftCards?: CardDraft[];
 }) {
   // ── Search state ──────────────────────────────────────────
   const [query, setQuery] = useState("");
@@ -605,10 +624,12 @@ function CardPickerModal({
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [pendingCard, setPendingCard] = useState<Card | null>(null);
+  const [pendingInventoryItemId, setPendingInventoryItemId] = useState<string | undefined>(undefined);
   const [pickerConditionType, setPickerConditionType] = useState<"ungraded" | "graded">("graded");
   const [pickerConditionUngraded, setPickerConditionUngraded] = useState("NM");
   const [pickerGradingCompany, setPickerGradingCompany] = useState("psa");
   const [pickerGrade, setPickerGrade] = useState("10");
+  const [inventoryQuery, setInventoryQuery] = useState("");
 
   // ── Camera state ──────────────────────────────────────────
   const [cameraMode, setCameraMode] = useState(false);
@@ -1143,7 +1164,7 @@ function CardPickerModal({
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={() => setPendingCard(null)}
+              onClick={() => { setPendingCard(null); setPendingInventoryItemId(undefined); }}
               className="text-sm text-muted-foreground hover:text-foreground"
             >
               ← Back
@@ -1231,7 +1252,7 @@ function CardPickerModal({
                 conditionUngraded: pickerConditionUngraded,
                 gradingCompany: pickerGradingCompany,
                 grade: pickerGrade,
-              });
+              }, pendingInventoryItemId);
               onClose();
             }}
             className="w-full"
@@ -1244,9 +1265,27 @@ function CardPickerModal({
   }
 
   // ── Search mode (default) ─────────────────────────────────
+
+  // Compute inventory section state (only meaningful when direction === "lost")
+  const addedInventoryIds = new Set<string>();
+  for (const draft of lostDraftCards) {
+    if (draft.inventoryItemId) {
+      addedInventoryIds.add(draft.inventoryItemId);
+    } else {
+      const match = findInventoryMatch(draft, inventoryItems);
+      if (match) addedInventoryIds.add(match.id);
+    }
+  }
+  const filteredInventory = inventoryItems.filter((item) => {
+    if (!inventoryQuery.trim()) return true;
+    const q = inventoryQuery.toLowerCase();
+    return item.card_name.toLowerCase().includes(q) || item.set_name.toLowerCase().includes(q);
+  });
+  const showInventoryPanel = direction === "lost" && inventoryItems.length > 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4">
+      <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">
             Add card — {direction === "lost" ? "You give" : "Other party gives"}
@@ -1259,7 +1298,7 @@ function CardPickerModal({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by card name…"
+            placeholder={direction === "lost" ? "Search all cards…" : "Search by card name…"}
             className="w-full border rounded-md px-3 py-2 text-base sm:text-sm bg-background"
             autoFocus
           />
@@ -1303,6 +1342,72 @@ function CardPickerModal({
               </li>
             ))}
           </ul>
+        )}
+
+        {showInventoryPanel && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your Inventory</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <input
+              type="text"
+              value={inventoryQuery}
+              onChange={(e) => setInventoryQuery(e.target.value)}
+              placeholder="Filter your inventory…"
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+            />
+            <ul className="divide-y border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+              {filteredInventory.map((item) => {
+                const isAdded = addedInventoryIds.has(item.id);
+                const condLabel = item.condition_type === "graded"
+                  ? `${(item.grading_company ?? "").toUpperCase()} ${item.grade ?? ""}`.trim()
+                  : (item.condition_ungraded ?? "").toUpperCase();
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      disabled={isAdded}
+                      onClick={() => {
+                        setPickerConditionType(item.condition_type);
+                        if (item.condition_type === "ungraded") {
+                          setPickerConditionUngraded((item.condition_ungraded ?? "nm").toUpperCase());
+                        } else {
+                          const co = (item.grading_company ?? "psa").toLowerCase();
+                          setPickerGradingCompany(co);
+                          const opts = GRADE_OPTIONS[co] ?? GRADE_OPTIONS.other;
+                          const g = item.grade ?? opts[0];
+                          setPickerGrade(opts.includes(g) ? g : opts[0]);
+                        }
+                        setPendingInventoryItemId(item.id);
+                        setPendingCard(invItemToCard(item));
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
+                        isAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"
+                      }`}
+                    >
+                      {item.image_url && (
+                        <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                          <Image src={item.image_url} alt={item.card_name} fill sizes="32px" className="object-contain" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium truncate">{item.card_name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
+                      </div>
+                      <span className="text-xs font-medium text-muted-foreground shrink-0">{condLabel}</span>
+                    </button>
+                  </li>
+                );
+              })}
+              {filteredInventory.length === 0 && (
+                <li className="px-3 py-4 text-xs text-muted-foreground text-center">
+                  {inventoryQuery ? "No matches in your inventory" : "Your inventory is empty"}
+                </li>
+              )}
+            </ul>
+          </div>
         )}
       </div>
     </div>
@@ -1470,7 +1575,7 @@ export default function NewTransactionPage() {
     return { autoUpdateEnabled: false, autoUpdateDisabledReason: "No cards to add or remove from inventory" };
   }, [cards, inventoryItems]);
 
-  const addCard = useCallback((card: Card, direction: TransactionDirection, condition: ConditionParams) => {
+  const addCard = useCallback((card: Card, direction: TransactionDirection, condition: ConditionParams, inventoryItemId?: string) => {
     const key = `${card.id}-${Date.now()}`;
     setCards((prev) => [...prev, {
       key,
@@ -1482,6 +1587,7 @@ export default function NewTransactionPage() {
       grade: condition.grade,
       estimatedValue: "",
       quantity: 1,
+      inventoryItemId,
     }]);
     fetchEstimatedValue(key, card.id, condition.conditionType, condition.conditionUngraded, condition.gradingCompany, condition.grade, setCards);
   }, []);
@@ -1751,8 +1857,10 @@ export default function NewTransactionPage() {
       {pickerDirection && (
         <CardPickerModal
           direction={pickerDirection}
-          onSelect={(card, dir, condition) => { addCard(card, dir, condition); setPickerDirection(null); }}
+          onSelect={(card, dir, condition, invId) => { addCard(card, dir, condition, invId); setPickerDirection(null); }}
           onClose={() => setPickerDirection(null)}
+          inventoryItems={pickerDirection === "lost" ? inventoryItems : []}
+          lostDraftCards={cards.filter((c) => c.direction === "lost")}
         />
       )}
       {editingDraft && (
