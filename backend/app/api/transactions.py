@@ -69,6 +69,7 @@ class TransactionIn(BaseModel):
     cash_gained: Optional[float] = None
     cash_lost: Optional[float] = None
     transaction_value: Optional[float] = None   # None → auto-compute
+    fee_pct: Optional[float] = None
     notes: Optional[str] = None
     cards: List[TransactionCardIn] = []
     auto_update_inventory: bool = False
@@ -82,7 +83,10 @@ class TransactionCardOut(BaseModel):
     card_num: Optional[str] = None
     set_name: Optional[str] = None
     image_url: Optional[str] = None
+    game: Optional[str] = None
     inventory_item_id: Optional[str] = None
+    acquired_price: Optional[float] = None
+    grading_cost: Optional[float] = None
     condition_type: str
     condition_ungraded: Optional[str] = None
     grading_company: Optional[str] = None
@@ -111,6 +115,7 @@ class TransactionOut(BaseModel):
     cash_gained: Optional[float] = None
     cash_lost: Optional[float] = None
     transaction_value: Optional[float] = None
+    fee_pct: Optional[float] = None
     notes: Optional[str] = None
     created_at: datetime
     cards: List[TransactionCardOut] = []
@@ -150,7 +155,7 @@ def _card_image_url(images) -> Optional[str]:
     return None
 
 
-def _build_card_out(tc: TransactionCard, card: Optional[CardV2]) -> dict:
+def _build_card_out(tc: TransactionCard, card: Optional[CardV2], inv: Optional[Inventory] = None) -> dict:
     return {
         "id": tc.id,
         "direction": tc.direction,
@@ -159,7 +164,10 @@ def _build_card_out(tc: TransactionCard, card: Optional[CardV2]) -> dict:
         "card_num": card.number if card else None,
         "set_name": card.expansion.name if card else None,
         "image_url": _card_image_url(card.images) if card else None,
+        "game": card.game if card else None,
         "inventory_item_id": tc.inventory_item_id,
+        "acquired_price": float(inv.acquired_price) if inv and inv.acquired_price is not None else None,
+        "grading_cost": float(inv.grading_cost) if inv and inv.grading_cost is not None else None,
         "condition_type": tc.condition_type,
         "condition_ungraded": tc.condition_ungraded,
         "grading_company": tc.grading_company,
@@ -178,6 +186,14 @@ def _build_transaction_out(tx: Transaction, db: Session) -> dict:
         .filter(TransactionCard.transaction_id == tx.id)
         .all()
     )
+
+    # Batch-load inventory items linked to transaction cards for cost basis data
+    inv_ids = [tc.inventory_item_id for tc, _ in card_rows if tc.inventory_item_id]
+    inv_map: Dict[str, Inventory] = {}
+    if inv_ids:
+        inv_rows = db.query(Inventory).filter(Inventory.id.in_(inv_ids)).all()
+        inv_map = {inv.id: inv for inv in inv_rows}
+
     return {
         "id": tx.id,
         "profile_id": tx.profile_id,
@@ -190,9 +206,10 @@ def _build_transaction_out(tx: Transaction, db: Session) -> dict:
         "cash_gained": float(tx.cash_gained) if tx.cash_gained is not None else None,
         "cash_lost": float(tx.cash_lost) if tx.cash_lost is not None else None,
         "transaction_value": float(tx.transaction_value) if tx.transaction_value is not None else None,
+        "fee_pct": float(tx.fee_pct) if tx.fee_pct is not None else None,
         "notes": tx.notes,
         "created_at": tx.created_at,
-        "cards": [_build_card_out(tc, card) for tc, card in card_rows],
+        "cards": [_build_card_out(tc, card, inv_map.get(tc.inventory_item_id or "")) for tc, card in card_rows],
     }
 
 
@@ -409,6 +426,7 @@ def create_transaction(
         cash_gained=body.cash_gained,
         cash_lost=body.cash_lost,
         transaction_value=value,
+        fee_pct=body.fee_pct,
         notes=body.notes,
     )
     db.add(tx)

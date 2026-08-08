@@ -31,6 +31,7 @@ class InventoryItemCreate(BaseModel):
     grading_company_other: Optional[str] = None
     quantity: int = Field(1, ge=1)
     acquired_price: Optional[Decimal] = Field(None, ge=0)
+    grading_cost: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
     card_status: str = "pc"
     variant: Optional[str] = None
@@ -77,6 +78,7 @@ class InventoryItemResponse(BaseModel):
     grading_company_other: Optional[str]
     quantity: int
     acquired_price: Optional[Decimal]
+    grading_cost: Optional[Decimal] = None
     asking_price: Optional[Decimal]
     card_status: str
     variant: Optional[str] = None
@@ -98,6 +100,7 @@ class InventoryItemWithCardResponse(BaseModel):
     grading_company_other: Optional[str]
     quantity: int
     acquired_price: Optional[Decimal]
+    grading_cost: Optional[Decimal] = None
     asking_price: Optional[Decimal]
     card_status: str
     variant: Optional[str] = None
@@ -122,6 +125,7 @@ class InventoryItemWithCardResponse(BaseModel):
 
 class InventoryItemPatch(BaseModel):
     acquired_price: Optional[Decimal] = Field(None, ge=0)
+    grading_cost: Optional[Decimal] = Field(None, ge=0)
     asking_price: Optional[Decimal] = Field(None, ge=0)
     card_status: Optional[str] = None
     variant: Optional[str] = None

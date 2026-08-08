@@ -27,6 +27,8 @@ import { Loader2, TrendingUp, TrendingDown, Minus, ArrowLeftRight, AlertCircle }
 // ---------------------------------------------------------------------------
 
 type WindowDays = 7 | 14 | 30 | 90;
+type TcgFilter = "all" | "pokemon" | "naruto_ccg";
+type GradedFilter = "all" | "graded" | "ungraded";
 
 const WINDOWS: { label: string; days: WindowDays }[] = [
   { label: "7d",  days: 7  },
@@ -52,6 +54,19 @@ function cutoffDate(days: WindowDays): Date {
   d.setDate(d.getDate() - days);
   d.setHours(0, 0, 0, 0);
   return d;
+}
+
+function txMatchesFilters(tx: TransactionOut, tcg: TcgFilter, graded: GradedFilter): boolean {
+  if (tcg === "all" && graded === "all") return true;
+  const lostCards = tx.cards.filter((c) => c.direction === "lost");
+  if (lostCards.length === 0) return tcg === "all" && graded === "all";
+  const matchesTcg =
+    tcg === "all" ||
+    lostCards.some((c) => c.game === tcg);
+  const matchesGraded =
+    graded === "all" ||
+    lostCards.some((c) => c.condition_type === graded);
+  return matchesTcg && matchesGraded;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,6 +114,35 @@ function StatCard({
   );
 }
 
+function FilterToggle<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { label: string; value: T }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex rounded-md border overflow-hidden text-xs">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          onClick={() => onChange(o.value)}
+          className={`px-2.5 py-1 font-medium transition-colors border-r last:border-r-0 ${
+            value === o.value
+              ? "bg-foreground text-background"
+              : "bg-background hover:bg-muted"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
@@ -110,6 +154,8 @@ export default function DashboardPage() {
   const [txs,        setTxs]        = useState<TransactionOut[]>([]);
   const [loading,    setLoading]    = useState(true);
   const [window,     setWindow]     = useState<WindowDays>(30);
+  const [tcgFilter,  setTcgFilter]  = useState<TcgFilter>("all");
+  const [gradedFilter, setGradedFilter] = useState<GradedFilter>("all");
 
   useEffect(() => {
     Promise.all([
@@ -147,13 +193,16 @@ export default function DashboardPage() {
   }, [inventory]);
 
   // ---------------------------------------------------------------------------
-  // P&L metrics (filtered by selected window)
+  // P&L metrics (filtered by selected window + TCG + graded)
   // ---------------------------------------------------------------------------
 
   const plMetrics = useMemo(() => {
     const cutoff = cutoffDate(window);
-    const inWindow = txs.filter((tx) => new Date(tx.transaction_date) >= cutoff);
+    const inWindow = txs
+      .filter((tx) => new Date(tx.transaction_date) >= cutoff)
+      .filter((tx) => txMatchesFilters(tx, tcgFilter, gradedFilter));
 
+    // Legacy cash flow (cash-only)
     const cashFlow = inWindow.reduce((s, tx) => {
       return s + (tx.cash_gained ?? 0) - (tx.cash_lost ?? 0);
     }, 0);
@@ -167,12 +216,62 @@ export default function DashboardPage() {
       {} as Record<string, number>,
     );
 
-    return { count: inWindow.length, cashFlow, txValue, txValueCount, byType, capped: txs.length >= 200 };
-  }, [txs, window]);
+    // Sell-only P&L metrics (buy-in / net revenue / profit)
+    const sellTxs = inWindow.filter((tx) => tx.transaction_type === "sell");
+
+    let totalBuyIn = 0;
+    let hasBuyInData = false;
+    for (const tx of sellTxs) {
+      for (const card of tx.cards) {
+        if (card.direction === "lost") {
+          const acquired = card.acquired_price ?? 0;
+          const grading  = card.grading_cost  ?? 0;
+          if (card.acquired_price != null || card.grading_cost != null) {
+            hasBuyInData = true;
+          }
+          totalBuyIn += (acquired + grading) * card.quantity;
+        }
+      }
+    }
+
+    let netRevenue = 0;
+    for (const tx of sellTxs) {
+      const fee = tx.fee_pct ?? 0;
+      netRevenue += (tx.cash_gained ?? 0) * (1 - fee);
+    }
+
+    const profit = netRevenue - totalBuyIn;
+
+    return {
+      count: inWindow.length,
+      cashFlow,
+      txValue,
+      txValueCount,
+      byType,
+      capped: txs.length >= 200,
+      totalBuyIn,
+      netRevenue,
+      profit,
+      hasBuyInData,
+      sellCount: sellTxs.length,
+    };
+  }, [txs, window, tcgFilter, gradedFilter]);
 
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+
+  const TCG_OPTIONS: { label: string; value: TcgFilter }[] = [
+    { label: "All", value: "all" },
+    { label: "Pokémon", value: "pokemon" },
+    { label: "Naruto", value: "naruto_ccg" },
+  ];
+
+  const GRADED_OPTIONS: { label: string; value: GradedFilter }[] = [
+    { label: "All", value: "all" },
+    { label: "Graded", value: "graded" },
+    { label: "Ungraded", value: "ungraded" },
+  ];
 
   return (
     <div className="p-6 w-[95%] md:w-[80%] mx-auto space-y-8">
@@ -238,25 +337,101 @@ export default function DashboardPage() {
       {/* P&L                                                                 */}
       {/* ------------------------------------------------------------------ */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">P&amp;L</h2>
-          <div className="flex gap-1">
-            {WINDOWS.map((w) => (
-              <button
-                key={w.days}
-                onClick={() => setWindow(w.days)}
-                className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                  window === w.days
-                    ? "bg-foreground text-background border-foreground"
-                    : "bg-background hover:bg-muted border-border"
-                }`}
-              >
-                {w.label}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <FilterToggle options={TCG_OPTIONS} value={tcgFilter} onChange={setTcgFilter} />
+            <FilterToggle options={GRADED_OPTIONS} value={gradedFilter} onChange={setGradedFilter} />
+            <div className="flex gap-1">
+              {WINDOWS.map((w) => (
+                <button
+                  key={w.days}
+                  onClick={() => setWindow(w.days)}
+                  className={`px-3 py-1 text-xs rounded-md border transition-colors ${
+                    window === w.days
+                      ? "bg-foreground text-background border-foreground"
+                      : "bg-background hover:bg-muted border-border"
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
+        {/* Sell P&L — buy-in / net revenue / profit */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+
+          <div className="border rounded-xl p-5 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Total Buy-In</p>
+              <span className="text-xs text-muted-foreground/60">Acquired + grading</span>
+            </div>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold">${fmt(plMetrics.totalBuyIn)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {plMetrics.sellCount} sell transaction{plMetrics.sellCount !== 1 ? "s" : ""} in last {window} days
+                </p>
+                {!plMetrics.hasBuyInData && plMetrics.sellCount > 0 && (
+                  <div className="flex items-start gap-1.5 pt-1">
+                    <AlertCircle size={11} className="flex-shrink-0 mt-0.5 text-amber-500" />
+                    <p className="text-xs text-amber-500/90 leading-tight">
+                      No cost basis recorded — set acquired price on inventory items to populate this
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="border rounded-xl p-5 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Net Revenue</p>
+              <span className="text-xs text-muted-foreground/60">After fees</span>
+            </div>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <>
+                <p className="text-2xl font-bold">${fmt(plMetrics.netRevenue)}</p>
+                <p className="text-xs text-muted-foreground">Cash received minus marketplace fees</p>
+              </>
+            )}
+          </div>
+
+          <div className="border rounded-xl p-5 space-y-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Profit</p>
+              <span className="text-xs text-muted-foreground/60">Net revenue − buy-in</span>
+            </div>
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <p className={`text-2xl font-bold ${plMetrics.profit > 0 ? "text-emerald-500" : plMetrics.profit < 0 ? "text-destructive" : ""}`}>
+                    {plMetrics.profit >= 0 ? "+" : ""}${fmt(plMetrics.profit)}
+                  </p>
+                  {plMetrics.profit > 0 && <TrendingUp  size={16} className="text-emerald-500" />}
+                  {plMetrics.profit < 0 && <TrendingDown size={16} className="text-destructive" />}
+                </div>
+                {!plMetrics.hasBuyInData && plMetrics.netRevenue > 0 && (
+                  <div className="flex items-start gap-1.5 pt-1">
+                    <AlertCircle size={11} className="flex-shrink-0 mt-0.5 text-amber-500" />
+                    <p className="text-xs text-amber-500/90 leading-tight">Buy-in is $0 — profit is overstated until cost basis is recorded</p>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+        </div>
+
+        {/* Legacy cash flow + transaction value */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
           {/* Cash Flow */}
@@ -340,37 +515,9 @@ export default function DashboardPage() {
       </section>
 
       {/* ------------------------------------------------------------------ */}
-      {/* Transaction total                                                   */}
+      {/* All-time transaction total                                          */}
       {/* ------------------------------------------------------------------ */}
       <div className="grid grid-cols-1 gap-4">
-
-        {/* Next show — paused
-        <div className="border rounded-xl p-5 space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next Registered Show</p>
-          {loading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-          ) : nextShow ? (
-            <>
-              <p className="font-semibold leading-snug">{nextShow.name}</p>
-              <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <MapPin size={13} className="flex-shrink-0" />
-                <span>{[nextShow.venue_name, nextShow.city, nextShow.state].filter(Boolean).join(", ") || "Location TBD"}</span>
-              </div>
-              <p className="text-sm text-muted-foreground">{formatShowDate(nextShow.date_start)}</p>
-              <Link href={`/card-shows/${nextShow.id}`} className="text-xs text-primary hover:underline">
-                View show →
-              </Link>
-            </>
-          ) : (
-            <div className="space-y-1.5">
-              <p className="text-sm text-muted-foreground">No upcoming shows registered.</p>
-              <Link href="/card-shows" className="text-xs text-primary hover:underline">Browse shows →</Link>
-            </div>
-          )}
-        </div>
-        */}
-
-        {/* Transaction total */}
         <div className="border rounded-xl p-5 space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">All-Time Transactions</p>
           {loading ? (
@@ -398,7 +545,6 @@ export default function DashboardPage() {
             </>
           )}
         </div>
-
       </div>
     </div>
   );

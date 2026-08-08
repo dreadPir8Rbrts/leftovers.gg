@@ -40,6 +40,7 @@ class Inventory(Base):
     grading_company_other: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     acquired_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    grading_cost: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     asking_price: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     card_status: Mapped[str] = mapped_column(String(10), nullable=False, default="pc")
     variant: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

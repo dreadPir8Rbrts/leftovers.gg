@@ -47,6 +47,7 @@ class Transaction(Base):
     cash_gained: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     cash_lost: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
     transaction_value: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True)
+    fee_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 4), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)

@@ -127,6 +127,7 @@ def add_inventory_item(
         grading_company_other=body.grading_company_other,
         quantity=body.quantity,
         acquired_price=body.acquired_price,
+        grading_cost=body.grading_cost,
         asking_price=body.asking_price,
         card_status=body.card_status,
         variant=body.variant,
@@ -156,6 +157,7 @@ def add_inventory_item(
         "grading_company_other": item.grading_company_other,
         "quantity": item.quantity,
         "acquired_price": item.acquired_price,
+        "grading_cost": item.grading_cost,
         "asking_price": item.asking_price,
         "card_status": item.card_status,
         "variant": item.variant,
@@ -278,6 +280,7 @@ def list_inventory(
             "grading_company_other": item.grading_company_other,
             "quantity": item.quantity,
             "acquired_price": item.acquired_price,
+            "grading_cost": item.grading_cost,
             "asking_price": item.asking_price,
             "card_status": item.card_status,
             "variant": item.variant,
@@ -317,6 +320,8 @@ def patch_inventory_item(
 
     if body.acquired_price is not None:
         item.acquired_price = body.acquired_price
+    if body.grading_cost is not None:
+        item.grading_cost = body.grading_cost
     if body.asking_price is not None:
         item.asking_price = body.asking_price
     if body.card_status is not None:
@@ -342,6 +347,7 @@ def patch_inventory_item(
         "grading_company_other": item.grading_company_other,
         "quantity": item.quantity,
         "acquired_price": item.acquired_price,
+        "grading_cost": item.grading_cost,
         "asking_price": item.asking_price,
         "card_status": item.card_status,
         "variant": item.variant,

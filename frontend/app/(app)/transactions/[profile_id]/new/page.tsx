@@ -1410,6 +1410,7 @@ export default function NewTransactionPage() {
 
   const [txDate, setTxDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [marketplace, setMarketplace] = useState("");
+  const [feePct, setFeePct] = useState("");
   const [counterpartyName, setCounterpartyName] = useState("");
   const [notes, setNotes] = useState("");
   const [autoUpdateInventory, setAutoUpdateInventory] = useState(true);
@@ -1507,10 +1508,12 @@ export default function NewTransactionPage() {
         quantity: c.quantity,
       }));
 
+      const feePctDecimal = feePct !== "" ? parseFloat(feePct) / 100 : undefined;
       const result = await createTransaction({
         transaction_type: txType,
         transaction_date: txDate,
         marketplace: marketplace || undefined,
+        fee_pct: feePctDecimal,
         counterparty_name: counterpartyName || undefined,
         cash_gained: txType !== "buy" ? (parseFloat(cashGained) || undefined) : undefined,
         cash_lost: txType !== "sell" ? (parseFloat(cashLost) || undefined) : undefined,
@@ -1645,7 +1648,12 @@ export default function NewTransactionPage() {
               <label className="text-xs text-muted-foreground">Marketplace</label>
               <select
                 value={marketplace}
-                onChange={(e) => setMarketplace(e.target.value)}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setMarketplace(v);
+                  if (v === "ebay") setFeePct("13");
+                  else if (v === "private" || v === "other") setFeePct("0");
+                }}
                 className="w-full flex-1 border rounded-md px-3 text-sm bg-background mt-1"
               >
                 <option value="">Select…</option>
@@ -1653,6 +1661,19 @@ export default function NewTransactionPage() {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
+            </div>
+            <div className="flex flex-col shrink-0">
+              <label className="text-xs text-muted-foreground">Fee %</label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={feePct}
+                onChange={(e) => setFeePct(e.target.value)}
+                placeholder="0"
+                className="h-10 border rounded-md px-3 text-sm bg-background mt-1 w-20"
+              />
             </div>
           </div>
           <div>

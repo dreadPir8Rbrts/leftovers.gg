@@ -196,6 +196,9 @@ function InventoryEditModal({
   const [acquiredPrice, setAcquiredPrice] = useState(
     item.acquired_price != null ? String(item.acquired_price) : ""
   );
+  const [gradingCost, setGradingCost] = useState(
+    item.grading_cost != null ? String(item.grading_cost) : ""
+  );
   const [askingPrice, setAskingPrice] = useState(
     item.asking_price != null ? String(item.asking_price) : ""
   );
@@ -228,10 +231,12 @@ function InventoryEditModal({
         notes,
       };
       if (acquiredPrice !== "") patch.acquired_price = parseFloat(acquiredPrice);
+      if (gradingCost !== "") patch.grading_cost = parseFloat(gradingCost);
       if (askingPrice !== "" && cardStatus !== "pc") patch.asking_price = parseFloat(askingPrice);
       await patchInventoryItem(item.id, patch);
       onSaved({
         acquired_price: acquiredPrice !== "" ? parseFloat(acquiredPrice) : undefined,
+        grading_cost: gradingCost !== "" ? parseFloat(gradingCost) : undefined,
         asking_price: askingPrice !== "" && cardStatus !== "pc" ? parseFloat(askingPrice) : undefined,
         card_status: cardStatus,
         variant: variant || null,
@@ -301,24 +306,39 @@ function InventoryEditModal({
               </div>
             </div>
             <div className="space-y-1">
-              <label className={`text-xs ${cardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
-                Asking price
-              </label>
+              <label className="text-xs text-muted-foreground">Grading cost</label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
-                  value={askingPrice}
-                  onChange={(e) => setAskingPrice(e.target.value)}
+                  value={gradingCost}
+                  onChange={(e) => setGradingCost(e.target.value)}
                   placeholder="0.00"
-                  disabled={cardStatus === "pc"}
-                  className={`w-full border rounded-md pl-6 pr-3 py-1.5 text-sm bg-background ${
-                    cardStatus === "pc" ? "opacity-40 cursor-not-allowed" : ""
-                  }`}
+                  className="w-full border rounded-md pl-6 pr-3 py-1.5 text-sm bg-background"
                 />
               </div>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className={`text-xs ${cardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
+              Asking price
+            </label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={askingPrice}
+                onChange={(e) => setAskingPrice(e.target.value)}
+                placeholder="0.00"
+                disabled={cardStatus === "pc"}
+                className={`w-full border rounded-md pl-6 pr-3 py-1.5 text-sm bg-background ${
+                  cardStatus === "pc" ? "opacity-40 cursor-not-allowed" : ""
+                }`}
+              />
             </div>
           </div>
 

@@ -51,6 +51,7 @@ export interface InventoryItemCreate {
   grade?: string;
   grading_company_other?: string;
   acquired_price?: string;
+  grading_cost?: string;
   asking_price?: string;
   card_status: CardStatus;
   variant?: string | null;
@@ -60,6 +61,7 @@ export interface InventoryItemCreate {
 
 export interface InventoryItemPatch {
   acquired_price?: number;
+  grading_cost?: number;
   asking_price?: number;
   card_status?: CardStatus;
   variant?: string | null;
@@ -205,6 +207,7 @@ export interface InventoryItemWithCard {
   grading_company_other?: string;
   quantity: number;
   acquired_price?: number;
+  grading_cost?: number | null;
   asking_price?: number;
   card_status: CardStatus;
   variant?: string | null;
@@ -729,13 +732,8 @@ export type TransactionType = "buy" | "sell" | "trade";
 export type TransactionDirection = "gained" | "lost";
 
 export const MARKETPLACE_OPTIONS = [
-  { value: "card_show", label: "Card Show" },
   { value: "ebay", label: "eBay" },
-  { value: "facebook_marketplace", label: "Facebook Marketplace" },
-  { value: "tcgplayer", label: "TCGPlayer" },
-  { value: "mercari", label: "Mercari" },
-  { value: "instagram", label: "Instagram" },
-  { value: "local", label: "Local / In Person" },
+  { value: "private", label: "Private" },
   { value: "other", label: "Other" },
 ] as const;
 
@@ -763,6 +761,7 @@ export interface TransactionIn {
   cash_gained?: number;
   cash_lost?: number;
   transaction_value?: number;       // omit to auto-compute
+  fee_pct?: number;                 // decimal e.g. 0.13 for 13%
   notes?: string;
   cards: TransactionCardIn[];
   auto_update_inventory?: boolean;
@@ -776,7 +775,10 @@ export interface TransactionCardOut {
   card_num?: string | null;
   set_name?: string | null;
   image_url?: string | null;
+  game?: string | null;
   inventory_item_id?: string | null;
+  acquired_price?: number | null;
+  grading_cost?: number | null;
   condition_type: "ungraded" | "graded";
   condition_ungraded?: string | null;
   grading_company?: string | null;
@@ -805,6 +807,7 @@ export interface TransactionOut {
   cash_gained?: number | null;
   cash_lost?: number | null;
   transaction_value?: number | null;
+  fee_pct?: number | null;
   notes?: string | null;
   created_at: string;
   cards: TransactionCardOut[];
