@@ -513,7 +513,8 @@ export default function CardDetailPage() {
     try {
       const newQty = parseInt(modalQuantity) || 1;
       const totalQty = mergeExistingItem.quantity + newQty;
-      const existingPrice = mergeExistingItem.acquired_price ?? null;
+      const existingPriceRaw = mergeExistingItem.acquired_price;
+      const existingPrice = existingPriceRaw != null ? parseFloat(String(existingPriceRaw)) : null;
       const newPriceRaw = parseFloat(modalAcquiredPrice);
       const newPrice = isNaN(newPriceRaw) ? null : newPriceRaw;
 
@@ -1450,7 +1451,8 @@ export default function CardDetailPage() {
       {mergeDialogOpen && mergeExistingItem && (() => {
         const newQty = parseInt(modalQuantity) || 1;
         const totalQty = mergeExistingItem.quantity + newQty;
-        const existingPrice = mergeExistingItem.acquired_price ?? null;
+        const existingPriceRaw = mergeExistingItem.acquired_price;
+        const existingPrice = existingPriceRaw != null ? parseFloat(String(existingPriceRaw)) : null;
         const newPriceRaw = parseFloat(modalAcquiredPrice);
         const newPrice = isNaN(newPriceRaw) ? null : newPriceRaw;
         const condLabel = modalConditionType === "ungraded"
