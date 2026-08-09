@@ -713,26 +713,6 @@ export default function ProfilePage() {
         </div>
       </div>
 
-      {/* Featured card slots — desktop only, overlapping the bottom of the banner */}
-      <div className="hidden md:flex justify-between items-start max-w-4xl mx-auto px-6 -mt-16 relative z-10 pointer-events-none">
-        <div className="w-32 pointer-events-auto">
-          <FeaturedCardSlot
-            card={(profile as AnyProfile).featured_card_left ?? null}
-            isOwner={isOwner}
-            onPick={() => setPickerOpen("left")}
-            onClear={() => handleClearFeaturedCard("left")}
-          />
-        </div>
-        <div className="w-32 pointer-events-auto">
-          <FeaturedCardSlot
-            card={(profile as AnyProfile).featured_card_right ?? null}
-            isOwner={isOwner}
-            onPick={() => setPickerOpen("right")}
-            onClear={() => handleClearFeaturedCard("right")}
-          />
-        </div>
-      </div>
-
       {/* Public / Private toggle — below banner, right-aligned */}
       {isOwner && (
         <div className="flex justify-end px-3 pt-2">
@@ -769,8 +749,21 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Display name + role badge */}
-      <div className="mt-16 text-center px-6 relative">
+      {/* Profile info + card slots — 3-col on desktop */}
+      <div className="mt-10 md:grid md:grid-cols-[128px_1fr_128px] md:items-start md:gap-4 md:max-w-3xl md:mx-auto">
+
+        {/* Left card slot — desktop only */}
+        <div className="hidden md:flex md:flex-col md:items-center">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_left ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("left")}
+            onClear={() => handleClearFeaturedCard("left")}
+          />
+        </div>
+
+        {/* Center: name, bio, links, edit */}
+        <div className="text-center px-6 md:px-0 relative">
         {/* Owner: follower count sits above handle, below avatar */}
         {isOwner && (
           <p className="text-xs text-muted-foreground mb-2">
@@ -835,12 +828,9 @@ export default function ProfilePage() {
             </Button>
           </div>
         )}
-      </div>
 
-      {/* Profile details */}
-      <div className="mt-6">
-        <div className="max-w-xl mx-auto px-6 space-y-4">
-        {!editing ? (
+          <div className="mt-4 space-y-4">
+          {!editing ? (
           <>
             {profile.bio && (
               <p className="text-sm text-muted-foreground text-center">{profile.bio}</p>
@@ -1001,8 +991,20 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
-      </div>
-      </div>
+          </div>{/* end bio section */}
+        </div>{/* end center col */}
+
+        {/* Right card slot — desktop only */}
+        <div className="hidden md:flex md:flex-col md:items-center">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_right ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("right")}
+            onClear={() => handleClearFeaturedCard("right")}
+          />
+        </div>
+
+      </div>{/* end 3-col grid */}
 
       {/* Pricing formula modal (owner only) */}
       {isOwner && showPricingModal && (
