@@ -61,6 +61,7 @@ import { startOrFindConversation } from "@/lib/api/messaging";
 
 type AnyProfile = ProfileData | PublicProfileData;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function FeaturedCardSlot({
   card,
   isOwner,
@@ -334,6 +335,7 @@ export default function ProfilePage() {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleClearFeaturedCard(slot: "left" | "right") {
     const patch = slot === "left" ? { featured_card_left_id: null } : { featured_card_right_id: null };
     setProfile((prev) => prev ? {
