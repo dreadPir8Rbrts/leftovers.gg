@@ -36,4 +36,6 @@ class Profile(Base):
     buying_rate: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
     trade_rate: Mapped[Optional[float]] = mapped_column(Numeric(4, 3), nullable=True)
     is_accounting_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    featured_card_left_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), nullable=True)
+    featured_card_right_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=False), nullable=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False, default=datetime.utcnow)

@@ -21,6 +21,8 @@ import {
   getOwnWishlist,
   getPublicWishlist,
   formatVariantName,
+  searchCardsSmart,
+  type Card,
   type InventoryItemWithCard,
   type WishlistItemWithCard,
 } from "@/lib/api";
@@ -35,6 +37,7 @@ import {
   uploadAvatar,
   type ProfileData,
   type PublicProfileData,
+  type FeaturedCard,
 } from "@/lib/api/profiles";
 import { useProfile } from "@/lib/hooks/useProfile";
 import { Button } from "@/components/ui/button";
@@ -57,6 +60,75 @@ import {
 import { startOrFindConversation } from "@/lib/api/messaging";
 
 type AnyProfile = ProfileData | PublicProfileData;
+
+function FeaturedCardSlot({
+  card,
+  isOwner,
+  onPick,
+  onClear,
+}: {
+  card: FeaturedCard | null;
+  isOwner: boolean;
+  onPick: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 w-full">
+      <div
+        className={`relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-muted transition-colors ${
+          card
+            ? "border border-border/60 shadow-sm"
+            : "border-2 border-dashed border-border/40 hover:border-border/70"
+        } ${isOwner ? "cursor-pointer" : ""}`}
+        onClick={isOwner && !card ? onPick : undefined}
+      >
+        {card?.image_url ? (
+          <Image src={card.image_url} alt={card.name} fill sizes="140px" className="object-contain p-1" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            {isOwner && (
+              <span className="text-3xl text-muted-foreground/25 select-none">+</span>
+            )}
+          </div>
+        )}
+        {card && isOwner && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onClear(); }}
+              className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 text-white text-xs flex items-center justify-center hover:bg-black/80 transition-colors"
+              title="Remove"
+            >
+              ×
+            </button>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onPick(); }}
+              className="absolute bottom-1.5 right-1.5 w-5 h-5 rounded-full bg-black/50 text-white text-[10px] flex items-center justify-center hover:bg-black/80 transition-colors"
+              title="Change card"
+            >
+              ✎
+            </button>
+          </>
+        )}
+      </div>
+      {card && (
+        <p className="text-[10px] text-muted-foreground text-center leading-tight line-clamp-2 w-full px-1">
+          {card.name}
+        </p>
+      )}
+      {isOwner && !card && (
+        <button
+          type="button"
+          onClick={onPick}
+          className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+        >
+          Add favorite
+        </button>
+      )}
+    </div>
+  );
+}
 
 function formatCondition(item: InventoryItemWithCard): string {
   if (item.condition_type === "ungraded") {
@@ -136,6 +208,12 @@ export default function ProfilePage() {
   const [followerCount, setFollowerCount] = useState(0);
   const [followLoading, setFollowLoading] = useState(false);
 
+  // Featured card picker state
+  const [pickerOpen, setPickerOpen] = useState<"left" | "right" | null>(null);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const [pickerResults, setPickerResults] = useState<Card[]>([]);
+  const [pickerLoading, setPickerLoading] = useState(false);
+
   const backgroundInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const addLinkCustomInputRef = useRef<HTMLInputElement>(null);
@@ -209,6 +287,66 @@ export default function ProfilePage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Debounced card picker search
+  useEffect(() => {
+    if (!pickerQuery || pickerQuery.length < 2) {
+      setPickerResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setPickerLoading(true);
+      searchCardsSmart({ q: pickerQuery, limit: 12 })
+        .then(setPickerResults)
+        .catch(() => setPickerResults([]))
+        .finally(() => setPickerLoading(false));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [pickerQuery]);
+
+  function closePickerModal() {
+    setPickerOpen(null);
+    setPickerQuery("");
+    setPickerResults([]);
+    setPickerLoading(false);
+  }
+
+  async function handlePickCard(card: Card) {
+    const slot = pickerOpen;
+    closePickerModal();
+    const patch = slot === "left"
+      ? { featured_card_left_id: card.id }
+      : { featured_card_right_id: card.id };
+    const featured: FeaturedCard = { id: card.id, name: card.name, image_url: card.image_url ?? null };
+    setProfile((prev) => prev ? {
+      ...prev,
+      ...(slot === "left" ? { featured_card_left: featured } : { featured_card_right: featured }),
+    } : prev);
+    try {
+      const updated = await updateProfile(patch);
+      setProfile(updated);
+    } catch {
+      // Revert on error
+      setProfile((prev) => prev ? {
+        ...prev,
+        ...(slot === "left" ? { featured_card_left: null } : { featured_card_right: null }),
+      } : prev);
+    }
+  }
+
+  async function handleClearFeaturedCard(slot: "left" | "right") {
+    const patch = slot === "left" ? { featured_card_left_id: null } : { featured_card_right_id: null };
+    setProfile((prev) => prev ? {
+      ...prev,
+      ...(slot === "left" ? { featured_card_left: null } : { featured_card_right: null }),
+    } : prev);
+    try {
+      const updated = await updateProfile(patch);
+      setProfile(updated);
+    } catch {
+      // silent — optimistic already applied
+    }
+  }
 
   const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -679,8 +817,21 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Profile details */}
-      <div className="max-w-xl mx-auto px-6 mt-6 space-y-4">
+      {/* Profile details — 3-col on desktop (featured cards flank center content) */}
+      <div className="mt-6 md:grid md:grid-cols-[140px_1fr_140px] md:gap-5 md:max-w-4xl md:mx-auto md:px-6">
+
+        {/* Left featured card slot — desktop only */}
+        <div className="hidden md:flex md:flex-col md:items-center md:pt-2">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_left ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("left")}
+            onClear={() => handleClearFeaturedCard("left")}
+          />
+        </div>
+
+        {/* Center: bio + links + edit form */}
+        <div className="max-w-xl mx-auto px-6 md:max-w-none md:px-0 space-y-4">
         {!editing ? (
           <>
             {profile.bio && (
@@ -842,7 +993,19 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
-      </div>
+      </div>{/* end center col */}
+
+        {/* Right featured card slot — desktop only */}
+        <div className="hidden md:flex md:flex-col md:items-center md:pt-2">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_right ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("right")}
+            onClear={() => handleClearFeaturedCard("right")}
+          />
+        </div>
+
+      </div>{/* end 3-col grid */}
 
       {/* Pricing formula modal (owner only) */}
       {isOwner && showPricingModal && (
@@ -1470,6 +1633,63 @@ export default function ProfilePage() {
               >
                 {editLinkSaving ? "Saving…" : "Save"}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Featured card picker modal */}
+      {pickerOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-4"
+          onClick={closePickerModal}
+        >
+          <div
+            className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Choose a favorite card</h2>
+                <button type="button" onClick={closePickerModal} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
+              </div>
+              <input
+                autoFocus
+                type="text"
+                placeholder="Search by name or set…"
+                value={pickerQuery}
+                onChange={(e) => setPickerQuery(e.target.value)}
+                className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              />
+              <div className="max-h-64 overflow-y-auto space-y-0.5">
+                {pickerLoading && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Searching…</p>
+                )}
+                {!pickerLoading && pickerResults.map((card) => (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => handlePickCard(card)}
+                    className="w-full flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-muted text-left transition-colors"
+                  >
+                    <div className="relative w-8 h-11 shrink-0 rounded overflow-hidden bg-muted border border-border/20">
+                      {card.image_url && (
+                        <Image src={card.image_url} alt={card.name} fill sizes="32px" className="object-contain" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{card.name}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">{card.set_name}</p>
+                    </div>
+                  </button>
+                ))}
+                {!pickerLoading && pickerQuery.length >= 2 && pickerResults.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-4">No cards found</p>
+                )}
+                {!pickerQuery && (
+                  <p className="text-xs text-muted-foreground text-center py-4">Type at least 2 characters to search</p>
+                )}
+              </div>
             </div>
           </div>
         </div>

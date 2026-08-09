@@ -11,6 +11,12 @@ async function authHeaders(): Promise<HeadersInit> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+export interface FeaturedCard {
+  id: string;
+  name: string;
+  image_url: string | null;
+}
+
 /** Public-safe subset of profile fields returned by GET /profiles/{id} */
 export interface PublicProfileData {
   id: string;
@@ -24,6 +30,8 @@ export interface PublicProfileData {
   buying_rate: number | null;
   trade_rate: number | null;
   is_public: boolean;
+  featured_card_left: FeaturedCard | null;
+  featured_card_right: FeaturedCard | null;
 }
 
 export interface ProfileData {
@@ -41,6 +49,8 @@ export interface ProfileData {
   trade_rate: number | null;
   is_accounting_enabled: boolean;
   is_public: boolean;
+  featured_card_left: FeaturedCard | null;
+  featured_card_right: FeaturedCard | null;
 }
 
 export interface ProfileUpdate {
@@ -56,6 +66,8 @@ export interface ProfileUpdate {
   trade_rate?: number;
   is_accounting_enabled?: boolean;
   is_public?: boolean;
+  featured_card_left_id?: string | null;
+  featured_card_right_id?: string | null;
 }
 
 export async function getProfile(): Promise<ProfileData> {

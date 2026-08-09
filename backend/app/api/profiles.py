@@ -47,9 +47,27 @@ class ProfileUpdate(BaseModel):
     trade_rate: Optional[Decimal] = Field(None, ge=0, le=1)
     is_accounting_enabled: Optional[bool] = None
     is_public: Optional[bool] = None
+    featured_card_left_id: Optional[str] = None
+    featured_card_right_id: Optional[str] = None
 
 
-def _public_profile_response(profile: Profile) -> Dict[str, Any]:
+def _featured_card_info(card_id: Optional[str], db: Session) -> Optional[Dict[str, Any]]:
+    if not card_id:
+        return None
+    try:
+        card = db.get(CardV2, uuid_module.UUID(card_id))
+    except (ValueError, AttributeError):
+        return None
+    if not card:
+        return None
+    return {
+        "id": str(card.id),
+        "name": card.name,
+        "image_url": _image_url(card.images),
+    }
+
+
+def _public_profile_response(profile: Profile, db: Session) -> Dict[str, Any]:
     """Safe subset of profile fields — returned to unauthenticated visitors."""
     return {
         "id": profile.id,
@@ -63,6 +81,8 @@ def _public_profile_response(profile: Profile) -> Dict[str, Any]:
         "buying_rate": profile.buying_rate,
         "trade_rate": profile.trade_rate,
         "is_public": profile.is_public,
+        "featured_card_left": _featured_card_info(profile.featured_card_left_id, db),
+        "featured_card_right": _featured_card_info(profile.featured_card_right_id, db),
     }
 
 
@@ -99,7 +119,7 @@ def _inventory_item_response(inv: Inventory, card: Optional[CardV2], expansion: 
     }
 
 
-def _profile_response(profile: Profile) -> Dict[str, Any]:
+def _profile_response(profile: Profile, db: Session) -> Dict[str, Any]:
     return {
         "id": profile.id,
         "role": profile.role,
@@ -115,15 +135,18 @@ def _profile_response(profile: Profile) -> Dict[str, Any]:
         "trade_rate": profile.trade_rate,
         "is_accounting_enabled": profile.is_accounting_enabled,
         "is_public": profile.is_public,
+        "featured_card_left": _featured_card_info(profile.featured_card_left_id, db),
+        "featured_card_right": _featured_card_info(profile.featured_card_right_id, db),
     }
 
 
 @router.get("/profiles/me")
 def get_profile(
     profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Return the authenticated user's profile."""
-    return _profile_response(profile)
+    return _profile_response(profile, db)
 
 
 @router.get("/profiles/me/wishlist")
@@ -180,10 +203,15 @@ def update_profile(
     for key, value in update_data.items():
         setattr(profile, key, value)
 
+    # Allow explicit null to clear featured card slots
+    for field in ("featured_card_left_id", "featured_card_right_id"):
+        if field in body.model_fields_set:
+            setattr(profile, field, getattr(body, field))
+
     db.add(profile)
     db.commit()
     db.refresh(profile)
-    return _profile_response(profile)
+    return _profile_response(profile, db)
 
 
 @router.post("/profiles/me/background")
@@ -328,7 +356,7 @@ def get_public_profile(
     profile = db.get(Profile, profile_id)
     if profile is None or not profile.is_public:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
-    return _public_profile_response(profile)
+    return _public_profile_response(profile, db)
 
 
 @router.get("/profiles/{profile_id}/inventory")
