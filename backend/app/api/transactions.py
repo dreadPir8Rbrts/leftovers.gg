@@ -5,6 +5,7 @@ Routes:
   GET    /transactions          — list the current user's transactions (newest first)
   POST   /transactions          — create a transaction
   GET    /transactions/{id}     — get a single transaction with its cards
+  PATCH  /transactions/{id}     — update metadata on an existing transaction
   DELETE /transactions/{id}     — soft-delete a transaction
 """
 
@@ -73,6 +74,14 @@ class TransactionIn(BaseModel):
     notes: Optional[str] = None
     cards: List[TransactionCardIn] = []
     auto_update_inventory: bool = False
+
+
+class TransactionPatch(BaseModel):
+    transaction_date: Optional[date] = None
+    marketplace: Optional[str] = None
+    counterparty_name: Optional[str] = None
+    fee_pct: Optional[float] = None
+    notes: Optional[str] = None
 
 
 class TransactionCardOut(BaseModel):
@@ -640,6 +649,29 @@ def get_transaction(
     ).first()
     if tx is None:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    return _build_transaction_out(tx, db)
+
+
+@router.patch("/transactions/{transaction_id}", response_model=TransactionOut)
+def patch_transaction(
+    transaction_id: str,
+    body: TransactionPatch,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+):
+    """Update mutable metadata on an existing transaction (date, marketplace, counterparty, fee_pct, notes)."""
+    tx = db.query(Transaction).filter(
+        Transaction.id == transaction_id,
+        Transaction.profile_id == profile.id,
+        Transaction.deleted_at.is_(None),
+    ).first()
+    if tx is None:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    for field in body.model_fields_set:
+        setattr(tx, field, getattr(body, field))
+
+    db.commit()
     return _build_transaction_out(tx, db)
 
 

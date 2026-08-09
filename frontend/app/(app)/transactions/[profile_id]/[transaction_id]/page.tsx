@@ -4,10 +4,11 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import {
   getTransaction,
   getTransactionLiveDelta,
+  patchTransaction,
   deleteTransaction,
   MARKETPLACE_OPTIONS,
   type TransactionOut,
@@ -97,6 +98,16 @@ export default function TransactionDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Edit mode
+  const [editing, setEditing] = useState(false);
+  const [editDate, setEditDate] = useState("");
+  const [editMarketplace, setEditMarketplace] = useState("");
+  const [editCounterparty, setEditCounterparty] = useState("");
+  const [editFeePct, setEditFeePct] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   useEffect(() => {
     getTransaction(params.transaction_id)
       .then((data) => {
@@ -110,6 +121,44 @@ export default function TransactionDetailPage() {
         setLoading(false);
       });
   }, [params.transaction_id]);
+
+  function handleStartEdit() {
+    if (!tx) return;
+    setEditDate(tx.transaction_date);
+    setEditMarketplace(tx.marketplace ?? "");
+    setEditCounterparty(tx.counterparty_name ?? "");
+    setEditFeePct(tx.fee_pct != null ? String(Math.round(tx.fee_pct * 100 * 10) / 10) : "");
+    setEditNotes(tx.notes ?? "");
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!tx) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const feePctNum = parseFloat(editFeePct);
+      const updated = await patchTransaction(tx.id, {
+        transaction_date: editDate,
+        marketplace: editMarketplace || null,
+        counterparty_name: editCounterparty || null,
+        fee_pct: isNaN(feePctNum) ? null : feePctNum / 100,
+        notes: editNotes || null,
+      });
+      setTx(updated);
+      setEditing(false);
+    } catch {
+      setSaveError("Failed to save changes.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancelEdit() {
+    setEditing(false);
+    setSaveError(null);
+  }
 
   async function handleDelete() {
     if (!confirm("Delete this transaction? This cannot be undone.")) return;
@@ -157,15 +206,96 @@ export default function TransactionDetailPage() {
           <ArrowLeft size={20} />
         </Link>
         <h1 className="text-xl font-bold">Transaction</h1>
+        <div className="ml-auto flex items-center gap-2">
+          {editing ? (
+            <>
+              <Button variant="outline" size="sm" onClick={handleCancelEdit} disabled={saving}>Cancel</Button>
+              <Button size="sm" onClick={handleSaveEdit} disabled={saving}>
+                {saving ? "Saving…" : "Save"}
+              </Button>
+            </>
+          ) : (
+            <Button variant="outline" size="sm" onClick={handleStartEdit}>
+              <Pencil size={14} className="mr-1.5" />Edit
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-2 mb-6 text-sm text-muted-foreground">
-        <TypeBadge type={tx.transaction_type} />
-        <span>{formatDate(tx.transaction_date)}</span>
-        {mp && <><span>·</span><span>{mp}</span></>}
-        {tx.counterparty_name && <><span>·</span><span>{tx.counterparty_name}</span></>}
-      </div>
+      {/* Meta row — view or edit */}
+      {editing ? (
+        <div className="border rounded-xl p-4 space-y-3 mb-6">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Date</label>
+              <input
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="h-9 border rounded-md px-3 text-sm bg-background"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Marketplace</label>
+              <select
+                value={editMarketplace}
+                onChange={(e) => setEditMarketplace(e.target.value)}
+                className="h-9 border rounded-md px-3 text-sm bg-background"
+              >
+                <option value="">— None —</option>
+                {MARKETPLACE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Counterparty</label>
+              <input
+                type="text"
+                value={editCounterparty}
+                onChange={(e) => setEditCounterparty(e.target.value)}
+                placeholder="Name or handle"
+                className="h-9 border rounded-md px-3 text-sm bg-background"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-muted-foreground">Fee %</label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={editFeePct}
+                  onChange={(e) => setEditFeePct(e.target.value)}
+                  placeholder="13"
+                  className="h-9 border rounded-md pl-3 pr-7 text-sm bg-background w-full"
+                />
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+              </div>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-muted-foreground">Notes</label>
+            <textarea
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="Any notes about this transaction…"
+              rows={3}
+              className="border rounded-md px-3 py-2 text-sm bg-background resize-none"
+            />
+          </div>
+          {saveError && <p className="text-xs text-destructive">{saveError}</p>}
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 mb-6 text-sm text-muted-foreground">
+          <TypeBadge type={tx.transaction_type} />
+          <span>{formatDate(tx.transaction_date)}</span>
+          {mp && <><span>·</span><span>{mp}</span></>}
+          {tx.counterparty_name && <><span>·</span><span>{tx.counterparty_name}</span></>}
+          {tx.fee_pct != null && <><span>·</span><span>{Math.round(tx.fee_pct * 100 * 10) / 10}% fee</span></>}
+        </div>
+      )}
 
       {/* Two-column card sides */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -233,8 +363,8 @@ export default function TransactionDetailPage() {
         )}
       </div>
 
-      {/* Notes */}
-      {tx.notes && (
+      {/* Notes — hidden when editing (notes field is in the edit form above) */}
+      {!editing && tx.notes && (
         <div className="border rounded-xl p-4 mb-6">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
           <p className="text-sm whitespace-pre-wrap">{tx.notes}</p>

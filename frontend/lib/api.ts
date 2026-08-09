@@ -855,6 +855,24 @@ export async function getTransaction(id: string): Promise<TransactionOut> {
   return res.json();
 }
 
+export interface TransactionPatch {
+  transaction_date?: string;
+  marketplace?: string | null;
+  counterparty_name?: string | null;
+  fee_pct?: number | null;
+  notes?: string | null;
+}
+
+export async function patchTransaction(id: string, patch: TransactionPatch): Promise<TransactionOut> {
+  const res = await fetch(`${API_URL}/api/v1/transactions/${id}`, {
+    method: "PATCH",
+    headers: await authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Failed to update transaction: ${res.status}`);
+  return res.json();
+}
+
 export async function deleteTransaction(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/api/v1/transactions/${id}`, {
     method: "DELETE",
