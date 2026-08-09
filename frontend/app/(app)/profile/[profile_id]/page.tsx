@@ -75,10 +75,10 @@ function FeaturedCardSlot({
   return (
     <div className="flex flex-col items-center gap-1.5 w-full">
       <div
-        className={`relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-muted transition-colors ${
+        className={`relative w-full aspect-[2/3] rounded-xl overflow-hidden transition-colors ${
           card
-            ? "border border-border/60 shadow-sm"
-            : "border-2 border-dashed border-border/40 hover:border-border/70"
+            ? "bg-muted border border-border/60 shadow-sm"
+            : "bg-black/20 border-2 border-dashed border-white/60 hover:border-white/80"
         } ${isOwner ? "cursor-pointer" : ""}`}
         onClick={isOwner && !card ? onPick : undefined}
       >
@@ -87,7 +87,7 @@ function FeaturedCardSlot({
         ) : (
           <div className="absolute inset-0 flex items-center justify-center">
             {isOwner && (
-              <span className="text-3xl text-muted-foreground/25 select-none">+</span>
+              <span className="text-3xl text-white/40 select-none">+</span>
             )}
           </div>
         )}
@@ -121,9 +121,9 @@ function FeaturedCardSlot({
         <button
           type="button"
           onClick={onPick}
-          className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          className="text-[10px] text-white/70 hover:text-white transition-colors"
         >
-          Add favorite
+          Add your grail
         </button>
       )}
     </div>
@@ -713,6 +713,26 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Featured card slots — desktop only, overlapping the bottom of the banner */}
+      <div className="hidden md:flex justify-between items-start max-w-4xl mx-auto px-6 -mt-16 relative z-10 pointer-events-none">
+        <div className="w-32 pointer-events-auto">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_left ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("left")}
+            onClear={() => handleClearFeaturedCard("left")}
+          />
+        </div>
+        <div className="w-32 pointer-events-auto">
+          <FeaturedCardSlot
+            card={(profile as AnyProfile).featured_card_right ?? null}
+            isOwner={isOwner}
+            onPick={() => setPickerOpen("right")}
+            onClear={() => handleClearFeaturedCard("right")}
+          />
+        </div>
+      </div>
+
       {/* Public / Private toggle — below banner, right-aligned */}
       {isOwner && (
         <div className="flex justify-end px-3 pt-2">
@@ -817,21 +837,9 @@ export default function ProfilePage() {
         )}
       </div>
 
-      {/* Profile details — 3-col on desktop (featured cards flank center content) */}
-      <div className="mt-6 md:grid md:grid-cols-[140px_1fr_140px] md:gap-5 md:max-w-4xl md:mx-auto md:px-6">
-
-        {/* Left featured card slot — desktop only */}
-        <div className="hidden md:flex md:flex-col md:items-center md:pt-2">
-          <FeaturedCardSlot
-            card={(profile as AnyProfile).featured_card_left ?? null}
-            isOwner={isOwner}
-            onPick={() => setPickerOpen("left")}
-            onClear={() => handleClearFeaturedCard("left")}
-          />
-        </div>
-
-        {/* Center: bio + links + edit form */}
-        <div className="max-w-xl mx-auto px-6 md:max-w-none md:px-0 space-y-4">
+      {/* Profile details */}
+      <div className="mt-6">
+        <div className="max-w-xl mx-auto px-6 space-y-4">
         {!editing ? (
           <>
             {profile.bio && (
@@ -993,19 +1001,8 @@ export default function ProfilePage() {
             </div>
           </div>
         )}
-      </div>{/* end center col */}
-
-        {/* Right featured card slot — desktop only */}
-        <div className="hidden md:flex md:flex-col md:items-center md:pt-2">
-          <FeaturedCardSlot
-            card={(profile as AnyProfile).featured_card_right ?? null}
-            isOwner={isOwner}
-            onPick={() => setPickerOpen("right")}
-            onClear={() => handleClearFeaturedCard("right")}
-          />
-        </div>
-
-      </div>{/* end 3-col grid */}
+      </div>
+      </div>
 
       {/* Pricing formula modal (owner only) */}
       {isOwner && showPricingModal && (
@@ -1650,7 +1647,7 @@ export default function ProfilePage() {
           >
             <div className="p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Choose a favorite card</h2>
+                <h2 className="text-sm font-semibold">Choose your grail</h2>
                 <button type="button" onClick={closePickerModal} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
               </div>
               <input
