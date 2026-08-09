@@ -13,6 +13,27 @@
   to { --search-angle: 360deg; }
 }
 
+/* Circular spinning border for the nav logo — same palette as the search bar, tighter glow. */
+.logo-spinning-border {
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#000, #000) padding-box,
+    conic-gradient(
+      from var(--search-angle),
+      #7C3AED  0deg,
+      #C026D3  80deg,
+      #EC4899  160deg,
+      #06B6D4  240deg,
+      #3B82F6  310deg,
+      #7C3AED  360deg
+    ) border-box;
+  box-shadow:
+    0 0 8px  rgba(124, 58, 237, 0.55),
+    0 0 16px rgba(192, 38, 211, 0.35),
+    0 0 26px rgba(6, 182, 212, 0.18);
+  animation: search-border-spin 6s linear infinite;
+}
+
 /* Full-perimeter gradient spinning border — purple → fuchsia → pink → cyan loop.
    Glassy interior via semi-transparent fill + backdrop-blur. */
 .search-spinning-border {

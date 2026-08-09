@@ -668,7 +668,7 @@ export default function ProfilePage() {
       )}
 
       {/* Hero banner */}
-      <div className="relative w-full h-48 bg-muted md:mt-10">
+      <div className="relative w-full h-48 bg-muted">
         {profile.background_url && (
           <Image
             src={profile.background_url}

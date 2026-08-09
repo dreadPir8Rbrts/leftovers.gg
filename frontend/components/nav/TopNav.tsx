@@ -17,10 +17,12 @@ interface TopNavProps {
 
 export function TopNav({ profile }: TopNavProps) {
   return (
-    <header className="h-14 md:h-20 border-b border-b-black/10 flex items-center px-4 gap-4 sticky top-0 z-50 shrink-0 relative" style={{ backgroundColor: '#000000' }}>
+    <header className="h-14 md:h-20 border-b border-b-white/20 flex items-center px-4 gap-4 sticky top-0 z-50 shrink-0 relative" style={{ backgroundColor: '#000000' }}>
       <Link href="/" className="font-brand text-sm flex items-center gap-2" style={{ color: '#FFFFFF', fontWeight: 500, letterSpacing: '0.2px' }}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/images/logo/leftovers-apple-logo.jpg" alt="leftovers.gg logo" width={37} height={37} className="rounded-full object-cover shrink-0" />
+        <div className="logo-spinning-border rounded-full shrink-0 w-[37px] h-[37px]">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/images/logo/leftovers-apple-logo.jpg" alt="leftovers.gg logo" className="w-full h-full object-cover rounded-full block" />
+        </div>
         leftovers<span className="text-primary">.gg</span>
       </Link>
       <div className="flex-1" />
