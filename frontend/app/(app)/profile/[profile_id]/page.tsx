@@ -749,10 +749,11 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Profile info + card slots — 3-col on desktop */}
-      <div className="mt-10 md:grid md:grid-cols-[128px_1fr_128px] md:items-start md:gap-4 md:max-w-3xl md:mx-auto">
+      {/* Profile info + card slots — 3-col on desktop (slots currently commented out) */}
+      <div className="mt-10 md:max-w-3xl md:mx-auto">
 
         {/* Left card slot — desktop only */}
+        {/* HIDDEN: featured card slots temporarily disabled
         <div className="hidden md:flex md:flex-col md:items-center">
           <FeaturedCardSlot
             card={(profile as AnyProfile).featured_card_left ?? null}
@@ -761,6 +762,7 @@ export default function ProfilePage() {
             onClear={() => handleClearFeaturedCard("left")}
           />
         </div>
+        */}
 
         {/* Center: name, bio, links, edit */}
         <div className="text-center px-6 md:px-0 relative">
@@ -995,6 +997,7 @@ export default function ProfilePage() {
         </div>{/* end center col */}
 
         {/* Right card slot — desktop only */}
+        {/* HIDDEN: featured card slots temporarily disabled
         <div className="hidden md:flex md:flex-col md:items-center">
           <FeaturedCardSlot
             card={(profile as AnyProfile).featured_card_right ?? null}
@@ -1003,6 +1006,7 @@ export default function ProfilePage() {
             onClear={() => handleClearFeaturedCard("right")}
           />
         </div>
+        */}
 
       </div>{/* end 3-col grid */}
 
