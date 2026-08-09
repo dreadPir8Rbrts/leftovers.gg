@@ -126,7 +126,7 @@ export function GlobalSearch() {
   const hasResults = mode === "cards" ? cardResults.length > 0 : userResults.length > 0;
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-sm">
+    <div ref={containerRef} className="relative w-full max-w-sm md:max-w-none">
       <div className="search-spinning-border rounded-full flex items-center pl-3 pr-2 gap-1">
         <Search className="h-4 w-4 text-white/40 pointer-events-none shrink-0" />
         <input

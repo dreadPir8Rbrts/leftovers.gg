@@ -29,13 +29,13 @@ function NavLink({ href, label, icon: Icon }: NavLinkProps) {
   return (
     <Link
       href={href}
-      className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors ${
+      className={`flex items-center gap-3 px-3 py-2 rounded-md text-[17px] transition-colors ${
         isActive
           ? "bg-accent text-white font-medium"
-          : "text-white/70 hover:text-white hover:bg-accent/40"
+          : "text-white hover:bg-accent/40"
       }`}
     >
-      <Icon size={16} className="shrink-0 text-primary" />
+      <Icon size={21} className="shrink-0 text-primary" />
       {label}
     </Link>
   );
@@ -61,7 +61,7 @@ export function VendorSidebar({ profileId }: VendorSidebarProps) {
   ];
 
   return (
-    <aside className="hidden md:flex w-56 border-r border-r-white/10 bg-black shrink-0 flex-col py-4 px-2 overflow-y-auto">
+    <aside className="hidden md:flex w-64 border-r border-r-white/10 bg-black shrink-0 flex-col py-4 px-2 overflow-y-auto">
       <div className="flex flex-col gap-1">
         {topItems.map((item) => (
           <NavLink key={item.label} {...item} />

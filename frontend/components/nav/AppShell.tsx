@@ -15,7 +15,7 @@
  *   │  TopNav (h-14, sticky)          │
  *   ├──────────┬──────────────────────┤
  *   │ Sidebar  │  page content        │
- *   │ (w-56)   │  (flex-1, scroll)    │
+ *   │ (w-64)   │  (flex-1, scroll)    │
  *   └──────────┴──────────────────────┘
  */
 
@@ -83,7 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <GlobalSearch />
       </div>
       {/* Content area: on desktop subtract only TopNav (3.5rem); on mobile subtract TopNav + search bar (~3rem) */}
-      <div className="flex flex-1 overflow-hidden md:h-[calc(100vh-3.5rem)] h-[calc(100vh-6.5rem)]">
+      <div className="flex flex-1 overflow-hidden md:h-[calc(100vh-5rem)] h-[calc(100vh-6.5rem)]">
         <VendorSidebar profileId={profile?.id} />
         <main className="flex-1 overflow-y-auto pb-16 md:pb-0">{children}</main>
       </div>

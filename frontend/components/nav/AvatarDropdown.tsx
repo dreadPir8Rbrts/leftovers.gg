@@ -42,7 +42,7 @@ export function AvatarDropdown({ profile }: AvatarDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold hover:opacity-80 transition-opacity overflow-hidden shrink-0">
+        <button className="h-[37px] w-[37px] rounded-full bg-muted flex items-center justify-center text-xs font-semibold hover:opacity-80 transition-opacity overflow-hidden shrink-0">
           {profile?.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
