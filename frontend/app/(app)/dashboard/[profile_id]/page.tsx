@@ -26,15 +26,16 @@ import { Loader2, TrendingUp, TrendingDown, Minus, ArrowLeftRight, AlertCircle }
 // Types
 // ---------------------------------------------------------------------------
 
-type WindowDays = 7 | 14 | 30 | 90;
+type WindowDays = 7 | 14 | 30 | 90 | null;
 type TcgFilter = "all" | "pokemon" | "naruto_ccg";
 type GradedFilter = "all" | "graded" | "ungraded";
 
 const WINDOWS: { label: string; days: WindowDays }[] = [
-  { label: "7d",  days: 7  },
-  { label: "14d", days: 14 },
-  { label: "30d", days: 30 },
-  { label: "90d", days: 90 },
+  { label: "All", days: null },
+  { label: "7d",  days: 7   },
+  { label: "14d", days: 14  },
+  { label: "30d", days: 30  },
+  { label: "90d", days: 90  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -50,6 +51,7 @@ function fmtPct(n: number): string {
 }
 
 function cutoffDate(days: WindowDays): Date {
+  if (days === null) return new Date(0);
   const d = new Date();
   d.setDate(d.getDate() - days);
   d.setHours(0, 0, 0, 0);
@@ -153,7 +155,7 @@ export default function DashboardPage() {
   const [inventory,  setInventory]  = useState<InventoryItemWithCard[]>([]);
   const [txs,        setTxs]        = useState<TransactionOut[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [windowDays, setWindowDays] = useState<WindowDays>(30);
+  const [windowDays, setWindowDays] = useState<WindowDays>(null);
   const [tcgFilter,  setTcgFilter]  = useState<TcgFilter>("all");
   const [gradedFilter, setGradedFilter] = useState<GradedFilter>("all");
 
@@ -337,27 +339,25 @@ export default function DashboardPage() {
       {/* P&L                                                                 */}
       {/* ------------------------------------------------------------------ */}
       <section className="space-y-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">P&amp;L</h2>
-          <div className="flex flex-wrap items-center gap-2">
-            <FilterToggle options={TCG_OPTIONS} value={tcgFilter} onChange={setTcgFilter} />
-            <FilterToggle options={GRADED_OPTIONS} value={gradedFilter} onChange={setGradedFilter} />
-            <div className="flex gap-1">
-              {WINDOWS.map((w) => (
-                <button
-                  key={w.days}
-                  onClick={() => setWindowDays(w.days)}
-                  className={`px-3 py-1 text-xs rounded-md border transition-colors ${
-                    windowDays === w.days
-                      ? "bg-foreground text-background border-foreground"
-                      : "bg-background hover:bg-muted border-border"
-                  }`}
-                >
-                  {w.label}
-                </button>
-              ))}
-            </div>
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">P&amp;L</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1">
+            {WINDOWS.map((w) => (
+              <button
+                key={String(w.days)}
+                onClick={() => setWindowDays(w.days)}
+                className={`px-3 py-1 text-xs rounded-md border transition-colors ${
+                  windowDays === w.days
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-background hover:bg-muted border-border"
+                }`}
+              >
+                {w.label}
+              </button>
+            ))}
           </div>
+          <FilterToggle options={TCG_OPTIONS} value={tcgFilter} onChange={setTcgFilter} />
+          <FilterToggle options={GRADED_OPTIONS} value={gradedFilter} onChange={setGradedFilter} />
         </div>
 
         {/* Sell P&L — buy-in / net revenue / profit */}
@@ -374,7 +374,7 @@ export default function DashboardPage() {
               <>
                 <p className="text-2xl font-bold">${fmt(plMetrics.totalBuyIn)}</p>
                 <p className="text-xs text-muted-foreground">
-                  {plMetrics.sellCount} sell transaction{plMetrics.sellCount !== 1 ? "s" : ""} in last {windowDays} days
+                  {plMetrics.sellCount} sell transaction{plMetrics.sellCount !== 1 ? "s" : ""}{windowDays !== null ? ` in last ${windowDays} days` : " (all time)"}
                 </p>
                 {!plMetrics.hasBuyInData && plMetrics.sellCount > 0 && (
                   <div className="flex items-start gap-1.5 pt-1">
