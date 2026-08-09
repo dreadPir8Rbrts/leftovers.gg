@@ -466,7 +466,7 @@ def create_transaction(
         )
         db.add(tc)
 
-        # Update inventory status for cards the user is giving up
+        # Update inventory for cards the user is giving up
         if (
             c.direction == "lost"
             and c.inventory_item_id
@@ -478,9 +478,16 @@ def create_transaction(
             ).first()
             if inv:
                 now = datetime.now(timezone.utc)
-                inv.status = inventory_status
-                inv.deleted_at = now
-                inv.updated_at = now
+                qty_to_remove = max(1, c.quantity)
+                if inv.quantity <= qty_to_remove:
+                    # All copies consumed — soft-delete the record
+                    inv.status = inventory_status
+                    inv.deleted_at = now
+                    inv.updated_at = now
+                else:
+                    # Partial — decrement and leave the record active
+                    inv.quantity -= qty_to_remove
+                    inv.updated_at = now
 
     db.commit()
     db.refresh(tx)
