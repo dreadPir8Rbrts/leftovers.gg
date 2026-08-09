@@ -203,6 +203,7 @@ function InventoryEditModal({
   const [askingPrice, setAskingPrice] = useState(
     item.asking_price != null ? String(item.asking_price) : ""
   );
+  const [quantity, setQuantity] = useState(String(item.quantity ?? 1));
   const [cardStatus, setCardStatus] = useState<CardStatus>(item.card_status ?? "pc");
   const [variant, setVariant] = useState<string>(item.variant ?? "");
   const [availableVariants, setAvailableVariants] = useState<string[]>([]);
@@ -225,11 +226,13 @@ function InventoryEditModal({
     setSaving(true);
     setSaveError(null);
     try {
+      const qtyNum = parseInt(quantity, 10);
       const patch: InventoryItemPatch = {
         card_status: cardStatus,
         variant: variant || null,
         is_public: isPublic,
         notes,
+        quantity: !isNaN(qtyNum) && qtyNum >= 1 ? qtyNum : undefined,
       };
       if (acquiredPrice !== "") patch.acquired_price = parseFloat(acquiredPrice);
       if (gradingCost !== "") patch.grading_cost = parseFloat(gradingCost);
@@ -243,6 +246,7 @@ function InventoryEditModal({
         variant: variant || null,
         is_public: isPublic,
         notes,
+        quantity: !isNaN(qtyNum) && qtyNum >= 1 ? qtyNum : item.quantity,
       });
     } catch {
       setSaveError("Failed to save changes.");
@@ -322,6 +326,18 @@ function InventoryEditModal({
               </div>
             </div>
           </div>
+          <div className="space-y-1">
+            <label className="text-xs text-muted-foreground">Quantity</label>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              className="w-full border rounded-md px-3 py-1.5 text-sm bg-background"
+            />
+          </div>
+
           <div className="space-y-1">
             <label className={`text-xs ${cardStatus === "pc" ? "text-muted-foreground/40" : "text-muted-foreground"}`}>
               Asking price
