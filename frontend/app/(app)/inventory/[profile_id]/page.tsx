@@ -75,9 +75,6 @@ function InventoryCard({
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-muted-foreground/30 text-xs">No image</div>
         )}
-        <span className="absolute bottom-1.5 right-1.5 bg-black/70 text-white text-xs font-medium px-1.5 py-0.5 rounded-full leading-none">
-          ×{item.quantity}
-        </span>
       </div>
 
       {/* Card info */}
@@ -98,6 +95,7 @@ function InventoryCard({
           {item.variant && (
             <span className="text-xs text-muted-foreground">{formatVariantName(item.variant)}</span>
           )}
+          <span className="text-xs text-muted-foreground ml-auto shrink-0">×{item.quantity}</span>
         </div>
 
         <div className="flex flex-col gap-0.5">
