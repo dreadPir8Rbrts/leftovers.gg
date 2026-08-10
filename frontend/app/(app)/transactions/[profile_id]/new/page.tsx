@@ -226,7 +226,7 @@ function CardChip({
       <button
         type="button"
         onClick={onRemove}
-        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
+        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[11.5px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
       >
         ×
       </button>
@@ -235,13 +235,13 @@ function CardChip({
           {draft.card.image_url ? (
             <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="64px" className="object-contain p-0.5" />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/30">?</div>
+            <div className="absolute inset-0 flex items-center justify-center text-[11.5px] text-muted-foreground/30">?</div>
           )}
         </div>
-        <p className="text-[9px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
-        <p className="text-[9px] font-semibold">{condLabel}</p>
+        <p className="text-[10px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
+        <p className="text-[10px] font-semibold">{condLabel}</p>
         {inInventory && (
-          <p className="text-[9px] text-green-500 font-medium mt-0.5">In inventory</p>
+          <p className="text-[10px] text-green-500 font-medium mt-0.5">In inventory</p>
         )}
       </button>
     </div>
@@ -266,14 +266,14 @@ function CashChip({
       <button
         type="button"
         onClick={onRemove}
-        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[10px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
+        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[11.5px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
       >
         ×
       </button>
       <button
         type="button"
         onClick={onEdit}
-        className="px-3 py-2 rounded-lg border border-black/20 bg-muted/30 text-sm font-semibold min-w-[4.5rem] text-center hover:bg-muted/60 transition-colors"
+        className="px-3 py-2 rounded-lg border border-black/20 bg-muted/30 text-[16px] font-semibold min-w-[4.5rem] text-center hover:bg-muted/60 transition-colors"
       >
         ${parseFloat(amount).toFixed(2)}
       </button>
@@ -322,9 +322,9 @@ function PersonRow({
   return (
     <div className="rounded-xl border border-black/20 p-4 min-h-[7rem]">
       <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{label}</p>
+        <p className="text-[16px] font-semibold text-white uppercase tracking-wider">{label}</p>
         {sideTotal > 0 && (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-[14px] text-muted-foreground">
             ~<span className="font-medium text-foreground">${sideTotal.toFixed(2)}</span>
           </p>
         )}
@@ -343,7 +343,7 @@ function PersonRow({
           <CashChip amount={cashValue} onEdit={onEditCash} onRemove={onRemoveCash} />
         )}
         {isEmpty && (
-          <p className="text-xs text-muted-foreground/40 self-center mr-2">Nothing yet</p>
+          <p className="text-[16px] text-white/40 self-center mr-2">Nothing yet</p>
         )}
         {/* + menu */}
         <div className="relative z-20 self-center">
@@ -359,14 +359,14 @@ function PersonRow({
             <div className="absolute left-0 bottom-12 bg-background border border-black/20 rounded-lg shadow-lg min-w-[10rem] overflow-hidden">
               <button
                 type="button"
-                className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted"
+                className="w-full text-left px-4 py-2.5 text-[16px] hover:bg-muted"
                 onClick={onAddCard}
               >
                 Add a card
               </button>
               <button
                 type="button"
-                className="w-full text-left px-4 py-2.5 text-sm hover:bg-muted border-t border-black/10"
+                className="w-full text-left px-4 py-2.5 text-[16px] hover:bg-muted border-t border-black/10"
                 onClick={onAddCash}
               >
                 Add cash
@@ -415,20 +415,20 @@ function CardEditModal({
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold leading-tight truncate">{draft.card.name}</p>
-            <p className="text-xs text-muted-foreground truncate">{draft.card.set_name}</p>
+            <p className="text-[16px] font-semibold leading-tight truncate">{draft.card.name}</p>
+            <p className="text-[14px] text-muted-foreground truncate">{draft.card.set_name}</p>
           </div>
-          <button type="button" onClick={onClose} className="text-xl text-muted-foreground hover:text-foreground shrink-0">×</button>
+          <button type="button" onClick={onClose} className="text-[23px] text-muted-foreground hover:text-foreground shrink-0">×</button>
         </div>
 
         <div className="p-4 space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground">Condition</label>
+              <label className="text-[14px] text-muted-foreground">Condition</label>
               <select
                 value={conditionType}
                 onChange={(e) => setConditionType(e.target.value as "ungraded" | "graded")}
-                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
               >
                 <option value="ungraded">Ungraded</option>
                 <option value="graded">Graded</option>
@@ -436,11 +436,11 @@ function CardEditModal({
             </div>
             {conditionType === "ungraded" ? (
               <div>
-                <label className="text-xs text-muted-foreground">Grade</label>
+                <label className="text-[14px] text-muted-foreground">Grade</label>
                 <select
                   value={conditionUngraded}
                   onChange={(e) => setConditionUngraded(e.target.value)}
-                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                 >
                   <option value="">—</option>
                   {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -448,7 +448,7 @@ function CardEditModal({
               </div>
             ) : (
               <div>
-                <label className="text-xs text-muted-foreground">Company</label>
+                <label className="text-[14px] text-muted-foreground">Company</label>
                 <select
                   value={gradingCompany}
                   onChange={(e) => {
@@ -456,7 +456,7 @@ function CardEditModal({
                     setGradingCompany(co);
                     setGrade(getGradeOpts(co)[0]);
                   }}
-                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                 >
                   <option value="">—</option>
                   {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}
@@ -466,11 +466,11 @@ function CardEditModal({
           </div>
           {conditionType === "graded" && (
             <div>
-              <label className="text-xs text-muted-foreground">Grade</label>
+              <label className="text-[14px] text-muted-foreground">Grade</label>
               <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
               >
                 {getGradeOpts(gradingCompany).map((g) => (
                   <option key={g} value={g}>{g}</option>
@@ -480,9 +480,9 @@ function CardEditModal({
           )}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs text-muted-foreground">Est. value</label>
+              <label className="text-[14px] text-muted-foreground">Est. value</label>
               <div className="relative mt-1">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground">$</span>
                 <input
                   type="number"
                   min="0"
@@ -490,18 +490,18 @@ function CardEditModal({
                   value={estimatedValue}
                   onChange={(e) => setEstimatedValue(e.target.value)}
                   placeholder="0.00"
-                  className="w-full border rounded pl-5 pr-2 py-1.5 text-sm bg-background"
+                  className="w-full border rounded pl-5 pr-2 py-1.5 text-[16px] bg-background"
                 />
               </div>
             </div>
             <div>
-              <label className="text-xs text-muted-foreground">Qty</label>
+              <label className="text-[14px] text-muted-foreground">Qty</label>
               <input
                 type="number"
                 min="1"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
               />
             </div>
           </div>
@@ -542,9 +542,9 @@ function CashModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
       <div className="bg-background rounded-xl shadow-xl w-full max-w-xs overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <div className="p-4">
-          <p className="font-semibold text-sm mb-3">{label}</p>
+          <p className="font-semibold text-[16px] mb-3">{label}</p>
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">$</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-muted-foreground">$</span>
             <input
               type="number"
               min="0"
@@ -552,7 +552,7 @@ function CashModal({
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full border rounded-md pl-7 pr-3 py-2 text-sm bg-background"
+              className="w-full border rounded-md pl-7 pr-3 py-2 text-[16px] bg-background"
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
             />
@@ -937,7 +937,7 @@ function CardPickerModal({
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex rounded-full bg-black/60 p-0.5 backdrop-blur-sm">
         <button
           onClick={() => handleSetScanMode("photo")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          className={`px-4 py-1.5 rounded-full text-[16px] font-medium transition-colors ${
             scanMode === "photo" ? "bg-white text-black" : "text-white/70"
           }`}
         >
@@ -945,7 +945,7 @@ function CardPickerModal({
         </button>
         <button
           onClick={() => handleSetScanMode("qr")}
-          className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+          className={`px-4 py-1.5 rounded-full text-[16px] font-medium transition-colors ${
             scanMode === "qr" ? "bg-white text-black" : "text-white/70"
           }`}
         >
@@ -969,14 +969,14 @@ function CardPickerModal({
         <div className="flex items-center justify-between px-4 py-3 border-b shrink-0">
           <button
             onClick={exitCameraMode}
-            className="text-sm text-muted-foreground hover:text-foreground"
+            className="text-[16px] text-muted-foreground hover:text-foreground"
           >
             ← Back
           </button>
-          <h2 className="text-sm font-semibold">
+          <h2 className="text-[16px] font-semibold">
             Scan card — {direction === "lost" ? "You give" : "Other party gives"}
           </h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-sm">✕</button>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground text-[16px]">✕</button>
         </div>
 
         {/* ── PHOTO MODE IDLE ── */}
@@ -991,7 +991,7 @@ function CardPickerModal({
               onChange={handlePhotoCapture}
               className="hidden"
             />
-            <p className="text-sm text-muted-foreground text-center">
+            <p className="text-[16px] text-muted-foreground text-center">
               Take a photo of the card to identify it
             </p>
             <Button className="w-full" onClick={() => photoInputRef.current?.click()}>
@@ -1023,18 +1023,18 @@ function CardPickerModal({
                   {cornerBrackets}
                 </div>
               </div>
-              <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-sm drop-shadow">
+              <p className="absolute bottom-4 inset-x-0 text-center text-white/90 text-[16px] drop-shadow">
                 Point at the cert QR code on the slab
               </p>
               {cameraStatus === "requesting" && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-                  <p className="text-white/80 text-sm">Opening camera…</p>
+                  <p className="text-white/80 text-[16px]">Opening camera…</p>
                 </div>
               )}
             </div>
             <div className="flex items-center justify-center py-6 bg-black gap-3 shrink-0">
               <div className="w-2.5 h-2.5 rounded-full bg-primary animate-pulse" />
-              <p className="text-sm text-white/70">
+              <p className="text-[16px] text-white/70">
                 {cameraStatus === "live" ? "Scanning for QR code…" : "Opening camera…"}
               </p>
             </div>
@@ -1045,7 +1045,7 @@ function CardPickerModal({
         {cameraStatus === "cert_lookup" && (
           <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
             <div className="w-10 h-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-            <p className="text-sm text-muted-foreground">QR code detected — looking up card…</p>
+            <p className="text-[16px] text-muted-foreground">QR code detected — looking up card…</p>
           </div>
         )}
 
@@ -1067,7 +1067,7 @@ function CardPickerModal({
                 />
                 {cameraStatus === "scanning" && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/55">
-                    <p className="text-white text-sm font-medium">Scanning…</p>
+                    <p className="text-white text-[16px] font-medium">Scanning…</p>
                   </div>
                 )}
               </div>
@@ -1076,7 +1076,7 @@ function CardPickerModal({
             {/* Ambiguous QR candidates — pick the right card */}
             {scanCandidates && scanCandidates.length > 0 && (
               <div className="space-y-2">
-                <p className="text-sm font-medium">Multiple matches — which card is this?</p>
+                <p className="text-[16px] font-medium">Multiple matches — which card is this?</p>
                 <div className="flex flex-col gap-2">
                   {scanCandidates.map((c) => (
                     <button
@@ -1105,8 +1105,8 @@ function CardPickerModal({
                         <img src={c.image_url} alt={c.name} className="h-16 w-11 rounded object-cover shrink-0" />
                       )}
                       <div className="min-w-0">
-                        <div className="text-sm font-medium truncate">{c.name}</div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-[16px] font-medium truncate">{c.name}</div>
+                        <div className="text-[14px] text-muted-foreground">
                           {c.set_name}{c.card_num ? ` · #${c.card_num}` : ""}
                         </div>
                       </div>
@@ -1116,7 +1116,7 @@ function CardPickerModal({
               </div>
             )}
 
-            {scanError && <p className="text-sm text-destructive">{scanError}</p>}
+            {scanError && <p className="text-[16px] text-destructive">{scanError}</p>}
 
             {/* Scan button — only in photo mode, only when no candidates */}
             {cameraStatus === "captured" && !scanCandidates && capturedFile && (
@@ -1132,7 +1132,7 @@ function CardPickerModal({
         {/* ── DENIED ── */}
         {cameraStatus === "denied" && (
           <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[16px] text-muted-foreground">
               Camera access was denied. Allow camera access in your browser settings and try again.
             </p>
             <Button variant="outline" onClick={startCamera}>Try again</Button>
@@ -1142,7 +1142,7 @@ function CardPickerModal({
         {/* ── ERROR / UNAVAILABLE ── */}
         {(cameraStatus === "error" || cameraStatus === "unavailable") && (
           <div className="flex flex-col items-center justify-center flex-1 px-8 gap-4 text-center">
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[16px] text-muted-foreground">
               {cameraStatus === "unavailable"
                 ? "Live camera isn't available in this browser."
                 : (cameraError || "Camera error — please try again.")}
@@ -1165,11 +1165,11 @@ function CardPickerModal({
             <button
               type="button"
               onClick={() => { setPendingCard(null); setPendingInventoryItemId(undefined); }}
-              className="text-sm text-muted-foreground hover:text-foreground"
+              className="text-[16px] text-muted-foreground hover:text-foreground"
             >
               ← Back
             </button>
-            <h2 className="text-sm font-semibold">Card condition</h2>
+            <h2 className="text-[16px] font-semibold">Card condition</h2>
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
           </div>
 
@@ -1180,8 +1180,8 @@ function CardPickerModal({
               </div>
             )}
             <div className="min-w-0">
-              <p className="text-sm font-semibold truncate">{pendingCard.name}</p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="text-[16px] font-semibold truncate">{pendingCard.name}</p>
+              <p className="text-[14px] text-muted-foreground truncate">
                 {pendingCard.set_name}{pendingCard.card_num ? ` · #${pendingCard.card_num}` : ""}
               </p>
             </div>
@@ -1190,11 +1190,11 @@ function CardPickerModal({
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs text-muted-foreground">Condition</label>
+                <label className="text-[14px] text-muted-foreground">Condition</label>
                 <select
                   value={pickerConditionType}
                   onChange={(e) => setPickerConditionType(e.target.value as "ungraded" | "graded")}
-                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                 >
                   <option value="ungraded">Ungraded</option>
                   <option value="graded">Graded</option>
@@ -1202,18 +1202,18 @@ function CardPickerModal({
               </div>
               {pickerConditionType === "ungraded" ? (
                 <div>
-                  <label className="text-xs text-muted-foreground">Grade</label>
+                  <label className="text-[14px] text-muted-foreground">Grade</label>
                   <select
                     value={pickerConditionUngraded}
                     onChange={(e) => setPickerConditionUngraded(e.target.value)}
-                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                    className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                   >
                     {CONDITIONS.map((c) => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
               ) : (
                 <div>
-                  <label className="text-xs text-muted-foreground">Company</label>
+                  <label className="text-[14px] text-muted-foreground">Company</label>
                   <select
                     value={pickerGradingCompany}
                     onChange={(e) => {
@@ -1222,7 +1222,7 @@ function CardPickerModal({
                       const opts = GRADE_OPTIONS[co.toLowerCase()] ?? GRADE_OPTIONS.other;
                       setPickerGrade(opts[0]);
                     }}
-                    className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                    className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                   >
                     {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                   </select>
@@ -1231,11 +1231,11 @@ function CardPickerModal({
             </div>
             {pickerConditionType === "graded" && (
               <div>
-                <label className="text-xs text-muted-foreground">Grade</label>
+                <label className="text-[14px] text-muted-foreground">Grade</label>
                 <select
                   value={pickerGrade}
                   onChange={(e) => setPickerGrade(e.target.value)}
-                  className="w-full border rounded px-2 py-1.5 text-sm bg-background mt-1"
+                  className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
                 >
                   {(GRADE_OPTIONS[pickerGradingCompany.toLowerCase()] ?? GRADE_OPTIONS.other).map((g) => (
                     <option key={g} value={g}>{g}</option>
@@ -1287,7 +1287,7 @@ function CardPickerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">
+          <h2 className="text-[16px] font-semibold">
             Add card — {direction === "lost" ? "You give" : "Other party gives"}
           </h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
@@ -1299,23 +1299,23 @@ function CardPickerModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={direction === "lost" ? "Search all cards…" : "Search by card name…"}
-            className="w-full border rounded-md px-3 py-2 text-base sm:text-sm bg-background"
+            className="w-full border rounded-md px-3 py-2 text-[18px] sm:text-[16px] bg-background"
             autoFocus
           />
           {searching && (
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">…</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground">…</span>
           )}
         </div>
 
         <button
           type="button"
           onClick={openCameraMode}
-          className="w-full border rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="w-full border rounded-md px-3 py-2 text-[16px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
           📷 Scan card instead
         </button>
 
-        {searchError && <p className="text-xs text-destructive">{searchError}</p>}
+        {searchError && <p className="text-[14px] text-destructive">{searchError}</p>}
 
         {results.length > 0 && (
           <ul className="divide-y border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
@@ -1335,8 +1335,8 @@ function CardPickerModal({
                     </div>
                   )}
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{card.name}</p>
-                    <p className="text-xs text-muted-foreground">{card.set_name} · #{card.card_num}</p>
+                    <p className="text-[16px] font-medium truncate">{card.name}</p>
+                    <p className="text-[14px] text-muted-foreground">{card.set_name} · #{card.card_num}</p>
                   </div>
                 </button>
               </li>
@@ -1348,7 +1348,7 @@ function CardPickerModal({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Your Inventory</span>
+              <span className="text-[14px] font-semibold text-muted-foreground uppercase tracking-wide">Your Inventory</span>
               <div className="h-px flex-1 bg-border" />
             </div>
             <input
@@ -1356,7 +1356,7 @@ function CardPickerModal({
               value={inventoryQuery}
               onChange={(e) => setInventoryQuery(e.target.value)}
               placeholder="Filter your inventory…"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              className="w-full border rounded-md px-3 py-2 text-[16px] bg-background"
             />
             <ul className="divide-y border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
               {filteredInventory.map((item) => {
@@ -1393,16 +1393,16 @@ function CardPickerModal({
                         </div>
                       )}
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium truncate">{item.card_name}</p>
-                        <p className="text-xs text-muted-foreground truncate">{item.set_name}</p>
+                        <p className="text-[16px] font-medium truncate">{item.card_name}</p>
+                        <p className="text-[14px] text-muted-foreground truncate">{item.set_name}</p>
                       </div>
-                      <span className="text-xs font-medium text-muted-foreground shrink-0">{condLabel}</span>
+                      <span className="text-[14px] font-medium text-muted-foreground shrink-0">{condLabel}</span>
                     </button>
                   </li>
                 );
               })}
               {filteredInventory.length === 0 && (
-                <li className="px-3 py-4 text-xs text-muted-foreground text-center">
+                <li className="px-3 py-4 text-[14px] text-muted-foreground text-center">
                   {inventoryQuery ? "No matches in your inventory" : "Your inventory is empty"}
                 </li>
               )}
@@ -1446,8 +1446,8 @@ function AcquiredPriceDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-lg mx-4 flex flex-col gap-4">
         <div>
-          <h2 className="text-sm font-semibold">Set acquired price?</h2>
-          <p className="text-xs text-muted-foreground mt-1">Set the cost basis for cards you gained. Uncheck any you want to skip.</p>
+          <h2 className="text-[16px] font-semibold">Set acquired price?</h2>
+          <p className="text-[14px] text-muted-foreground mt-1">Set the cost basis for cards you gained. Uncheck any you want to skip.</p>
         </div>
         <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
           {drafts.map((d) => (
@@ -1459,11 +1459,11 @@ function AcquiredPriceDialog({
                 onChange={() => toggle(d.inventory_item_id)}
                 className="h-4 w-4 shrink-0"
               />
-              <label htmlFor={`ap-${d.inventory_item_id}`} className="flex-1 min-w-0 text-sm truncate cursor-pointer">
+              <label htmlFor={`ap-${d.inventory_item_id}`} className="flex-1 min-w-0 text-[16px] truncate cursor-pointer">
                 {d.card_name ?? "Card"}
               </label>
               <div className="relative shrink-0">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground">$</span>
                 <input
                   type="number"
                   min="0"
@@ -1471,7 +1471,7 @@ function AcquiredPriceDialog({
                   value={d.editedValue}
                   onChange={(e) => setValue(d.inventory_item_id, e.target.value)}
                   disabled={!d.include}
-                  className="border rounded px-2 pl-5 py-1 text-xs bg-background w-24 disabled:opacity-40"
+                  className="border rounded px-2 pl-5 py-1 text-[14px] bg-background w-24 disabled:opacity-40"
                 />
               </div>
             </div>
@@ -1481,14 +1481,14 @@ function AcquiredPriceDialog({
           <button
             type="button"
             onClick={() => onConfirm(drafts)}
-            className="px-4 py-2 text-sm font-medium rounded-md bg-foreground text-background hover:bg-foreground/80 transition-colors"
+            className="px-4 py-2 text-[16px] font-medium rounded-md bg-foreground text-background hover:bg-foreground/80 transition-colors"
           >
             Confirm
           </button>
           <button
             type="button"
             onClick={onSkip}
-            className="px-4 py-2 text-sm rounded-md border hover:bg-muted transition-colors"
+            className="px-4 py-2 text-[16px] rounded-md border hover:bg-muted transition-colors"
           >
             Skip
           </button>
@@ -1673,7 +1673,7 @@ export default function NewTransactionPage() {
   const txTypeLabel: Record<TransactionType, string> = { buy: "BUY", sell: "SELL", trade: "TRADE" };
 
   return (
-    <div className="p-4 max-w-lg mx-auto">
+    <div className="p-4 w-[95%] md:w-[80%] mx-auto">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         {step === 1 ? (
@@ -1685,7 +1685,7 @@ export default function NewTransactionPage() {
             <ArrowLeft size={20} />
           </button>
         )}
-        <h1 className="text-xl font-bold">New Transaction</h1>
+        <h1 className="text-[23px] font-bold">New Transaction</h1>
       </div>
 
       {/* ── Step 1: Transaction rows ── */}
@@ -1709,7 +1709,7 @@ export default function NewTransactionPage() {
 
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px bg-border" />
-              <span className="text-[10px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
+              <span className="text-[13px] font-bold tracking-widest text-muted-foreground border border-black/20 rounded-full px-2.5 py-0.5">
                 {txTypeLabel[txType]}
               </span>
               <button
@@ -1718,7 +1718,7 @@ export default function NewTransactionPage() {
                 title="Flip sides"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <ArrowUpDown className="h-3.5 w-3.5" />
+                <ArrowUpDown className="h-4 w-4" />
               </button>
               <div className="flex-1 h-px bg-border" />
             </div>
@@ -1738,8 +1738,8 @@ export default function NewTransactionPage() {
             />
           </div>
 
-          <div className="pt-6 pb-8">
-            <Button className="w-full" onClick={() => setStep(2)}>Next</Button>
+          <div className="pt-6 pb-60 flex justify-center">
+            <Button className="w-[35%]" onClick={() => setStep(2)}>Next</Button>
           </div>
         </div>
       )}
@@ -1749,16 +1749,16 @@ export default function NewTransactionPage() {
         <div className="space-y-3 pb-24">
           <div className="flex gap-[6px]">
             <div className="flex flex-col shrink-0">
-              <label className="text-xs text-muted-foreground">Date</label>
+              <label className="text-[14px] text-muted-foreground">Date</label>
               <input
                 type="date"
                 value={txDate}
                 onChange={(e) => setTxDate(e.target.value)}
-                className="h-10 border rounded-md px-3 text-sm bg-background mt-1"
+                className="h-10 border rounded-md px-3 text-[16px] bg-background mt-1"
               />
             </div>
             <div className="flex-1 min-w-0 flex flex-col">
-              <label className="text-xs text-muted-foreground">Marketplace</label>
+              <label className="text-[14px] text-muted-foreground">Marketplace</label>
               <select
                 value={marketplace}
                 onChange={(e) => {
@@ -1767,7 +1767,7 @@ export default function NewTransactionPage() {
                   if (v === "ebay") setFeePct("13");
                   else if (v === "private" || v === "other") setFeePct("0");
                 }}
-                className="w-full flex-1 border rounded-md px-3 text-sm bg-background mt-1"
+                className="w-full flex-1 border rounded-md px-3 text-[16px] bg-background mt-1"
               >
                 <option value="">Select…</option>
                 {MARKETPLACE_OPTIONS.map((o) => (
@@ -1776,7 +1776,7 @@ export default function NewTransactionPage() {
               </select>
             </div>
             <div className="flex flex-col shrink-0">
-              <label className="text-xs text-muted-foreground">Fee %</label>
+              <label className="text-[14px] text-muted-foreground">Fee %</label>
               <div className="relative mt-1">
                 <input
                   type="number"
@@ -1786,30 +1786,30 @@ export default function NewTransactionPage() {
                   value={feePct}
                   onChange={(e) => setFeePct(e.target.value)}
                   placeholder="13"
-                  className="h-10 border rounded-md pl-3 pr-7 text-sm bg-background w-24"
+                  className="h-10 border rounded-md pl-3 pr-7 text-[16px] bg-background w-24"
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground pointer-events-none">%</span>
+                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground pointer-events-none">%</span>
               </div>
             </div>
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Other party name</label>
+            <label className="text-[14px] text-muted-foreground">Other party name</label>
             <input
               type="text"
               value={counterpartyName}
               onChange={(e) => setCounterpartyName(e.target.value)}
               placeholder="Optional"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background mt-1"
+              className="w-full border rounded-md px-3 py-2 text-[16px] bg-background mt-1"
             />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Notes</label>
+            <label className="text-[14px] text-muted-foreground">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
               placeholder="Optional"
-              className="w-full border rounded-md px-3 py-2 text-sm bg-background resize-none mt-1"
+              className="w-full border rounded-md px-3 py-2 text-[16px] bg-background resize-none mt-1"
             />
           </div>
 
@@ -1822,21 +1822,21 @@ export default function NewTransactionPage() {
                 onChange={(e) => setAutoUpdateInventory(e.target.checked)}
                 className="accent-primary w-4 h-4"
               />
-              <span className="text-sm">Automatically update your inventory</span>
+              <span className="text-[16px]">Automatically update your inventory</span>
             </label>
             {!autoUpdateEnabled && autoUpdateDisabledReason && (
-              <p className="text-xs text-muted-foreground pl-6">{autoUpdateDisabledReason}</p>
+              <p className="text-[14px] text-muted-foreground pl-6">{autoUpdateDisabledReason}</p>
             )}
           </div>
 
           <div className="border border-black/20 rounded-lg px-4 py-3 flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">Your est. gain/loss</span>
-            <span className={`text-sm font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
+            <span className="text-[16px] text-muted-foreground">Your est. gain/loss</span>
+            <span className={`text-[16px] font-semibold ${autoValue >= 0 ? "text-green-600 dark:text-green-400" : "text-[#BF40BF]"}`}>
               {autoValue >= 0 ? "+" : ""}${Math.abs(autoValue).toFixed(2)}
             </span>
           </div>
 
-          {saveError && <p className="text-sm text-destructive">{saveError}</p>}
+          {saveError && <p className="text-[16px] text-destructive">{saveError}</p>}
 
           <div className="flex gap-3 pt-1">
             <Button onClick={handleSave} disabled={saving} className="flex-1">
