@@ -18,6 +18,10 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function formatDate(dateStr: string): string {
   return new Date(dateStr + "T00:00:00").toLocaleDateString("en-US", {
     month: "long", day: "numeric", year: "numeric",
@@ -28,6 +32,31 @@ function marketplaceLabel(value: string | null | undefined): string {
   if (!value) return "";
   return MARKETPLACE_OPTIONS.find((o) => o.value === value)?.label ?? value;
 }
+
+function money(val: number | null | undefined): string {
+  if (val == null) return "—";
+  return `$${val.toFixed(2)}`;
+}
+
+// ---------------------------------------------------------------------------
+// Computations
+// ---------------------------------------------------------------------------
+
+function costBasisSum(cards: TransactionCardOut[]): number {
+  return cards.reduce((sum, c) => sum + ((c.acquired_price ?? 0) + (c.grading_cost ?? 0)) * c.quantity, 0);
+}
+
+function sellNetRevenue(tx: TransactionOut): number {
+  return (tx.cash_gained ?? 0) * (1 - (tx.fee_pct ?? 0));
+}
+
+function sellNetProfit(tx: TransactionOut, lost: TransactionCardOut[]): number {
+  return sellNetRevenue(tx) - costBasisSum(lost);
+}
+
+// ---------------------------------------------------------------------------
+// UI atoms
+// ---------------------------------------------------------------------------
 
 function TypeBadge({ type }: { type: TransactionType }) {
   const styles: Record<TransactionType, string> = {
@@ -55,6 +84,29 @@ function ValueLine({ value, label }: { value: number | null | undefined; label: 
   );
 }
 
+function SummaryRow({
+  label,
+  value,
+  accent,
+  borderTop,
+}: {
+  label: string;
+  value: string;
+  accent?: "positive" | "negative" | "neutral";
+  borderTop?: boolean;
+}) {
+  const valueClass =
+    accent === "positive" ? "font-bold text-green-600 dark:text-green-400" :
+    accent === "negative" ? "font-bold text-[#BF40BF]" :
+    "font-medium";
+  return (
+    <div className={`flex items-center justify-between text-sm py-1 ${borderTop ? "border-t mt-1 pt-2" : ""}`}>
+      <span className="text-muted-foreground">{label}</span>
+      <span className={`tabular-nums ${valueClass}`}>{value}</span>
+    </div>
+  );
+}
+
 function conditionLabel(card: TransactionCardOut): string {
   if (card.condition_type === "graded" && card.grading_company && card.grade) {
     return `${card.grading_company.toUpperCase()} ${card.grade}`;
@@ -62,9 +114,10 @@ function conditionLabel(card: TransactionCardOut): string {
   return card.condition_ungraded || "—";
 }
 
-function CardRow({ card }: { card: TransactionCardOut }) {
+function CardRow({ card, showCostBasis = false }: { card: TransactionCardOut; showCostBasis?: boolean }) {
+  const hasCostBasis = showCostBasis && (card.acquired_price != null || card.grading_cost != null);
   return (
-    <div className="flex items-center gap-3 py-2 border-b last:border-0">
+    <div className="flex items-start gap-3 py-2 border-b last:border-0">
       <div className="shrink-0 w-[48px] h-[64px] rounded overflow-hidden bg-muted relative border border-black/10">
         {card.image_url ? (
           <Image src={card.image_url} alt={card.card_name ?? ""} fill sizes="48px" className="object-contain p-0.5" />
@@ -72,12 +125,26 @@ function CardRow({ card }: { card: TransactionCardOut }) {
           <div className="absolute inset-0 flex items-center justify-center text-[10px] text-muted-foreground/30">?</div>
         )}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="flex-1 min-w-0 pt-0.5">
         <p className="text-sm font-medium truncate">{card.card_name ?? "Unknown card"}</p>
         <p className="text-xs text-muted-foreground">{conditionLabel(card)}{card.quantity > 1 ? ` × ${card.quantity}` : ""}</p>
+        {hasCostBasis && (
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1">
+            {card.acquired_price != null && (
+              <span className="text-xs text-muted-foreground">
+                Acquired: <span className="text-foreground">{money(card.acquired_price)}</span>
+              </span>
+            )}
+            {card.grading_cost != null && (
+              <span className="text-xs text-muted-foreground">
+                Grading: <span className="text-foreground">{money(card.grading_cost)}</span>
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {card.estimated_value != null && (
-        <p className="text-sm font-medium shrink-0">~${(card.estimated_value * card.quantity).toFixed(2)}</p>
+        <p className="text-sm font-medium shrink-0 pt-0.5">~${(card.estimated_value * card.quantity).toFixed(2)}</p>
       )}
     </div>
   );
@@ -87,6 +154,83 @@ function SideTotal(cards: TransactionCardOut[], cash: number | null | undefined)
   const cardTotal = cards.reduce((s, c) => s + (c.estimated_value ?? 0) * c.quantity, 0);
   return cardTotal + (cash ?? 0);
 }
+
+// ---------------------------------------------------------------------------
+// Type-specific summary panels
+// ---------------------------------------------------------------------------
+
+function SellSummary({ tx, lost }: { tx: TransactionOut; lost: TransactionCardOut[] }) {
+  const totalCost  = costBasisSum(lost);
+  const cashIn     = tx.cash_gained;
+  const feePct     = tx.fee_pct;
+  const feeAmt     = cashIn != null && feePct != null ? cashIn * feePct : null;
+  const netRevenue = cashIn != null ? sellNetRevenue(tx) : null;
+  const profit     = cashIn != null ? sellNetProfit(tx, lost) : null;
+  const profitAccent: "positive" | "negative" | "neutral" = profit != null ? (profit >= 0 ? "positive" : "negative") : "neutral";
+
+  if (cashIn == null && totalCost === 0) return null;
+
+  return (
+    <div className="border rounded-xl p-4 mb-6">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Sale summary</p>
+      {totalCost > 0 && (
+        <SummaryRow label="Your cost (acquired + grading)" value={money(totalCost)} />
+      )}
+      {cashIn != null && (
+        <SummaryRow label="Cash received" value={money(cashIn)} />
+      )}
+      {feeAmt != null && (
+        <SummaryRow label={`Marketplace fee (${Math.round((feePct ?? 0) * 100 * 10) / 10}%)`} value={`-${money(feeAmt)}`} />
+      )}
+      {netRevenue != null && feeAmt != null && (
+        <SummaryRow label="Net revenue" value={money(netRevenue)} />
+      )}
+      {profit != null && (
+        <SummaryRow
+          label="Net profit"
+          value={`${profit >= 0 ? "+" : ""}${money(profit)}`}
+          accent={profitAccent}
+          borderTop
+        />
+      )}
+    </div>
+  );
+}
+
+function TradeSummary({ tx, lost }: { tx: TransactionOut; lost: TransactionCardOut[] }) {
+  const cardCost   = costBasisSum(lost);
+  const cashGiven  = tx.cash_lost;
+  const cashRecvd  = tx.cash_gained;
+  const netCost    = cardCost + (cashGiven ?? 0) - (cashRecvd ?? 0);
+  const netAccent: "positive" | "negative" = netCost <= 0 ? "positive" : "negative";
+
+  if (cardCost === 0 && cashGiven == null && cashRecvd == null) return null;
+
+  return (
+    <div className="border rounded-xl p-4 mb-6">
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Trade summary</p>
+      {cardCost > 0 && (
+        <SummaryRow label="Cost basis of cards given" value={money(cardCost)} />
+      )}
+      {cashGiven != null && (
+        <SummaryRow label="Cash given" value={money(cashGiven)} />
+      )}
+      {cashRecvd != null && (
+        <SummaryRow label="Cash received" value={money(cashRecvd)} />
+      )}
+      <SummaryRow
+        label="Net cost to you"
+        value={`${netCost <= 0 ? "+" : ""}${money(Math.abs(netCost))}`}
+        accent={netAccent}
+        borderTop
+      />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page
+// ---------------------------------------------------------------------------
 
 export default function TransactionDetailPage() {
   const params = useParams<{ profile_id: string; transaction_id: string }>();
@@ -113,7 +257,6 @@ export default function TransactionDetailPage() {
       .then((data) => {
         setTx(data);
         setLoading(false);
-        // Load live delta asynchronously
         getTransactionLiveDelta(params.transaction_id).then(setLiveData).catch(() => {});
       })
       .catch((err: Error) => {
@@ -193,10 +336,13 @@ export default function TransactionDetailPage() {
 
   const gained = tx.cards.filter((c) => c.direction === "gained");
   const lost   = tx.cards.filter((c) => c.direction === "lost");
-  const youTotal        = SideTotal(lost, tx.cash_lost);
-  const otherTotal      = SideTotal(gained, tx.cash_gained);
+  const youTotal   = SideTotal(lost, tx.cash_lost);
+  const otherTotal = SideTotal(gained, tx.cash_gained);
   const mp = marketplaceLabel(tx.marketplace);
   const isPartial = liveData && liveData.cards_total > 0 && liveData.cards_priced < liveData.cards_total;
+
+  // Show cost basis on "You give" cards for sells and trades
+  const showLostCostBasis = tx.transaction_type === "sell" || tx.transaction_type === "trade";
 
   return (
     <div className="p-4 w-[95%] md:w-[80%] mx-auto pb-16">
@@ -305,7 +451,7 @@ export default function TransactionDetailPage() {
           {lost.length === 0 && tx.cash_lost == null && (
             <p className="text-xs text-muted-foreground/40">Nothing</p>
           )}
-          {lost.map((c) => <CardRow key={c.id} card={c} />)}
+          {lost.map((c) => <CardRow key={c.id} card={c} showCostBasis={showLostCostBasis} />)}
           {tx.cash_lost != null && (
             <div className="flex items-center justify-between py-2 border-b last:border-0 text-sm">
               <span className="text-muted-foreground">Cash</span>
@@ -340,7 +486,11 @@ export default function TransactionDetailPage() {
         </div>
       </div>
 
-      {/* Value summary */}
+      {/* Type-specific financial summary */}
+      {tx.transaction_type === "sell" && <SellSummary tx={tx} lost={lost} />}
+      {tx.transaction_type === "trade" && <TradeSummary tx={tx} lost={lost} />}
+
+      {/* Live value summary */}
       <div className="border rounded-xl p-4 space-y-2 mb-6">
         <ValueLine value={tx.transaction_value} label="Value at time" />
         {liveData ? (
@@ -363,7 +513,7 @@ export default function TransactionDetailPage() {
         )}
       </div>
 
-      {/* Notes — hidden when editing (notes field is in the edit form above) */}
+      {/* Notes */}
       {!editing && tx.notes && (
         <div className="border rounded-xl p-4 mb-6">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Notes</p>
@@ -372,7 +522,12 @@ export default function TransactionDetailPage() {
       )}
 
       {/* Delete */}
-      <Button variant="outline" className="text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5" onClick={handleDelete} disabled={deleting}>
+      <Button
+        variant="outline"
+        className="text-destructive hover:text-destructive border-destructive/30 hover:bg-destructive/5"
+        onClick={handleDelete}
+        disabled={deleting}
+      >
         {deleting ? "Deleting…" : "Delete transaction"}
       </Button>
     </div>

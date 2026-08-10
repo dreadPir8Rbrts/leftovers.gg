@@ -222,26 +222,26 @@ function CardChip({
       : `${draft.gradingCompany.toUpperCase()} ${draft.grade}`.trim() || "—";
 
   return (
-    <div className="relative w-16 flex-shrink-0">
+    <div className="relative w-16 md:w-[154px] flex-shrink-0">
       <button
         type="button"
         onClick={onRemove}
-        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 rounded-full bg-black/60 text-white text-[11.5px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
+        className="absolute -top-1.5 -right-1.5 z-10 w-4 h-4 md:w-7 md:h-7 rounded-full bg-black/60 text-white text-[11.5px] flex items-center justify-center leading-none hover:bg-black/80 transition-colors"
       >
         ×
       </button>
       <button type="button" onClick={onEdit} className="w-full text-left">
         <div className="aspect-[3/4] rounded-lg bg-muted overflow-hidden relative border border-black/10">
           {draft.card.image_url ? (
-            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="64px" className="object-contain p-0.5" />
+            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="(min-width: 768px) 154px, 64px" className="object-contain p-0.5" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-[11.5px] text-muted-foreground/30">?</div>
           )}
         </div>
-        <p className="text-[10px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
-        <p className="text-[10px] font-semibold">{condLabel}</p>
+        <p className="text-[10px] md:text-[17px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
+        <p className="text-[10px] md:text-[17px] font-semibold">{condLabel}</p>
         {inInventory && (
-          <p className="text-[10px] text-green-500 font-medium mt-0.5">In inventory</p>
+          <p className="text-[10px] md:text-[17px] text-green-500 font-medium mt-0.5">In inventory</p>
         )}
       </button>
     </div>
