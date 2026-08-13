@@ -160,6 +160,7 @@ export default function CardDetailPage() {
   const [modalAskingPrice, setModalAskingPrice] = useState("");
   const [modalCardStatus, setModalCardStatus] = useState<CardStatus>("pc");
   const [modalVariant, setModalVariant] = useState<string | null>(null);
+  const [modalNotes, setModalNotes] = useState("");
   const [adding, setAdding] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
@@ -442,6 +443,7 @@ export default function CardDetailPage() {
     setModalAskingPrice("");
     setModalCardStatus("pc");
     setModalVariant(selectedVariant);
+    setModalNotes("");
     setAddError(null);
     setAddModalOpen(true);
     setAddSuccess(false);
@@ -497,6 +499,7 @@ export default function CardDetailPage() {
         asking_price: modalCardStatus !== "pc" ? (modalAskingPrice || undefined) : undefined,
         card_status: modalCardStatus,
         variant: modalVariant || null,
+        notes: modalNotes || undefined,
       });
       setAddSuccess(true);
       setAddModalOpen(false);
@@ -1435,6 +1438,18 @@ export default function CardDetailPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Notes */}
+              <div className="space-y-1 rounded-lg p-3 bg-black">
+                <label className="text-xs text-white">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={modalNotes}
+                  onChange={(e) => setModalNotes(e.target.value)}
+                  placeholder="e.g. light scratch on corner"
+                  className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white placeholder:text-zinc-500"
+                />
               </div>
 
               {addError && <p className="text-xs text-destructive">{addError}</p>}

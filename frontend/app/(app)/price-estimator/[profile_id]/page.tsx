@@ -176,6 +176,7 @@ function PriceEstimatorContent() {
   const [invGradingCompany, setInvGradingCompany] = useState("psa");
   const [invGrade, setInvGrade]                 = useState("");
   const [invAskingPrice, setInvAskingPrice]     = useState("");
+  const [invNotes, setInvNotes]                 = useState("");
   const [wlMaxPrice, setWlMaxPrice]             = useState("");
   const [wlNotes, setWlNotes]                   = useState("");
   const [wlConditions, setWlConditions]         = useState<WishlistConditionInput[]>([]);
@@ -258,6 +259,7 @@ function PriceEstimatorContent() {
     setInvGradingCompany("psa");
     setInvGrade("");
     setInvAskingPrice("");
+    setInvNotes("");
     setWlMaxPrice("");
     setWlNotes("");
     setWlConditions([]);
@@ -335,6 +337,7 @@ function PriceEstimatorContent() {
         asking_price: invAskingPrice ? invAskingPrice : undefined,
         card_status: "pc",
         quantity: 1,
+        notes: invNotes || undefined,
       });
       setActionStatus("success");
     } catch (e) {
@@ -693,6 +696,16 @@ function PriceEstimatorContent() {
                   placeholder="e.g. 12.50"
                   min="0"
                   step="0.01"
+                  className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Notes (optional)</label>
+                <input
+                  type="text"
+                  value={invNotes}
+                  onChange={(e) => setInvNotes(e.target.value)}
+                  placeholder="e.g. light scratch on corner"
                   className="w-full border rounded-md px-2 py-1.5 text-sm bg-background"
                 />
               </div>
