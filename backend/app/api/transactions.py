@@ -343,10 +343,18 @@ def _auto_update_inventory_items(
     profile_id: str,
     cards: List[TransactionCardIn],
 ) -> None:
-    """Decrement/remove inventory for lost cards; add inventory for gained cards."""
+    """Decrement/remove inventory for lost cards; add inventory for gained cards.
+
+    Cards with inventory_item_id already set are skipped for the lost-card path because
+    the inline loop in create_transaction already handled them via direct ID lookup.
+    This function only handles cards without a known inventory_item_id (fuzzy fallback).
+    """
     now = datetime.now(timezone.utc)
     for c in cards:
         if c.direction == "lost":
+            # Skip: already handled by the inline inventory update in create_transaction.
+            if c.inventory_item_id:
+                continue
             q = (
                 db.query(Inventory)
                 .filter(

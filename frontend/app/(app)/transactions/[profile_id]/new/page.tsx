@@ -1375,7 +1375,10 @@ function CardPickerModal({
                           setPickerConditionUngraded((item.condition_ungraded ?? "nm").toUpperCase());
                         } else {
                           const co = (item.grading_company ?? "psa").toLowerCase();
-                          setPickerGradingCompany(co);
+                          // Match to an option value in GRADING_COMPANIES (which are uppercase like "BGS")
+                          // so the select renders the correct company instead of falling back to the first option.
+                          const matchedCo = GRADING_COMPANIES.find(c => c.toLowerCase() === co) ?? "PSA";
+                          setPickerGradingCompany(matchedCo);
                           const opts = GRADE_OPTIONS[co] ?? GRADE_OPTIONS.other;
                           const g = item.grade ?? opts[0];
                           setPickerGrade(opts.includes(g) ? g : opts[0]);
