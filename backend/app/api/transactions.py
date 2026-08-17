@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -29,6 +29,7 @@ from app.dependencies import get_current_profile
 from app.models.catalog import PriceSnapshot
 from app.models.catalog_v2 import CardV2
 from app.models.inventory import Inventory
+from app.models.sealed_product import SealedProduct
 from app.models.pricing_preferences import PricingPreferences
 from app.models.profiles import Profile
 from app.models.scrydex_prices import ScrydexPrice
@@ -48,7 +49,8 @@ VALID_INVENTORY_STATUSES = {"sold": "sell", "traded": "trade"}  # type → statu
 
 class TransactionCardIn(BaseModel):
     direction: str                          # 'gained' | 'lost'
-    card_v2_id: str
+    card_v2_id: Optional[str] = None
+    sealed_product_id: Optional[str] = None
     inventory_item_id: Optional[str] = None
     condition_type: str
     condition_ungraded: Optional[str] = None
@@ -58,6 +60,16 @@ class TransactionCardIn(BaseModel):
     estimated_value: Optional[float] = None
     variant: Optional[str] = None
     quantity: int = 1
+
+    @model_validator(mode="after")
+    def validate_item_type(self) -> "TransactionCardIn":
+        has_card = bool(self.card_v2_id)
+        has_sealed = bool(self.sealed_product_id)
+        if has_card and has_sealed:
+            raise ValueError("Cannot set both card_v2_id and sealed_product_id")
+        if not has_card and not has_sealed:
+            raise ValueError("Must set either card_v2_id or sealed_product_id")
+        return self
 
 
 class TransactionIn(BaseModel):
@@ -87,8 +99,10 @@ class TransactionPatch(BaseModel):
 class TransactionCardOut(BaseModel):
     id: str
     direction: str
-    card_v2_id: str
+    card_v2_id: Optional[str] = None
+    sealed_product_id: Optional[str] = None
     card_name: Optional[str] = None
+    sealed_product_name: Optional[str] = None
     card_num: Optional[str] = None
     set_name: Optional[str] = None
     image_url: Optional[str] = None
@@ -164,16 +178,23 @@ def _card_image_url(images) -> Optional[str]:
     return None
 
 
-def _build_card_out(tc: TransactionCard, card: Optional[CardV2], inv: Optional[Inventory] = None) -> dict:
+def _build_card_out(
+    tc: TransactionCard,
+    card: Optional[CardV2],
+    sealed: Optional[SealedProduct] = None,
+    inv: Optional[Inventory] = None,
+) -> dict:
     return {
         "id": tc.id,
         "direction": tc.direction,
         "card_v2_id": tc.card_v2_id,
+        "sealed_product_id": tc.sealed_product_id,
         "card_name": card.name if card else None,
+        "sealed_product_name": sealed.name if sealed else None,
         "card_num": card.number if card else None,
         "set_name": card.expansion.name if card else None,
-        "image_url": _card_image_url(card.images) if card else None,
-        "game": card.game if card else None,
+        "image_url": _card_image_url(card.images) if card else (sealed.image_url if sealed else None),
+        "game": card.game if card else (sealed.game if sealed else None),
         "inventory_item_id": tc.inventory_item_id,
         "acquired_price": float(inv.acquired_price) if inv and inv.acquired_price is not None else None,
         "grading_cost": float(inv.grading_cost) if inv and inv.grading_cost is not None else None,
@@ -190,14 +211,15 @@ def _build_card_out(tc: TransactionCard, card: Optional[CardV2], inv: Optional[I
 
 def _build_transaction_out(tx: Transaction, db: Session) -> dict:
     card_rows = (
-        db.query(TransactionCard, CardV2)
+        db.query(TransactionCard, CardV2, SealedProduct)
         .outerjoin(CardV2, CardV2.id == TransactionCard.card_v2_id)
+        .outerjoin(SealedProduct, SealedProduct.id == TransactionCard.sealed_product_id)
         .filter(TransactionCard.transaction_id == tx.id)
         .all()
     )
 
     # Batch-load inventory items linked to transaction cards for cost basis data
-    inv_ids = [tc.inventory_item_id for tc, _ in card_rows if tc.inventory_item_id]
+    inv_ids = [tc.inventory_item_id for tc, _, _ in card_rows if tc.inventory_item_id]
     inv_map: Dict[str, Inventory] = {}
     if inv_ids:
         inv_rows = db.query(Inventory).filter(Inventory.id.in_(inv_ids)).all()
@@ -218,7 +240,10 @@ def _build_transaction_out(tx: Transaction, db: Session) -> dict:
         "fee_pct": float(tx.fee_pct) if tx.fee_pct is not None else None,
         "notes": tx.notes,
         "created_at": tx.created_at,
-        "cards": [_build_card_out(tc, card, inv_map.get(tc.inventory_item_id or "")) for tc, card in card_rows],
+        "cards": [
+            _build_card_out(tc, card, sealed, inv_map.get(tc.inventory_item_id or ""))
+            for tc, card, sealed in card_rows
+        ],
     }
 
 
@@ -355,51 +380,89 @@ def _auto_update_inventory_items(
             # Skip: already handled by the inline inventory update in create_transaction.
             if c.inventory_item_id:
                 continue
-            q = (
-                db.query(Inventory)
-                .filter(
-                    Inventory.profile_id == profile_id,
-                    Inventory.card_v2_id == c.card_v2_id,
-                    Inventory.condition_type == c.condition_type,
-                    Inventory.deleted_at.is_(None),
-                    Inventory.status == "active",
+
+            if c.card_v2_id:
+                q = (
+                    db.query(Inventory)
+                    .filter(
+                        Inventory.profile_id == profile_id,
+                        Inventory.card_v2_id == c.card_v2_id,
+                        Inventory.condition_type == c.condition_type,
+                        Inventory.deleted_at.is_(None),
+                        Inventory.status == "active",
+                    )
                 )
-            )
-            if c.condition_type == "ungraded":
-                q = q.filter(
-                    func.lower(Inventory.condition_ungraded) == (c.condition_ungraded or "").lower()
-                )
-            else:
-                q = q.filter(
-                    func.lower(Inventory.grading_company) == (c.grading_company or "").lower(),
-                    Inventory.grade == c.grade,
-                )
-            inv = q.order_by(Inventory.created_at.asc()).first()
-            if inv:
-                qty_to_remove = max(1, c.quantity)
-                if inv.quantity <= qty_to_remove:
-                    inv.deleted_at = now
-                    inv.updated_at = now
+                if c.condition_type == "ungraded":
+                    q = q.filter(
+                        func.lower(Inventory.condition_ungraded) == (c.condition_ungraded or "").lower()
+                    )
                 else:
-                    inv.quantity -= qty_to_remove
-                    inv.updated_at = now
+                    q = q.filter(
+                        func.lower(Inventory.grading_company) == (c.grading_company or "").lower(),
+                        Inventory.grade == c.grade,
+                    )
+                inv = q.order_by(Inventory.created_at.asc()).first()
+                if inv:
+                    qty_to_remove = max(1, c.quantity)
+                    if inv.quantity <= qty_to_remove:
+                        inv.deleted_at = now
+                        inv.updated_at = now
+                    else:
+                        inv.quantity -= qty_to_remove
+                        inv.updated_at = now
+
+            elif c.sealed_product_id:
+                q = (
+                    db.query(Inventory)
+                    .filter(
+                        Inventory.profile_id == profile_id,
+                        Inventory.sealed_product_id == c.sealed_product_id,
+                        Inventory.condition_type == "sealed",
+                        Inventory.deleted_at.is_(None),
+                        Inventory.status == "active",
+                    )
+                )
+                if c.condition_ungraded:
+                    q = q.filter(Inventory.condition_ungraded == c.condition_ungraded)
+                inv = q.order_by(Inventory.created_at.asc()).first()
+                if inv:
+                    qty_to_remove = max(1, c.quantity)
+                    if inv.quantity <= qty_to_remove:
+                        inv.deleted_at = now
+                        inv.updated_at = now
+                    else:
+                        inv.quantity -= qty_to_remove
+                        inv.updated_at = now
 
         elif c.direction == "gained":
-            db.add(Inventory(
-                id=str(uuid.uuid4()),
-                profile_id=profile_id,
-                card_v2_id=c.card_v2_id,
-                condition_type=c.condition_type,
-                condition_ungraded=c.condition_ungraded.lower() if c.condition_ungraded else None,
-                grading_company=c.grading_company,
-                grade=c.grade,
-                grading_company_other=c.grading_company_other,
-                variant=c.variant,
-                quantity=max(1, c.quantity),
-                is_public=False,
-                card_status="pc",
-                status="active",
-            ))
+            if c.card_v2_id:
+                db.add(Inventory(
+                    id=str(uuid.uuid4()),
+                    profile_id=profile_id,
+                    card_v2_id=c.card_v2_id,
+                    condition_type=c.condition_type,
+                    condition_ungraded=c.condition_ungraded.lower() if c.condition_ungraded else None,
+                    grading_company=c.grading_company,
+                    grade=c.grade,
+                    grading_company_other=c.grading_company_other,
+                    variant=c.variant,
+                    quantity=max(1, c.quantity),
+                    is_public=False,
+                    card_status="pc",
+                    status="active",
+                ))
+            elif c.sealed_product_id:
+                db.add(Inventory(
+                    id=str(uuid.uuid4()),
+                    profile_id=profile_id,
+                    sealed_product_id=c.sealed_product_id,
+                    condition_type="sealed",
+                    condition_ungraded=c.condition_ungraded,
+                    quantity=max(1, c.quantity),
+                    is_public=False,
+                    card_status="pc",
+                    status="active",
+                ))
 
 
 @router.post("/transactions", response_model=TransactionOut, status_code=status.HTTP_201_CREATED)
@@ -462,6 +525,7 @@ def create_transaction(
             transaction_id=tx.id,
             direction=c.direction,
             card_v2_id=c.card_v2_id,
+            sealed_product_id=c.sealed_product_id,
             inventory_item_id=c.inventory_item_id,
             condition_type=c.condition_type,
             condition_ungraded=c.condition_ungraded,
@@ -506,8 +570,11 @@ def create_transaction(
 
     out = _build_transaction_out(tx, db)
 
-    # Compute estimated acquired prices for gained cards that link to an inventory item
-    gained_with_item = [c for c in body.cards if c.direction == "gained" and c.inventory_item_id]
+    # Compute estimated acquired prices for gained cards (cards only — sealed has no pricing)
+    gained_with_item = [
+        c for c in body.cards
+        if c.direction == "gained" and c.inventory_item_id and c.card_v2_id
+    ]
     if gained_with_item:
         prefs = _get_or_create_preferences(db, profile.id)
         # Build card name lookup from cards already fetched in _build_transaction_out
@@ -576,6 +643,8 @@ def get_live_deltas(
         cards_priced = 0
 
         for tc in card_rows:
+            if not tc.card_v2_id:
+                continue  # sealed items have no automatic pricing
             val = _estimate_for_card(
                 db,
                 prefs,
@@ -630,6 +699,8 @@ def get_transaction_live_delta(
     cards_priced = 0
 
     for tc in card_rows:
+        if not tc.card_v2_id:
+            continue  # sealed items have no automatic pricing
         val = _estimate_for_card(
             db, prefs,
             tc.card_v2_id, tc.condition_type, tc.condition_ungraded,

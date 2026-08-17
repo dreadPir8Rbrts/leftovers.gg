@@ -814,9 +814,10 @@ export const MARKETPLACE_OPTIONS = [
 
 export interface TransactionCardIn {
   direction: TransactionDirection;
-  card_v2_id: string;
+  card_v2_id?: string;
+  sealed_product_id?: string;
   inventory_item_id?: string;
-  condition_type: "ungraded" | "graded";
+  condition_type: "ungraded" | "graded" | "sealed";
   condition_ungraded?: string;
   grading_company?: string;
   grade?: string;
@@ -845,8 +846,10 @@ export interface TransactionIn {
 export interface TransactionCardOut {
   id: string;
   direction: TransactionDirection;
-  card_v2_id: string;
+  card_v2_id?: string | null;
+  sealed_product_id?: string | null;
   card_name?: string | null;
+  sealed_product_name?: string | null;
   card_num?: string | null;
   set_name?: string | null;
   image_url?: string | null;
@@ -854,7 +857,7 @@ export interface TransactionCardOut {
   inventory_item_id?: string | null;
   acquired_price?: number | null;
   grading_cost?: number | null;
-  condition_type: "ungraded" | "graded";
+  condition_type: "ungraded" | "graded" | "sealed";
   condition_ungraded?: string | null;
   grading_company?: string | null;
   grade?: string | null;

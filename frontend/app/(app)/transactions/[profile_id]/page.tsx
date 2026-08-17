@@ -86,9 +86,9 @@ function CardThumbnails({ cards }: { cards: TransactionCardOut[] }) {
       {shown.map((c) => (
         <div key={c.id} className="w-8 h-[42px] rounded overflow-hidden bg-muted relative border border-black/10 shrink-0">
           {c.image_url ? (
-            <Image src={c.image_url} alt={c.card_name ?? ""} fill sizes="32px" className="object-contain" />
+            <Image src={c.image_url} alt={c.card_name ?? c.sealed_product_name ?? ""} fill sizes="32px" className="object-contain" />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-[8px] text-muted-foreground/30">?</div>
+            <div className="absolute inset-0 flex items-center justify-center text-[8px] text-muted-foreground/30">{c.sealed_product_id ? "📦" : "?"}</div>
           )}
         </div>
       ))}
@@ -134,9 +134,9 @@ function GridCardSide({
           {shown.map((c) => (
             <div key={c.id} className="relative w-14 h-[74px] rounded-md overflow-hidden bg-muted border border-black/10 shrink-0">
               {c.image_url ? (
-                <Image src={c.image_url} alt={c.card_name ?? ""} fill sizes="56px" className="object-contain p-0.5" />
+                <Image src={c.image_url} alt={c.card_name ?? c.sealed_product_name ?? ""} fill sizes="56px" className="object-contain p-0.5" />
               ) : (
-                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-muted-foreground/30">?</div>
+                <div className="absolute inset-0 flex items-center justify-center text-[9px] text-muted-foreground/30">{c.sealed_product_id ? "📦" : "?"}</div>
               )}
             </div>
           ))}
@@ -424,8 +424,8 @@ export default function TransactionsPage() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <CardThumbnails cards={lost} />
-                              {lost.length === 1 && lost[0].card_name && (
-                                <span className="text-xs truncate max-w-[160px]">{lost[0].card_name}</span>
+                              {lost.length === 1 && (lost[0].card_name ?? lost[0].sealed_product_name) && (
+                                <span className="text-xs truncate max-w-[160px]">{lost[0].card_name ?? lost[0].sealed_product_name}</span>
                               )}
                               {lost.length > 1 && (
                                 <span className="text-xs text-muted-foreground">{lost.length} cards</span>
@@ -482,8 +482,8 @@ export default function TransactionsPage() {
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
                               <CardThumbnails cards={gained} />
-                              {gained.length === 1 && gained[0].card_name && (
-                                <span className="text-xs truncate max-w-[240px]">{gained[0].card_name}</span>
+                              {gained.length === 1 && (gained[0].card_name ?? gained[0].sealed_product_name) && (
+                                <span className="text-xs truncate max-w-[240px]">{gained[0].card_name ?? gained[0].sealed_product_name}</span>
                               )}
                               {gained.length > 1 && (
                                 <span className="text-xs text-muted-foreground">{gained.length} cards</span>

@@ -20,6 +20,7 @@ import {
   getInventory,
   patchInventoryItem,
   searchCardsSmart,
+  searchSealedProducts,
   quickIdentifyCardV3,
   lookupCertCard,
   getCardPricing,
@@ -29,6 +30,7 @@ import {
   type TransactionDirection,
   type TransactionCardIn,
   type Card,
+  type SealedProduct,
   type ScanCandidate,
   type EstimatedAcquiredPrice,
   type InventoryItemWithCard,
@@ -54,6 +56,7 @@ type CameraStatus =
 
 interface CardDraft {
   key: string;
+  item_type: "card";
   card: Card;
   direction: TransactionDirection;
   conditionType: "ungraded" | "graded";
@@ -64,6 +67,26 @@ interface CardDraft {
   quantity: number;
   inventoryItemId?: string;
 }
+
+interface SealedDraft {
+  key: string;
+  item_type: "sealed";
+  sealedProduct: SealedProduct;
+  direction: TransactionDirection;
+  sealedCondition: string;
+  estimatedValue: string;
+  quantity: number;
+  inventoryItemId?: string;
+}
+
+type ItemDraft = CardDraft | SealedDraft;
+
+const SEALED_CONDITION_LABELS: Record<string, string> = {
+  factory_sealed: "Factory Sealed",
+  seal_damaged: "Seal Damaged",
+  box_damaged: "Box Damaged",
+  damaged: "Damaged",
+};
 
 interface ConditionParams {
   conditionType: "ungraded" | "graded";
@@ -119,7 +142,7 @@ async function fetchEstimatedValue(
   conditionUngraded: string,
   gradingCompany: string,
   grade: string,
-  setCards: React.Dispatch<React.SetStateAction<CardDraft[]>>,
+  setCards: React.Dispatch<React.SetStateAction<ItemDraft[]>>,
   isRetry = false,
 ): Promise<void> {
   try {
@@ -153,7 +176,7 @@ async function fetchEstimatedValue(
 
     if (value) {
       setCards((prev) =>
-        prev.map((c) => c.key === key ? { ...c, estimatedValue: value } : c)
+        prev.map((c) => c.key === key ? { ...c, estimatedValue: value } as ItemDraft : c)
       );
     } else if (!isRetry) {
       setTimeout(() => {
@@ -169,6 +192,14 @@ async function fetchEstimatedValue(
 // Helpers
 // ---------------------------------------------------------------------------
 
+function findSealedInventoryMatch(draft: SealedDraft, inventory: InventoryItemWithCard[]): InventoryItemWithCard | undefined {
+  return inventory.find((item) =>
+    item.item_type === "sealed" &&
+    item.sealed_product_id === draft.sealedProduct.id &&
+    item.condition_ungraded === draft.sealedCondition
+  );
+}
+
 function findInventoryMatch(draft: CardDraft, inventory: InventoryItemWithCard[]): InventoryItemWithCard | undefined {
   return inventory.find((item) => {
     if (item.card_id !== draft.card.id) return false;
@@ -183,7 +214,7 @@ function findInventoryMatch(draft: CardDraft, inventory: InventoryItemWithCard[]
   });
 }
 
-function inferTxType(cards: CardDraft[], cashLost: string, cashGained: string): TransactionType {
+function inferTxType(cards: ItemDraft[], cashLost: string, cashGained: string): TransactionType {
   const giving = cards.filter((c) => c.direction === "lost");
   const receiving = cards.filter((c) => c.direction === "gained");
   const hasCashLost = parseFloat(cashLost) > 0;
@@ -193,7 +224,7 @@ function inferTxType(cards: CardDraft[], cashLost: string, cashGained: string): 
   return "trade";
 }
 
-function computeValue(cashGained: string, cashLost: string, cards: CardDraft[]): number {
+function computeValue(cashGained: string, cashLost: string, cards: ItemDraft[]): number {
   const cg = parseFloat(cashGained) || 0;
   const cl = parseFloat(cashLost) || 0;
   const gained = cards.filter((c) => c.direction === "gained").reduce((s, c) => s + (parseFloat(c.estimatedValue) || 0) * c.quantity, 0);
@@ -202,22 +233,26 @@ function computeValue(cashGained: string, cashLost: string, cards: CardDraft[]):
 }
 
 // ---------------------------------------------------------------------------
-// Card chip
+// Item chip (cards + sealed products)
 // ---------------------------------------------------------------------------
 
-function CardChip({
+function ItemChip({
   draft,
   onEdit,
   onRemove,
   inInventory,
 }: {
-  draft: CardDraft;
+  draft: ItemDraft;
   onEdit: () => void;
   onRemove: () => void;
   inInventory?: boolean;
 }) {
-  const condLabel =
-    draft.conditionType === "ungraded"
+  const isSealed = draft.item_type === "sealed";
+  const name = isSealed ? draft.sealedProduct.name : draft.card.name;
+  const imageUrl = isSealed ? draft.sealedProduct.image_url : draft.card.image_url;
+  const condLabel = isSealed
+    ? (SEALED_CONDITION_LABELS[draft.sealedCondition] ?? draft.sealedCondition)
+    : draft.conditionType === "ungraded"
       ? draft.conditionUngraded || "—"
       : `${draft.gradingCompany.toUpperCase()} ${draft.grade}`.trim() || "—";
 
@@ -232,13 +267,15 @@ function CardChip({
       </button>
       <button type="button" onClick={onEdit} className="w-full text-left">
         <div className="aspect-[3/4] rounded-lg bg-muted overflow-hidden relative border border-black/10">
-          {draft.card.image_url ? (
-            <Image src={draft.card.image_url} alt={draft.card.name} fill sizes="(min-width: 768px) 154px, 64px" className="object-contain p-0.5" />
+          {imageUrl ? (
+            <Image src={imageUrl} alt={name} fill sizes="(min-width: 768px) 154px, 64px" className="object-contain p-0.5" />
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-[11.5px] text-muted-foreground/30">?</div>
+            <div className="absolute inset-0 flex items-center justify-center text-[11.5px] text-muted-foreground/30">
+              {isSealed ? "📦" : "?"}
+            </div>
           )}
         </div>
-        <p className="text-[10px] md:text-[17px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{draft.card.name}</p>
+        <p className="text-[10px] md:text-[17px] leading-tight mt-1 line-clamp-2 text-muted-foreground">{name}</p>
         <p className="text-[10px] md:text-[17px] font-semibold">{condLabel}</p>
         {inInventory && (
           <p className="text-[10px] md:text-[17px] text-green-500 font-medium mt-0.5">In inventory</p>
@@ -293,6 +330,7 @@ function PersonRow({
   onMenuToggle,
   onAddCard,
   onAddCash,
+  onAddSealed,
   onEditCard,
   onRemoveCard,
   onEditCash,
@@ -300,13 +338,14 @@ function PersonRow({
   inventoryItems,
 }: {
   label: string;
-  cards: CardDraft[];
+  cards: ItemDraft[];
   cashValue: string;
   menuOpen: boolean;
   onMenuToggle: () => void;
   onAddCard: () => void;
   onAddCash: () => void;
-  onEditCard: (draft: CardDraft) => void;
+  onAddSealed: () => void;
+  onEditCard: (draft: ItemDraft) => void;
   onRemoveCard: (key: string) => void;
   onEditCash: () => void;
   onRemoveCash: () => void;
@@ -331,12 +370,16 @@ function PersonRow({
       </div>
       <div className="flex flex-wrap gap-3 items-end">
         {cards.map((draft) => (
-          <CardChip
+          <ItemChip
             key={draft.key}
             draft={draft}
             onEdit={() => onEditCard(draft)}
             onRemove={() => onRemoveCard(draft.key)}
-            inInventory={inventoryItems ? !!findInventoryMatch(draft, inventoryItems) : undefined}
+            inInventory={inventoryItems ? (
+              draft.item_type === "card"
+                ? !!findInventoryMatch(draft, inventoryItems)
+                : !!findSealedInventoryMatch(draft, inventoryItems)
+            ) : undefined}
           />
         ))}
         {hasCash && (
@@ -367,6 +410,13 @@ function PersonRow({
               <button
                 type="button"
                 className="w-full text-left px-4 py-2.5 text-[16px] hover:bg-muted border-t border-black/10"
+                onClick={onAddSealed}
+              >
+                Add sealed product
+              </button>
+              <button
+                type="button"
+                className="w-full text-left px-4 py-2.5 text-[16px] hover:bg-muted border-t border-black/10"
                 onClick={onAddCash}
               >
                 Add cash
@@ -374,6 +424,299 @@ function PersonRow({
             </div>
           )}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card edit modal
+// ---------------------------------------------------------------------------
+
+function SealedEditModal({
+  draft,
+  onSave,
+  onClose,
+}: {
+  draft: SealedDraft;
+  onSave: (patch: Partial<SealedDraft>) => void;
+  onClose: () => void;
+}) {
+  const [sealedCondition, setSealedCondition] = useState(draft.sealedCondition);
+  const [estimatedValue, setEstimatedValue] = useState(draft.estimatedValue);
+  const [quantity, setQuantity] = useState(draft.quantity);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 p-4 border-b">
+          {draft.sealedProduct.image_url && (
+            <div className="relative w-10 h-[3.2rem] rounded overflow-hidden bg-muted shrink-0">
+              <Image src={draft.sealedProduct.image_url} alt={draft.sealedProduct.name} fill sizes="40px" className="object-contain" />
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="text-[16px] font-semibold leading-tight truncate">{draft.sealedProduct.name}</p>
+          </div>
+          <button type="button" onClick={onClose} className="text-[23px] text-muted-foreground hover:text-foreground shrink-0">×</button>
+        </div>
+
+        <div className="p-4 space-y-3">
+          <div>
+            <label className="text-[14px] text-muted-foreground">Condition</label>
+            <select
+              value={sealedCondition}
+              onChange={(e) => setSealedCondition(e.target.value)}
+              className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
+            >
+              {Object.entries(SEALED_CONDITION_LABELS).map(([v, l]) => (
+                <option key={v} value={v}>{l}</option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-[14px] text-muted-foreground">Est. value</label>
+              <div className="relative mt-1">
+                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={estimatedValue}
+                  onChange={(e) => setEstimatedValue(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full border rounded pl-5 pr-2 py-1.5 text-[16px] bg-background"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="text-[14px] text-muted-foreground">Qty</label>
+              <input
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-4 pb-4">
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          <Button size="sm" onClick={() => onSave({ sealedCondition, estimatedValue, quantity })}>Done</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sealed product picker modal
+// ---------------------------------------------------------------------------
+
+const SEALED_CONDITION_OPTIONS = [
+  { value: "factory_sealed", label: "Factory Sealed" },
+  { value: "seal_damaged",   label: "Seal Damaged" },
+  { value: "box_damaged",    label: "Box Damaged" },
+  { value: "damaged",        label: "Damaged" },
+];
+
+function SealedPickerModal({
+  direction,
+  onSelect,
+  onClose,
+  inventoryItems = [],
+  lostDraftItems = [],
+}: {
+  direction: TransactionDirection;
+  onSelect: (product: SealedProduct, direction: TransactionDirection, sealedCondition: string, inventoryItemId?: string) => void;
+  onClose: () => void;
+  inventoryItems?: InventoryItemWithCard[];
+  lostDraftItems?: SealedDraft[];
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SealedProduct[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selected, setSelected] = useState<SealedProduct | null>(null);
+  const [sealedCondition, setSealedCondition] = useState("factory_sealed");
+  const [inventoryQuery, setInventoryQuery] = useState("");
+
+  useEffect(() => {
+    if (!query.trim()) { setResults([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try { setResults(await searchSealedProducts({ q: query.trim(), limit: 15 })); }
+      catch { setResults([]); }
+      finally { setSearching(false); }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const sealedInventory = inventoryItems.filter((item) => item.item_type === "sealed");
+  const addedInventoryIds = new Set<string>(
+    lostDraftItems.filter((d) => d.inventoryItemId).map((d) => d.inventoryItemId!)
+  );
+  const filteredSealedInventory = sealedInventory.filter((item) => {
+    if (!inventoryQuery.trim()) return true;
+    const q = inventoryQuery.toLowerCase();
+    return (item.sealed_product_name ?? "").toLowerCase().includes(q);
+  });
+  const showInventoryPanel = direction === "lost" && sealedInventory.length > 0;
+
+  if (selected) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <button type="button" onClick={() => setSelected(null)} className="text-[16px] text-muted-foreground hover:text-foreground">← Back</button>
+            <h2 className="text-[16px] font-semibold">Sealed product details</h2>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
+          </div>
+
+          <div className="flex items-center gap-3 py-2 border-b">
+            {selected.image_url ? (
+              <div className="relative w-10 h-[3.2rem] rounded overflow-hidden bg-muted shrink-0">
+                <Image src={selected.image_url} alt={selected.name} fill sizes="40px" className="object-contain" />
+              </div>
+            ) : (
+              <div className="w-10 h-[3.2rem] shrink-0 flex items-center justify-center text-xl">📦</div>
+            )}
+            <p className="text-[16px] font-semibold truncate">{selected.name}</p>
+          </div>
+
+          <div>
+            <label className="text-[14px] text-muted-foreground">Condition</label>
+            <select
+              value={sealedCondition}
+              onChange={(e) => setSealedCondition(e.target.value)}
+              className="w-full border rounded px-2 py-1.5 text-[16px] bg-background mt-1"
+            >
+              {SEALED_CONDITION_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <Button onClick={() => { onSelect(selected, direction, sealedCondition); onClose(); }} className="w-full">
+            Add sealed product
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+      <div className="bg-background border rounded-xl shadow-xl p-5 w-full max-w-md mx-4 flex flex-col gap-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-[16px] font-semibold">
+            Add sealed product — {direction === "lost" ? "You give" : "Other party gives"}
+          </h2>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">✕</button>
+        </div>
+
+        <div className="relative">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by product name…"
+            className="w-full border rounded-md px-3 py-2 text-[18px] sm:text-[16px] bg-background"
+            autoFocus
+          />
+          {searching && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[14px] text-muted-foreground">…</span>}
+        </div>
+
+        {results.length > 0 && (
+          <ul className="divide-y border rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+            {results.map((product) => (
+              <li key={product.id}>
+                <button
+                  type="button"
+                  onClick={() => setSelected(product)}
+                  className="w-full flex items-center gap-3 px-3 py-2 hover:bg-muted text-left"
+                >
+                  {product.image_url ? (
+                    <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                      <Image src={product.image_url} alt={product.name} fill sizes="32px" className="object-contain" />
+                    </div>
+                  ) : (
+                    <div className="w-8 aspect-[3/4] flex-shrink-0 flex items-center justify-center text-sm">📦</div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-[16px] font-medium truncate">{product.name}</p>
+                    <p className="text-[14px] text-muted-foreground">{product.game === "pokemon" ? "Pokémon" : "Naruto"} · {product.language_code}</p>
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {showInventoryPanel && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-[14px] font-semibold text-muted-foreground uppercase tracking-wide">Your Inventory</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+            <input
+              type="text"
+              value={inventoryQuery}
+              onChange={(e) => setInventoryQuery(e.target.value)}
+              placeholder="Filter your sealed inventory…"
+              className="w-full border rounded-md px-3 py-2 text-[16px] bg-background"
+            />
+            <ul className="divide-y border rounded-lg overflow-hidden max-h-52 overflow-y-auto">
+              {filteredSealedInventory.map((item) => {
+                const isAdded = item.id ? addedInventoryIds.has(item.id) : false;
+                const condLabel = SEALED_CONDITION_LABELS[item.condition_ungraded ?? ""] ?? item.condition_ungraded ?? "Sealed";
+                const product: SealedProduct = {
+                  id: item.sealed_product_id ?? "",
+                  name: item.sealed_product_name ?? "",
+                  game: item.game ?? "",
+                  language_code: item.language_code ?? "",
+                  product_type: item.product_type ?? "",
+                  image_url: item.image_url,
+                };
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      disabled={isAdded}
+                      onClick={() => {
+                        onSelect(product, direction, item.condition_ungraded ?? "factory_sealed", item.id);
+                        onClose();
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left transition-colors ${
+                        isAdded ? "opacity-40 cursor-not-allowed" : "hover:bg-muted"
+                      }`}
+                    >
+                      {item.image_url ? (
+                        <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
+                          <Image src={item.image_url} alt={item.sealed_product_name ?? ""} fill sizes="32px" className="object-contain" />
+                        </div>
+                      ) : (
+                        <div className="w-8 aspect-[3/4] flex-shrink-0 flex items-center justify-center text-sm">📦</div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[16px] font-medium truncate">{item.sealed_product_name}</p>
+                      </div>
+                      <span className="text-[14px] font-medium text-muted-foreground shrink-0">{condLabel}</span>
+                    </button>
+                  </li>
+                );
+              })}
+              {filteredSealedInventory.length === 0 && (
+                <li className="px-3 py-4 text-[14px] text-muted-foreground text-center">
+                  {inventoryQuery ? "No matches in your sealed inventory" : "No sealed products in inventory"}
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1276,12 +1619,13 @@ function CardPickerModal({
       if (match) addedInventoryIds.add(match.id);
     }
   }
-  const filteredInventory = inventoryItems.filter((item) => {
+  const cardInventoryItems = inventoryItems.filter((item) => item.item_type !== "sealed");
+  const filteredInventory = cardInventoryItems.filter((item) => {
     if (!inventoryQuery.trim()) return true;
     const q = inventoryQuery.toLowerCase();
     return (item.card_name ?? "").toLowerCase().includes(q) || (item.set_name ?? "").toLowerCase().includes(q);
   });
-  const showInventoryPanel = direction === "lost" && inventoryItems.length > 0;
+  const showInventoryPanel = direction === "lost" && cardInventoryItems.length > 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
@@ -1513,7 +1857,7 @@ export default function NewTransactionPage() {
   const seed = useTransactionSeed((s) => s.seed);
   const clearSeed = useTransactionSeed((s) => s.clear);
 
-  const [cards, setCards] = useState<CardDraft[]>([]);
+  const [cards, setCards] = useState<ItemDraft[]>([]);
   const [cashLost, setCashLost] = useState("");
   const [cashGained, setCashGained] = useState("");
 
@@ -1526,7 +1870,8 @@ export default function NewTransactionPage() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItemWithCard[]>([]);
 
   const [pickerDirection, setPickerDirection] = useState<TransactionDirection | null>(null);
-  const [editingDraft, setEditingDraft] = useState<CardDraft | null>(null);
+  const [sealedPickerDirection, setSealedPickerDirection] = useState<TransactionDirection | null>(null);
+  const [editingDraft, setEditingDraft] = useState<ItemDraft | null>(null);
   const [cashModalDirection, setCashModalDirection] = useState<TransactionDirection | null>(null);
   const [menuOpen, setMenuOpen] = useState<TransactionDirection | null>(null);
   const [saving, setSaving] = useState(false);
@@ -1545,6 +1890,7 @@ export default function NewTransactionPage() {
       const key = `seed-${Date.now()}`;
       setCards([{
         key,
+        item_type: "card",
         card: seed.card,
         direction: "lost",
         conditionType: seed.conditionType,
@@ -1569,20 +1915,25 @@ export default function NewTransactionPage() {
   const autoValue = computeValue(cashGained, cashLost, cards);
 
   const { autoUpdateEnabled, autoUpdateDisabledReason } = useMemo(() => {
-    const lostCards = cards.filter((c) => c.direction === "lost");
-    const gainedCards = cards.filter((c) => c.direction === "gained");
-    const hasLostMatch = lostCards.some((d) => !!findInventoryMatch(d, inventoryItems));
-    const hasGained = gainedCards.length > 0;
+    const lostItems = cards.filter((c) => c.direction === "lost");
+    const gainedItems = cards.filter((c) => c.direction === "gained");
+    const hasLostMatch = lostItems.some((d) =>
+      d.item_type === "card"
+        ? !!findInventoryMatch(d, inventoryItems)
+        : !!findSealedInventoryMatch(d, inventoryItems)
+    );
+    const hasGained = gainedItems.length > 0;
     if (hasLostMatch || hasGained) return { autoUpdateEnabled: true, autoUpdateDisabledReason: null };
-    if (lostCards.length > 0 && !hasLostMatch)
-      return { autoUpdateEnabled: false, autoUpdateDisabledReason: "Cards you're giving aren't in your inventory" };
-    return { autoUpdateEnabled: false, autoUpdateDisabledReason: "No cards to add or remove from inventory" };
+    if (lostItems.length > 0 && !hasLostMatch)
+      return { autoUpdateEnabled: false, autoUpdateDisabledReason: "Items you're giving aren't in your inventory" };
+    return { autoUpdateEnabled: false, autoUpdateDisabledReason: "No items to add or remove from inventory" };
   }, [cards, inventoryItems]);
 
   const addCard = useCallback((card: Card, direction: TransactionDirection, condition: ConditionParams, inventoryItemId?: string) => {
     const key = `${card.id}-${Date.now()}`;
     setCards((prev) => [...prev, {
       key,
+      item_type: "card" as const,
       card,
       direction,
       conditionType: condition.conditionType,
@@ -1596,6 +1947,20 @@ export default function NewTransactionPage() {
     fetchEstimatedValue(key, card.id, condition.conditionType, condition.conditionUngraded, condition.gradingCompany, condition.grade, setCards);
   }, []);
 
+  const addSealedItem = useCallback((product: SealedProduct, direction: TransactionDirection, sealedCondition: string, inventoryItemId?: string) => {
+    const key = `sealed-${product.id}-${Date.now()}`;
+    setCards((prev) => [...prev, {
+      key,
+      item_type: "sealed" as const,
+      sealedProduct: product,
+      direction,
+      sealedCondition,
+      estimatedValue: "",
+      quantity: 1,
+      inventoryItemId,
+    }]);
+  }, []);
+
   function handleFlip() {
     setCards((prev) => prev.map((c) => ({ ...c, direction: c.direction === "lost" ? "gained" : "lost" })));
     setCashLost(cashGained);
@@ -1607,6 +1972,22 @@ export default function NewTransactionPage() {
     setSaveError(null);
     try {
       const cardPayload: TransactionCardIn[] = cards.map((c) => {
+        if (c.item_type === "sealed") {
+          let inventoryItemId = c.inventoryItemId;
+          if (!inventoryItemId && c.direction === "lost") {
+            const match = findSealedInventoryMatch(c, inventoryItems);
+            if (match) inventoryItemId = match.id;
+          }
+          return {
+            direction: c.direction,
+            sealed_product_id: c.sealedProduct.id,
+            inventory_item_id: inventoryItemId,
+            condition_type: "sealed" as const,
+            condition_ungraded: c.sealedCondition,
+            estimated_value: parseFloat(c.estimatedValue) || undefined,
+            quantity: c.quantity,
+          };
+        }
         let inventoryItemId = c.inventoryItemId;
         if (!inventoryItemId && c.direction === "lost") {
           const match = findInventoryMatch(c, inventoryItems);
@@ -1703,6 +2084,7 @@ export default function NewTransactionPage() {
               menuOpen={menuOpen === "lost"}
               onMenuToggle={() => setMenuOpen((prev) => prev === "lost" ? null : "lost")}
               onAddCard={() => { setMenuOpen(null); setPickerDirection("lost"); }}
+              onAddSealed={() => { setMenuOpen(null); setSealedPickerDirection("lost"); }}
               onAddCash={() => { setMenuOpen(null); setCashModalDirection("lost"); }}
               onEditCard={setEditingDraft}
               onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
@@ -1734,6 +2116,7 @@ export default function NewTransactionPage() {
               menuOpen={menuOpen === "gained"}
               onMenuToggle={() => setMenuOpen((prev) => prev === "gained" ? null : "gained")}
               onAddCard={() => { setMenuOpen(null); setPickerDirection("gained"); }}
+              onAddSealed={() => { setMenuOpen(null); setSealedPickerDirection("gained"); }}
               onAddCash={() => { setMenuOpen(null); setCashModalDirection("gained"); }}
               onEditCard={setEditingDraft}
               onRemoveCard={(key) => setCards((prev) => prev.filter((c) => c.key !== key))}
@@ -1864,10 +2247,29 @@ export default function NewTransactionPage() {
           onSelect={(card, dir, condition, invId) => { addCard(card, dir, condition, invId); setPickerDirection(null); }}
           onClose={() => setPickerDirection(null)}
           inventoryItems={pickerDirection === "lost" ? inventoryItems : []}
-          lostDraftCards={cards.filter((c) => c.direction === "lost")}
+          lostDraftCards={cards.filter((c): c is CardDraft => c.item_type === "card" && c.direction === "lost")}
         />
       )}
-      {editingDraft && (
+      {sealedPickerDirection && (
+        <SealedPickerModal
+          direction={sealedPickerDirection}
+          onSelect={(product, dir, cond, invId) => { addSealedItem(product, dir, cond, invId); setSealedPickerDirection(null); }}
+          onClose={() => setSealedPickerDirection(null)}
+          inventoryItems={inventoryItems}
+          lostDraftItems={cards.filter((c): c is SealedDraft => c.item_type === "sealed" && c.direction === "lost")}
+        />
+      )}
+      {editingDraft && editingDraft.item_type === "sealed" && (
+        <SealedEditModal
+          draft={editingDraft}
+          onSave={(patch) => {
+            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...patch } as ItemDraft : c));
+            setEditingDraft(null);
+          }}
+          onClose={() => setEditingDraft(null)}
+        />
+      )}
+      {editingDraft && editingDraft.item_type === "card" && (
         <CardEditModal
           draft={editingDraft}
           onSave={(patch) => {
@@ -1877,7 +2279,7 @@ export default function NewTransactionPage() {
               patch.gradingCompany !== editingDraft.gradingCompany ||
               patch.grade !== editingDraft.grade;
             const finalPatch = conditionChanged ? { ...patch, estimatedValue: "" } : patch;
-            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...finalPatch } : c));
+            setCards((prev) => prev.map((c) => c.key === editingDraft.key ? { ...c, ...finalPatch } as ItemDraft : c));
             setEditingDraft(null);
             if (conditionChanged) {
               const merged = { ...editingDraft, ...patch };

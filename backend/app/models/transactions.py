@@ -69,10 +69,15 @@ class TransactionCard(Base):
         nullable=False,
     )
     direction: Mapped[str] = mapped_column(String(6), nullable=False)  # 'gained' | 'lost'
-    card_v2_id: Mapped[str] = mapped_column(
+    card_v2_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False),
         ForeignKey("public.cards_v2.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
+    )
+    sealed_product_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("public.sealed_products.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     inventory_item_id: Mapped[Optional[str]] = mapped_column(
         UUID(as_uuid=False),
@@ -80,7 +85,7 @@ class TransactionCard(Base):
         nullable=True,
     )
     condition_type: Mapped[str] = mapped_column(String(10), nullable=False)
-    condition_ungraded: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    condition_ungraded: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     grading_company: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     grade: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     grading_company_other: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
