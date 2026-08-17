@@ -33,8 +33,13 @@ class Inventory(Base):
         ForeignKey("public.cards_v2.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    sealed_product_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("public.sealed_products.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     condition_type: Mapped[str] = mapped_column(String(10), nullable=False)
-    condition_ungraded: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    condition_ungraded: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     grading_company: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     grade: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     grading_company_other: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

@@ -298,14 +298,15 @@ function PriceEstimatorContent() {
   }
 
   function handleSelectFromInventory(item: InventoryItemWithCard) {
+    if (item.item_type === "sealed" || !item.card_id) return;
     const card: Card = {
       id: item.card_id,
-      name: item.card_name,
+      name: item.card_name ?? "",
       en_name: item.card_name_en,
       card_num: item.card_num,
       rarity: item.rarity,
       image_url: item.image_url,
-      set_name: item.set_name,
+      set_name: item.set_name ?? "",
       set_name_en: item.set_name_en,
       series_name: item.series_name,
       game: item.game,
@@ -313,10 +314,11 @@ function PriceEstimatorContent() {
     };
     handleSelectCard(card);
     // Auto-set condition to match this inventory item
-    setConditionType(item.condition_type);
-    if (item.condition_type === "ungraded" && item.condition_ungraded) {
-      setConditionUngraded(item.condition_ungraded);
+    if (item.condition_type === "ungraded") {
+      setConditionType("ungraded");
+      if (item.condition_ungraded) setConditionUngraded(item.condition_ungraded);
     } else if (item.condition_type === "graded") {
+      setConditionType("graded");
       setGradingCompany(item.grading_company ?? "psa");
       setGrade(item.grade ?? "");
     }
@@ -1083,7 +1085,7 @@ function PriceEstimatorContent() {
                     >
                       {item.image_url ? (
                         <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
-                          <Image src={item.image_url} alt={item.card_name} fill sizes="32px" className="object-contain" />
+                          <Image src={item.image_url} alt={item.card_name ?? item.sealed_product_name ?? ""} fill sizes="32px" className="object-contain" />
                         </div>
                       ) : (
                         <div className="w-8 aspect-[3/4] flex-shrink-0 rounded border bg-muted" />

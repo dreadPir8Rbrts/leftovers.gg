@@ -31,6 +31,7 @@ export function InventoryEditPanel({ item, onSaved, onDeleted, onClose }: Props)
   const [notes, setNotes] = useState(item.notes ?? "");
 
   useEffect(() => {
+    if (!item.card_id) return;
     getCardScrydexPrices(item.card_id)
       .then(({ prices }) => {
         const variants = Array.from(new Set(prices.filter((p) => p.variant).map((p) => p.variant as string)));

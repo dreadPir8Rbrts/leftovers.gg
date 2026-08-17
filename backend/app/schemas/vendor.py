@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field, model_validator, field_validator
 VALID_UNGRADED = {"nm", "lp", "mp", "hp", "dmg"}
 VALID_COMPANIES = {"psa", "bgs", "cgc", "other"}
 VALID_CARD_STATUSES = {"pc", "fs", "ft", "fs_ft"}
+VALID_SEALED_CONDITIONS = {"factory_sealed", "seal_damaged", "box_damaged", "damaged"}
 
 
 # ---------------------------------------------------------------------------
@@ -23,8 +24,11 @@ VALID_CARD_STATUSES = {"pc", "fs", "ft", "fs_ft"}
 # ---------------------------------------------------------------------------
 
 class InventoryItemCreate(BaseModel):
-    card_id: str
-    condition_type: Literal["ungraded", "graded"]
+    # Exactly one of card_id or sealed_product_id must be provided
+    card_id: Optional[str] = None
+    sealed_product_id: Optional[str] = None
+
+    condition_type: Literal["ungraded", "graded", "sealed"]
     condition_ungraded: Optional[str] = None
     grading_company: Optional[str] = None
     grade: Optional[str] = None
@@ -45,7 +49,20 @@ class InventoryItemCreate(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_condition(self) -> "InventoryItemCreate":
+    def validate_item(self) -> "InventoryItemCreate":
+        # Item type exclusivity
+        if self.card_id and self.sealed_product_id:
+            raise ValueError("Provide card_id or sealed_product_id, not both")
+        if not self.card_id and not self.sealed_product_id:
+            raise ValueError("One of card_id or sealed_product_id is required")
+
+        # Sealed products must have condition_type='sealed'
+        if self.sealed_product_id and self.condition_type != "sealed":
+            raise ValueError("condition_type must be 'sealed' for sealed products")
+        if self.card_id and self.condition_type == "sealed":
+            raise ValueError("condition_type 'sealed' is only valid for sealed products")
+
+        # Condition field validation
         if self.condition_type == "ungraded":
             if not self.condition_ungraded:
                 raise ValueError("condition_ungraded is required when condition_type is 'ungraded'")
@@ -53,7 +70,7 @@ class InventoryItemCreate(BaseModel):
                 raise ValueError(f"condition_ungraded must be one of {sorted(VALID_UNGRADED)}")
             if self.grading_company or self.grade:
                 raise ValueError("grading_company and grade must be null for ungraded items")
-        else:  # graded
+        elif self.condition_type == "graded":
             if not self.grading_company:
                 raise ValueError("grading_company is required when condition_type is 'graded'")
             if self.grading_company not in VALID_COMPANIES:
@@ -64,13 +81,18 @@ class InventoryItemCreate(BaseModel):
                 raise ValueError("condition_ungraded must be null for graded items")
             if self.grading_company == "other" and not self.grading_company_other:
                 raise ValueError("grading_company_other is required when grading_company is 'other'")
+        else:  # sealed
+            if self.condition_ungraded and self.condition_ungraded not in VALID_SEALED_CONDITIONS:
+                raise ValueError(f"condition_ungraded must be one of {sorted(VALID_SEALED_CONDITIONS)} for sealed items")
+            if self.grading_company or self.grade:
+                raise ValueError("grading_company and grade must be null for sealed items")
         return self
 
 
 class InventoryItemResponse(BaseModel):
     id: str
     profile_id: str
-    card_id: str
+    card_id: Optional[str]
     condition_type: str
     condition_ungraded: Optional[str]
     grading_company: Optional[str]
@@ -90,9 +112,20 @@ class InventoryItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class InventoryItemPhotoOut(BaseModel):
+    id: str
+    photo_url: str
+    sort_order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class InventoryItemWithCardResponse(BaseModel):
     id: str
-    card_id: str
+    item_type: str = "card"  # "card" | "sealed"
+    card_id: Optional[str] = None
+    sealed_product_id: Optional[str] = None
     condition_type: str
     condition_ungraded: Optional[str]
     grading_company: Optional[str]
@@ -106,19 +139,23 @@ class InventoryItemWithCardResponse(BaseModel):
     variant: Optional[str] = None
     is_public: bool = True
     notes: Optional[str]
+    photos: List[InventoryItemPhotoOut] = []
     created_at: datetime
     estimated_value: Optional[Decimal] = None
-    # Card details from cards_v2 + expansions_v2
-    card_name: str
+    # Card fields (None for sealed items)
+    card_name: Optional[str] = None
     card_name_en: Optional[str] = None
-    card_num: Optional[str]
-    set_name: str
+    card_num: Optional[str] = None
+    set_name: Optional[str] = None
     set_name_en: Optional[str] = None
-    series_name: Optional[str]   # None for One Piece
-    image_url: Optional[str]
-    rarity: Optional[str]
-    game: str
-    language_code: str
+    series_name: Optional[str] = None
+    image_url: Optional[str] = None
+    rarity: Optional[str] = None
+    game: Optional[str] = None
+    language_code: Optional[str] = None
+    # Sealed product fields (None for card items)
+    sealed_product_name: Optional[str] = None
+    product_type: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

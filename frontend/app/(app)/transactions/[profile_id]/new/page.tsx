@@ -592,13 +592,13 @@ function parseSearchQuery(raw: string) {
 
 function invItemToCard(item: InventoryItemWithCard): Card {
   return {
-    id: item.card_id,
-    name: item.card_name,
+    id: item.card_id ?? "",
+    name: item.card_name ?? "",
     en_name: item.card_name_en,
     card_num: item.card_num,
     rarity: item.rarity,
     image_url: item.image_url,
-    set_name: item.set_name,
+    set_name: item.set_name ?? "",
     set_name_en: item.set_name_en,
     game: item.game,
     language_code: item.language_code,
@@ -1279,7 +1279,7 @@ function CardPickerModal({
   const filteredInventory = inventoryItems.filter((item) => {
     if (!inventoryQuery.trim()) return true;
     const q = inventoryQuery.toLowerCase();
-    return item.card_name.toLowerCase().includes(q) || item.set_name.toLowerCase().includes(q);
+    return (item.card_name ?? "").toLowerCase().includes(q) || (item.set_name ?? "").toLowerCase().includes(q);
   });
   const showInventoryPanel = direction === "lost" && inventoryItems.length > 0;
 
@@ -1370,6 +1370,7 @@ function CardPickerModal({
                       type="button"
                       disabled={isAdded}
                       onClick={() => {
+                        if (item.condition_type === "sealed") return;
                         setPickerConditionType(item.condition_type);
                         if (item.condition_type === "ungraded") {
                           setPickerConditionUngraded((item.condition_ungraded ?? "nm").toUpperCase());
@@ -1392,7 +1393,7 @@ function CardPickerModal({
                     >
                       {item.image_url && (
                         <div className="w-8 aspect-[3/4] flex-shrink-0 rounded overflow-hidden border relative">
-                          <Image src={item.image_url} alt={item.card_name} fill sizes="32px" className="object-contain" />
+                          <Image src={item.image_url} alt={item.card_name ?? ""} fill sizes="32px" className="object-contain" />
                         </div>
                       )}
                       <div className="min-w-0 flex-1">

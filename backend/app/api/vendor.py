@@ -15,19 +15,22 @@ from typing import Optional, List, Dict, Tuple
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, SessionLocal, settings
 from app.dependencies import get_current_profile
 from app.models.inventory import Inventory
+from app.models.inventory_photo import InventoryItemPhoto
 from app.models.profiles import Profile
 from app.models.catalog_v2 import CardV2, ExpansionV2
 from app.models.scrydex_prices import ScrydexPrice
+from app.models.sealed_product import SealedProduct
 from app.schemas.vendor import (
     InventoryItemCreate,
     InventoryItemPatch,
+    InventoryItemPhotoOut,
     InventoryItemResponse,
     InventoryItemWithCardResponse,
 )
@@ -112,14 +115,20 @@ def add_inventory_item(
     profile: Profile = Depends(get_current_profile),
     db: Session = Depends(get_db),
 ) -> dict:
-    card = db.get(CardV2, body.card_id)
-    if card is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Card '{body.card_id}' not found")
+    if body.card_id:
+        card = db.get(CardV2, body.card_id)
+        if card is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Card '{body.card_id}' not found")
+    else:
+        sealed = db.get(SealedProduct, body.sealed_product_id)
+        if sealed is None or not sealed.is_active:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Sealed product '{body.sealed_product_id}' not found")
 
     item = Inventory(
         id=str(uuid.uuid4()),
         profile_id=profile.id,
         card_v2_id=body.card_id,
+        sealed_product_id=body.sealed_product_id,
         condition_type=body.condition_type,
         condition_ungraded=body.condition_ungraded,
         grading_company=body.grading_company,
@@ -137,7 +146,7 @@ def add_inventory_item(
     db.commit()
     db.refresh(item)
 
-    if body.condition_type == "graded":
+    if body.condition_type == "graded" and body.card_id:
         background_tasks.add_task(
             _enqueue_ebay_on_demand,
             item.card_v2_id,
@@ -206,9 +215,10 @@ def list_inventory(
     db: Session = Depends(get_db),
 ) -> List[dict]:
     query = (
-        db.query(Inventory, CardV2, ExpansionV2)
-        .join(CardV2, Inventory.card_v2_id == CardV2.id)
-        .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        db.query(Inventory, CardV2, ExpansionV2, SealedProduct)
+        .outerjoin(CardV2, Inventory.card_v2_id == CardV2.id)
+        .outerjoin(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+        .outerjoin(SealedProduct, Inventory.sealed_product_id == SealedProduct.id)
         .filter(
             Inventory.profile_id == profile.id,
             Inventory.deleted_at.is_(None),
@@ -225,18 +235,16 @@ def list_inventory(
     rows = query.order_by(Inventory.created_at.desc()).offset(offset).limit(limit).all()
 
     # ---------------------------------------------------------------------------
-    # Scrydex price cache lookup
+    # Scrydex price cache lookup (cards only)
     # ---------------------------------------------------------------------------
     SCRYDEX_CACHE_TTL_HOURS = 24
     stale_cutoff = datetime.utcnow() - timedelta(hours=SCRYDEX_CACHE_TTL_HOURS)
 
-    # Collect unique (card_v2_id, external_id) pairs for all inventory items
     card_external: Dict[str, str] = {}
-    for item, card, _ in rows:
-        if card.external_id and card.game == "pokemon":
+    for item, card, _exp, _sealed in rows:
+        if card and card.external_id and card.game == "pokemon":
             card_external[str(item.card_v2_id)] = card.external_id
 
-    # Batch-fetch cached Scrydex prices
     scrydex_cache: Dict[str, List] = {}
     needs_refresh: List[Tuple[str, str]] = []
 
@@ -259,20 +267,28 @@ def list_inventory(
     if needs_refresh:
         background_tasks.add_task(_refresh_scrydex_cache, needs_refresh)
 
-    result = []
-    for item, card, expansion in rows:
-        prices = scrydex_cache.get(str(item.card_v2_id), [])
-        estimated_value = lookup_market_price(
-            prices,
-            item.condition_type,
-            item.condition_ungraded,
-            item.grading_company,
-            item.grade,
-            item.variant,
+    # Batch-load photos
+    item_ids = [item.id for item, _c, _e, _s in rows]
+    photos_by_item: Dict[str, List[dict]] = {}
+    if item_ids:
+        photo_rows = (
+            db.query(InventoryItemPhoto)
+            .filter(InventoryItemPhoto.inventory_item_id.in_(item_ids))
+            .order_by(InventoryItemPhoto.inventory_item_id, InventoryItemPhoto.sort_order, InventoryItemPhoto.created_at)
+            .all()
         )
-        result.append({
+        for p in photo_rows:
+            photos_by_item.setdefault(p.inventory_item_id, []).append({
+                "id": p.id,
+                "photo_url": p.photo_url,
+                "sort_order": p.sort_order,
+                "created_at": p.created_at,
+            })
+
+    result = []
+    for item, card, expansion, sealed in rows:
+        shared = {
             "id": item.id,
-            "card_id": str(item.card_v2_id),
             "condition_type": item.condition_type,
             "condition_ungraded": item.condition_ungraded,
             "grading_company": item.grading_company,
@@ -286,19 +302,58 @@ def list_inventory(
             "variant": item.variant,
             "is_public": item.is_public,
             "notes": item.notes,
+            "photos": photos_by_item.get(item.id, []),
             "created_at": item.created_at,
-            "estimated_value": estimated_value,
-            "card_name": card.name,
-            "card_name_en": card.en_name,
-            "card_num": card.number,
-            "set_name": expansion.name,
-            "set_name_en": expansion.translation,
-            "series_name": expansion.series,
-            "image_url": _extract_image_url(card.images),
-            "rarity": card.rarity,
-            "game": card.game,
-            "language_code": card.language_code,
-        })
+        }
+        if item.sealed_product_id and sealed:
+            result.append({
+                **shared,
+                "item_type": "sealed",
+                "sealed_product_id": item.sealed_product_id,
+                "card_id": None,
+                "estimated_value": None,
+                "sealed_product_name": sealed.name,
+                "product_type": sealed.product_type,
+                "game": sealed.game,
+                "language_code": sealed.language_code,
+                "image_url": sealed.image_url,
+                "card_name": None,
+                "card_name_en": None,
+                "card_num": None,
+                "set_name": None,
+                "set_name_en": None,
+                "series_name": None,
+                "rarity": None,
+            })
+        elif card and expansion:
+            prices = scrydex_cache.get(str(item.card_v2_id), [])
+            estimated_value = lookup_market_price(
+                prices,
+                item.condition_type,
+                item.condition_ungraded,
+                item.grading_company,
+                item.grade,
+                item.variant,
+            )
+            result.append({
+                **shared,
+                "item_type": "card",
+                "card_id": str(item.card_v2_id),
+                "sealed_product_id": None,
+                "estimated_value": estimated_value,
+                "card_name": card.name,
+                "card_name_en": card.en_name,
+                "card_num": card.number,
+                "set_name": expansion.name,
+                "set_name_en": expansion.translation,
+                "series_name": expansion.series,
+                "image_url": _extract_image_url(card.images),
+                "rarity": card.rarity,
+                "game": card.game,
+                "language_code": card.language_code,
+                "sealed_product_name": None,
+                "product_type": None,
+            })
     return result
 
 
@@ -377,6 +432,105 @@ def delete_inventory_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
 
     item.deleted_at = datetime.utcnow()
+    db.commit()
+
+
+@router.post("/inventory/{item_id}/photos", response_model=InventoryItemPhotoOut, status_code=status.HTTP_201_CREATED)
+def upload_inventory_photo(
+    item_id: str,
+    image: UploadFile = File(...),
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Upload a photo for an inventory item, store in S3, and record the URL."""
+    item = db.query(Inventory).filter(
+        Inventory.id == item_id,
+        Inventory.profile_id == profile.id,
+        Inventory.deleted_at.is_(None),
+    ).first()
+    if item is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
+
+    if not image.content_type or not image.content_type.startswith("image/"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be an image")
+
+    image_bytes = image.file.read()
+    if len(image_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Photo must be under 10 MB")
+
+    if not settings.aws_s3_bucket:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Image storage not configured")
+
+    photo_id = str(uuid.uuid4())
+    s3 = boto3.client(
+        "s3",
+        region_name=settings.aws_region,
+        aws_access_key_id=settings.aws_access_key_id,
+        aws_secret_access_key=settings.aws_secret_access_key,
+    )
+    key = f"inventory-photos/{profile.id}/{item_id}/{photo_id}.jpg"
+    s3.put_object(
+        Bucket=settings.aws_s3_bucket,
+        Key=key,
+        Body=image_bytes,
+        ContentType=image.content_type,
+    )
+    photo_url = f"https://{settings.aws_s3_bucket}.s3.amazonaws.com/{key}"
+
+    # Determine sort_order as max existing + 1
+    existing_count = db.query(InventoryItemPhoto).filter(
+        InventoryItemPhoto.inventory_item_id == item_id,
+    ).count()
+
+    photo = InventoryItemPhoto(
+        id=photo_id,
+        inventory_item_id=item_id,
+        profile_id=profile.id,
+        photo_url=photo_url,
+        sort_order=existing_count,
+    )
+    db.add(photo)
+    db.commit()
+    db.refresh(photo)
+    return {
+        "id": photo.id,
+        "photo_url": photo.photo_url,
+        "sort_order": photo.sort_order,
+        "created_at": photo.created_at,
+    }
+
+
+@router.delete("/inventory/{item_id}/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_inventory_photo(
+    item_id: str,
+    photo_id: str,
+    profile: Profile = Depends(get_current_profile),
+    db: Session = Depends(get_db),
+) -> None:
+    """Delete an inventory photo from S3 and the database."""
+    photo = db.query(InventoryItemPhoto).filter(
+        InventoryItemPhoto.id == photo_id,
+        InventoryItemPhoto.inventory_item_id == item_id,
+        InventoryItemPhoto.profile_id == profile.id,
+    ).first()
+    if photo is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Photo not found")
+
+    # Delete from S3
+    if settings.aws_s3_bucket:
+        try:
+            s3 = boto3.client(
+                "s3",
+                region_name=settings.aws_region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+            )
+            key = f"inventory-photos/{profile.id}/{item_id}/{photo_id}.jpg"
+            s3.delete_object(Bucket=settings.aws_s3_bucket, Key=key)
+        except ClientError:
+            pass  # S3 delete failure is non-fatal; DB record is still removed
+
+    db.delete(photo)
     db.commit()
 
 

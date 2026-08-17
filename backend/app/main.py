@@ -13,6 +13,7 @@ from app.api import messaging
 from app.api import notifications
 from app.api import pricing
 from app.api import profiles
+from app.api import sealed_products
 from app.api import social
 from app.api import vendor
 from app.api import scans
@@ -43,6 +44,7 @@ app.include_router(messaging.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
 app.include_router(pricing.router, prefix="/api/v1")
 app.include_router(profiles.router, prefix="/api/v1")
+app.include_router(sealed_products.router, prefix="/api/v1")
 app.include_router(social.router, prefix="/api/v1")
 app.include_router(vendor.router, prefix="/api/v1")
 app.include_router(scans.router, prefix="/api/v1")

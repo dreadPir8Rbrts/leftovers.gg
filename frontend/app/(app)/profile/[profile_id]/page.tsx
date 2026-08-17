@@ -1254,7 +1254,7 @@ export default function ProfilePage() {
                           {item.image_url ? (
                             <Image
                               src={item.image_url}
-                              alt={item.card_name}
+                              alt={item.card_name ?? ""}
                               fill
                               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                               className="object-contain p-1"

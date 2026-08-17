@@ -43,9 +43,9 @@ export interface Card {
 export type CardStatus = "pc" | "fs" | "ft" | "fs_ft";
 
 export interface InventoryItemCreate {
-  card_id: string;
-  condition?: string;
-  condition_type?: "ungraded" | "graded";
+  card_id?: string;
+  sealed_product_id?: string;
+  condition_type: "ungraded" | "graded" | "sealed";
   condition_ungraded?: string;
   grading_company?: string;
   grade?: string;
@@ -198,10 +198,30 @@ export async function getProfileImageUploadUrl(
   return res.json();
 }
 
+export interface InventoryItemPhoto {
+  id: string;
+  photo_url: string;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface SealedProduct {
+  id: string;
+  name: string;
+  game: string;
+  language_code: string;
+  product_type: string;
+  expansion_id?: string;
+  release_date?: string;
+  image_url?: string;
+}
+
 export interface InventoryItemWithCard {
   id: string;
-  card_id: string;
-  condition_type: "ungraded" | "graded";
+  item_type: "card" | "sealed";
+  card_id?: string;
+  sealed_product_id?: string;
+  condition_type: "ungraded" | "graded" | "sealed";
   condition_ungraded?: string;
   grading_company?: string;
   grade?: string;
@@ -214,18 +234,23 @@ export interface InventoryItemWithCard {
   variant?: string | null;
   is_public: boolean;
   notes?: string;
+  photos: InventoryItemPhoto[];
   created_at: string;
   estimated_value?: number;
-  card_name: string;
+  // Card fields (undefined for sealed items)
+  card_name?: string;
   card_name_en?: string;
   card_num?: string;
-  set_name: string;
+  set_name?: string;
   set_name_en?: string;
-  series_name?: string;   // null for One Piece
+  series_name?: string;
   image_url?: string;
   rarity?: string;
-  game: string;
-  language_code: string;
+  game?: string;
+  language_code?: string;
+  // Sealed product fields (undefined for card items)
+  sealed_product_name?: string;
+  product_type?: string;
 }
 
 export async function getInventory(): Promise<InventoryItemWithCard[]> {
@@ -252,6 +277,27 @@ export async function addInventoryItem(item: InventoryItemCreate): Promise<void>
     body: JSON.stringify(item),
   });
   if (!res.ok) throw new Error(`Failed to add inventory: ${res.status}`);
+}
+
+// Search sealed products catalog
+export async function searchSealedProducts(params: {
+  q?: string;
+  game?: string;
+  language_code?: string;
+  product_type?: string;
+  limit?: number;
+}): Promise<SealedProduct[]> {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.game) qs.set("game", params.game);
+  if (params.language_code) qs.set("language_code", params.language_code);
+  if (params.product_type) qs.set("product_type", params.product_type);
+  qs.set("limit", String(params.limit ?? 20));
+  const res = await fetch(`${API_URL}/api/v1/sealed-products/search?${qs.toString()}`, {
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Sealed product search failed: ${res.status}`);
+  return res.json();
 }
 
 // ---------------------------------------------------------------------------
@@ -390,6 +436,26 @@ export async function deleteInventoryItem(itemId: string): Promise<void> {
     headers: await authHeaders(),
   });
   if (!res.ok) throw new Error(`Failed to delete inventory item: ${res.status}`);
+}
+
+export async function uploadInventoryPhoto(itemId: string, file: File): Promise<InventoryItemPhoto> {
+  const form = new FormData();
+  form.append("image", file);
+  const res = await fetch(`${API_URL}/api/v1/inventory/${itemId}/photos`, {
+    method: "POST",
+    headers: await authHeaders(),
+    body: form,
+  });
+  if (!res.ok) throw new Error(`Failed to upload photo: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteInventoryPhoto(itemId: string, photoId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/api/v1/inventory/${itemId}/photos/${photoId}`, {
+    method: "DELETE",
+    headers: await authHeaders(),
+  });
+  if (!res.ok) throw new Error(`Failed to delete photo: ${res.status}`);
 }
 
 // ---------------------------------------------------------------------------

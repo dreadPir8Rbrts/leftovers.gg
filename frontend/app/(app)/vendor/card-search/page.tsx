@@ -25,6 +25,14 @@ const CONDITION_OPTIONS = [
   { value: "bgs_9", label: "BGS 9" },
 ];
 
+function parseCondition(value: string): { condition_type: "ungraded" | "graded"; condition_ungraded?: string; grading_company?: string; grade?: string } {
+  if (value.startsWith("raw_")) {
+    return { condition_type: "ungraded", condition_ungraded: value.slice(4) };
+  }
+  const idx = value.indexOf("_");
+  return { condition_type: "graded", grading_company: value.slice(0, idx), grade: value.slice(idx + 1) };
+}
+
 export default function CardSearchPage() {
   const router = useRouter();
 
@@ -108,7 +116,7 @@ export default function CardSearchPage() {
       }
       await addInventoryItem({
         card_id: card.id,
-        condition,
+        ...parseCondition(condition),
         asking_price: askingPrice || undefined,
         card_status: "pc",
         variant: variants[0] ?? null,
@@ -128,7 +136,7 @@ export default function CardSearchPage() {
     try {
       await addInventoryItem({
         card_id: variantCard.id,
-        condition,
+        ...parseCondition(condition),
         asking_price: askingPrice || undefined,
         card_status: "pc",
         variant: selectedVariant || null,
