@@ -12,6 +12,7 @@ Routes:
 import base64
 import io
 import json
+import re
 import uuid
 import asyncio
 import logging
@@ -896,15 +897,33 @@ async def quick_identify_naruto(
             return _card_response(card, expansion, 0.95, "number_exact")
 
         if len(rows) > 1 and ocr_name:
-            # Narrow b-variants by name (case-insensitive exact)
-            name_matches = [
-                (c, e) for c, e in rows
-                if c.name.lower() == ocr_name.lower()
-            ]
+            ocr_lower = ocr_name.lower()
+            # Exact name match first (handles b-variants with identical base names)
+            name_matches = [(c, e) for c, e in rows if c.name.lower() == ocr_lower]
+            if not name_matches:
+                # Broader: OCR read only the base name; catalog name includes a
+                # parenthetical subtitle — e.g. OCR="Pain", catalog="Pain (Deva Path)".
+                # Strip the subtitle from each catalog name before comparing.
+                name_matches = [
+                    (c, e) for c, e in rows
+                    if re.sub(r"\s*\(.*", "", c.name).strip().lower() == ocr_lower
+                ]
             if len(name_matches) == 1:
                 card, expansion = name_matches[0]
                 logger.info("quick_identify_naruto — matched by number+name: %s", card.id)
                 return _card_response(card, expansion, 0.90, "number_name")
+            if name_matches and len(name_matches) < len(rows):
+                # Narrowed but still ambiguous — return the filtered-down set
+                logger.info(
+                    "quick_identify_naruto — narrowed by name to %d/%d for number %s",
+                    len(name_matches), len(rows), card_number,
+                )
+                return {
+                    "matched": False,
+                    "ambiguous": True,
+                    "candidates": _candidate_list(name_matches),
+                    "ocr": ocr_dict,
+                }
 
         if len(rows) > 1:
             logger.info("quick_identify_naruto — ambiguous: %d candidates for number %s", len(rows), card_number)
@@ -917,15 +936,29 @@ async def quick_identify_naruto(
 
     # --- Strategy 2: name-only fallback ---
     if ocr_name:
+        ocr_lower = ocr_name.lower()
+        # Try exact name match, then base-name match (strips parenthetical subtitles)
         rows = (
             db.query(CardV2, ExpansionV2)
             .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
             .filter(
                 CardV2.game == "naruto_ccg",
-                func.lower(CardV2.name) == ocr_name.lower(),
+                func.lower(CardV2.name) == ocr_lower,
             )
             .all()
         )
+        if not rows:
+            # Base-name search: pull all naruto cards whose name starts with the
+            # OCR token (before any '(' ), so "Pain" finds "Pain (Deva Path)".
+            rows = (
+                db.query(CardV2, ExpansionV2)
+                .join(ExpansionV2, CardV2.expansion_id == ExpansionV2.id)
+                .filter(
+                    CardV2.game == "naruto_ccg",
+                    func.lower(CardV2.name).like(ocr_lower + " (%"),
+                )
+                .all()
+            )
 
         if len(rows) == 1:
             card, expansion = rows[0]
