@@ -372,10 +372,26 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
 
     # --- Card number: find the © line and grab the 3-4 digit number ---
     for line in lines:
-        if "©" in line or "2002" in line:
-            m = re.search(r"\b(\d{3,4})\b", line)
+        if "©" in line or "2002" in line or "2007" in line:
+            # First priority: number immediately after 忍/術 prefix.
+            # OCR often merges the card number with adjacent copyright digits
+            # (e.g. "忍2593" when the real number is 259 and "3" leaked from "©2002").
+            # If the extracted number is ≥ 2000 it's a year bleed-in; take the
+            # first 3 digits instead.
+            m = re.search(r"[忍術]\s*(\d{3,4})", line)
             if m:
-                card_number = m.group(1)
+                num = m.group(1)
+                if int(num) >= 2000:
+                    num = num[:3]
+                card_number = num
+                break
+            # Fallback: standalone 3-4 digit number, skipping copyright years.
+            for m in re.finditer(r"\b(\d{3,4})\b", line):
+                n = m.group(1)
+                if int(n) < 2000:
+                    card_number = n
+                    break
+            if card_number:
                 break
         # Promo cards: "PR 096 ©2002MK..." — © may be garbled by OCR into noise
         m = re.match(r"^PR\s+(\d{3,4})\b", line, re.IGNORECASE)
