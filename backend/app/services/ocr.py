@@ -340,10 +340,17 @@ def _parse_pokemon_card_text(raw_text: str) -> Dict[str, Any]:
 
 # Lines to skip when looking for the card name on a Naruto card.
 # Covers: edition markers, pure numbers, copyright, stat pipe lines,
-# game-mechanic keyword starters, symbol-only lines, score boxes.
+# game-mechanic keyword starters, symbol-only lines, score boxes,
+# element/type labels (VOID, FIRE, …) and common OCR corruptions of NINJA.
 _NARUTO_SKIP = re.compile(
     r"^(1st Edition|2nd Edition|\d+|©|Requirements?:|Effect:|Valid:|Even:|Odd:|"
-    r"[XO]$|0/X|X/0|\[|●|NINJA|JUTSU|MISSION|CLIENT|PERMANENT)",
+    r"[XO]$|0/X|X/0|\[|●|"
+    r"NINJA|NINJUTSU|JUTSU|MISSION|CLIENT|PERMANENT|"
+    # Element/type labels that appear as standalone noise lines
+    r"VOID|FIRE|WATER|EARTH|LIGHTNING|WIND|"
+    # Common OCR corruptions of NINJA (V/N flip, missing letter, etc.)
+    r"VININ|NININ|NINIA|NININ|VINJA|VINJI"
+    r")",
     re.IGNORECASE,
 )
 
@@ -370,33 +377,49 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
     card_number: Optional[str] = None
     name: Optional[str] = None
 
-    # --- Card number: find the © line and grab the 3-4 digit number ---
-    for line in lines:
-        if "©" in line or "2002" in line or "2007" in line:
-            # First priority: number immediately after 忍/術 prefix.
-            # OCR often merges the card number with adjacent copyright digits
-            # (e.g. "忍2593" when the real number is 259 and "3" leaked from "©2002").
-            # If the extracted number is ≥ 2000 it's a year bleed-in; take the
-            # first 3 digits instead.
-            m = re.search(r"[忍術]\s*(\d{3,4})", line)
-            if m:
-                num = m.group(1)
-                if int(num) >= 2000:
-                    num = num[:3]
-                card_number = num
-                break
-            # Fallback: standalone 3-4 digit number, skipping copyright years.
-            for m in re.finditer(r"\b(\d{3,4})\b", line):
-                n = m.group(1)
-                if int(n) < 2000:
-                    card_number = n
-                    break
-            if card_number:
-                break
-        # Promo cards: "PR 096 ©2002MK..." — © may be garbled by OCR into noise
+    # --- Card number: find the © line and grab the 3-4 digit card ID ---
+    #
+    # Physical bottom line: 忍 [number] [set] ©2002MK · 2007SP ●●●
+    # OCR sometimes keeps this as one line; sometimes splits it so the number
+    # lands on a separate line above the copyright block.  We handle both.
+    def _extract_number_from_line(text: str) -> Optional[str]:
+        """Return the first valid card number (3-4 digits, < 2000) in text.
+        Prefers the token immediately after 忍/術; if OCR merged it with
+        copyright digits (e.g. '忍2593' for card 259) we trim to 3 chars."""
+        m = re.search(r"[忍術]\s*(\d{3,4})", text)
+        if m:
+            num = m.group(1)
+            if int(num) >= 2000:
+                num = num[:3]
+            return num
+        for fm in re.finditer(r"\b(\d{3,4})\b", text):
+            n = fm.group(1)
+            if int(n) < 2000:
+                return n
+        return None
+
+    for idx, line in enumerate(lines):
+        # Promo cards: "PR 096 ©2002MK…" — © may be garbled into noise
         m = re.match(r"^PR\s+(\d{3,4})\b", line, re.IGNORECASE)
         if m:
             card_number = m.group(1)
+            break
+
+        is_copyright = "©" in line or "2002MK" in line or "2007SP" in line or "2002" in line
+        if not is_copyright:
+            continue
+
+        card_number = _extract_number_from_line(line)
+        if card_number:
+            break
+
+        # Copyright line had no usable number — OCR split the bottom line.
+        # The card number sits on the 1-2 lines immediately above.
+        for prev in reversed(lines[max(0, idx - 2):idx]):
+            card_number = _extract_number_from_line(prev)
+            if card_number:
+                break
+        if card_number:
             break
 
     # Fallback: lone 3-4 digit number on its own line
@@ -425,7 +448,10 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         # Skip score/combat boxes like "0/X" handled by regex but also "X/0", "7 1"
         if re.fullmatch(r"[\dX/\s]+", line):
             continue
-        name = line
+        # Strip trailing OCR noise (stray symbols, logo artifacts)
+        cleaned = re.sub(r"[\s&@#|*•●]+$", "", line).strip()
+        if cleaned:
+            name = cleaned
         break
 
     return {"card_number": card_number, "name": name}
