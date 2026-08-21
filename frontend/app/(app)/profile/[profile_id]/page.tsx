@@ -1044,7 +1044,7 @@ export default function ProfilePage() {
       {/* Tabs */}
       <div className="w-[95%] md:w-[80%] mx-auto mt-8 pb-12">
         {/* Tab strip */}
-        <div className="flex border-b">
+        <div className="flex border-b border-zinc-700">
           {(["fs_ft", "pc", "wishlist", "refs"] as const).map((tab) => {
             const count =
               tab === "fs_ft" ? fsFtInventory.length :
@@ -1072,7 +1072,7 @@ export default function ProfilePage() {
           })}
         </div>
 
-        <div className="border border-t-0 rounded-b-lg p-4">
+        <div className="border border-zinc-700 border-t-0 rounded-b-lg p-4">
           {/* TCG + Card Type toggles, search, and filters — hidden on Refs tab */}
           {activeTab !== "refs" && (<>
           <div className="flex flex-col sm:flex-row gap-4 mb-4">

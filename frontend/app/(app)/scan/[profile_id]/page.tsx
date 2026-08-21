@@ -486,10 +486,10 @@ export default function ScanPage() {
   // Corner brackets used in both guide overlays
   const cornerBrackets = (
     <>
-      <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-primary rounded-tl-sm" />
-      <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-primary rounded-tr-sm" />
-      <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-primary rounded-bl-sm" />
-      <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-primary rounded-br-sm" />
+      <span className="absolute top-0 left-0 block w-7 h-7 border-t-[3px] border-l-[3px] border-zinc-500 rounded-tl-sm" />
+      <span className="absolute top-0 right-0 block w-7 h-7 border-t-[3px] border-r-[3px] border-zinc-500 rounded-tr-sm" />
+      <span className="absolute bottom-0 left-0 block w-7 h-7 border-b-[3px] border-l-[3px] border-zinc-500 rounded-bl-sm" />
+      <span className="absolute bottom-0 right-0 block w-7 h-7 border-b-[3px] border-r-[3px] border-zinc-500 rounded-br-sm" />
     </>
   );
 
@@ -643,7 +643,7 @@ export default function ScanPage() {
           {/* Photo preview — present in photo mode, absent for QR no-match */}
           {capturedPreview && (
             <div
-              className="relative w-full rounded-xl overflow-hidden border bg-black"
+              className="relative w-full rounded-xl overflow-hidden border border-zinc-700 bg-black"
               style={{ aspectRatio: "3/4", maxHeight: "60vh" }}
             >
               <Image
