@@ -1314,7 +1314,7 @@ export default function CardDetailPage() {
                     onChange={(e) => setModalConditionUngraded(e.target.value)}
                     className="w-full border border-black/20 rounded-md px-3 py-2 text-sm bg-zinc-800 text-white"
                   >
-                    {[["nm","NM"],["lp","LP"],["mp","MP"],["hp","HP"],["dmg","DMG"]].map(([v, l]) => (
+                    {[["nm+","NM+"],["nm","NM"],["nm-","NM-"],["lp+","LP+"],["lp","LP"],["lp-","LP-"],["mp+","MP+"],["mp","MP"],["mp-","MP-"],["hp","HP"],["dmg","DMG"]].map(([v, l]) => (
                       <option key={v} value={v}>{l}</option>
                     ))}
                   </select>

@@ -95,7 +95,7 @@ interface ConditionParams {
   grade: string;
 }
 
-const CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"];
+const CONDITIONS = ["NM+", "NM", "NM-", "LP+", "LP", "LP-", "MP+", "MP", "MP-", "HP", "DMG"];
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "SGC", "HGA", "other"];
 const HALF_GRADES = ["10","9.5","9","8.5","8","7.5","7","6.5","6","5.5","5","4.5","4","3.5","3","2.5","2","1.5","1"];
 const GRADE_OPTIONS: Record<string, string[]> = {

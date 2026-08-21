@@ -9,7 +9,7 @@ import {
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 
-const UNGRADED_CONDITIONS = ["NM", "LP", "MP", "HP", "DMG"] as const;
+const UNGRADED_CONDITIONS = ["NM+", "NM", "NM-", "LP+", "LP", "LP-", "MP+", "MP", "MP-", "HP", "DMG"] as const;
 const GRADING_COMPANIES = ["PSA", "BGS", "CGC", "other"] as const;
 
 interface Props {

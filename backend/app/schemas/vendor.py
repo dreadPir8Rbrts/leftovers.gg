@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, model_validator, field_validator
 # Condition validation constants
 # ---------------------------------------------------------------------------
 
-VALID_UNGRADED = {"nm", "lp", "mp", "hp", "dmg"}
+VALID_UNGRADED = {"nm+", "nm", "nm-", "lp+", "lp", "lp-", "mp+", "mp", "mp-", "hp", "dmg"}
 VALID_COMPANIES = {"psa", "bgs", "cgc", "other"}
 VALID_CARD_STATUSES = {"pc", "fs", "ft", "fs_ft"}
 VALID_SEALED_CONDITIONS = {"factory_sealed", "seal_damaged", "box_damaged", "damaged"}

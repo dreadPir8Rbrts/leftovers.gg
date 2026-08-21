@@ -1047,9 +1047,15 @@ export default function InventoryPage() {
               value={filterCondition}
               onChange={setFilterCondition}
               options={[
+                { value: "nm+", label: "NM+" },
                 { value: "nm", label: "NM" },
+                { value: "nm-", label: "NM-" },
+                { value: "lp+", label: "LP+" },
                 { value: "lp", label: "LP" },
+                { value: "lp-", label: "LP-" },
+                { value: "mp+", label: "MP+" },
                 { value: "mp", label: "MP" },
+                { value: "mp-", label: "MP-" },
                 { value: "hp", label: "HP" },
                 { value: "dmg", label: "DMG" },
               ]}

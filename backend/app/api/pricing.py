@@ -49,17 +49,29 @@ PRICING_FRESHNESS_DAYS = 7
 COMPS_FRESHNESS_DAYS = 7
 
 DEFAULT_MULTIPLIERS: Dict[str, float] = {
+    "nm+": 1.05,
     "nm":  1.00,
+    "nm-": 0.88,
+    "lp+": 0.82,
     "lp":  0.75,
+    "lp-": 0.68,
+    "mp+": 0.60,
     "mp":  0.55,
+    "mp-": 0.50,
     "hp":  0.35,
     "dmg": 0.15,
 }
 
 CONDITION_LABELS: Dict[str, str] = {
+    "nm+": "Near Mint+",
     "nm":  "Near Mint",
+    "nm-": "Near Mint-",
+    "lp+": "Lightly Played+",
     "lp":  "Lightly Played",
+    "lp-": "Lightly Played-",
+    "mp+": "Moderately Played+",
     "mp":  "Moderately Played",
+    "mp-": "Moderately Played-",
     "hp":  "Heavily Played",
     "dmg": "Damaged",
 }
