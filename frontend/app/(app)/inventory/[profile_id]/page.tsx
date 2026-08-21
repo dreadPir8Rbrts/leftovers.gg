@@ -197,11 +197,11 @@ function DeleteConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       onClick={onCancel}
     >
       <div
-        className="bg-background rounded-xl shadow-xl w-full max-w-xs overflow-hidden"
+        className="bg-background rounded-xl shadow-xl w-full max-w-xs overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="p-5">
@@ -573,11 +573,11 @@ function InventoryEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+        className="bg-background rounded-xl shadow-xl w-full max-w-sm overflow-hidden my-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Item info header */}

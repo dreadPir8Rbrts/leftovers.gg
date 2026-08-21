@@ -1274,11 +1274,11 @@ export default function CardDetailPage() {
       {/* ── Add to Inventory modal ── */}
       {addModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
           onClick={() => setAddModalOpen(false)}
         >
           <div
-            className="bg-zinc-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden"
+            className="bg-zinc-800 rounded-xl shadow-xl w-full max-w-sm overflow-hidden my-auto"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
