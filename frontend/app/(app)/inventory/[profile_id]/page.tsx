@@ -573,7 +573,7 @@ function InventoryEditModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/60 p-4 pb-24 overflow-y-auto"
       onClick={onClose}
     >
       <div
