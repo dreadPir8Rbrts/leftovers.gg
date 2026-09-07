@@ -437,8 +437,9 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
             continue
         if "©" in line or "2002MK" in line or "2007SP" in line:
             continue
-        # Skip quoted flavor text or sound effects (e.g. OCR drops the leading “ from “Grrrrrr”)
-        if line[0] in (‘”’, ‘”’, ‘”’, “’”, ‘’’, ‘’’):
+        # Skip quoted flavor text (straight and curly open/close quotes)
+        if line[0] in ('"', '\u201c', '\u201d', "'", '\u2018', '\u2019'):
+            continue
             continue
         # Skip flavor-text continuation lines — multi-line quotes where OCR drops the
         # opening quote from every line after the first. Naruto card names are always
