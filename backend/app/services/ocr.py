@@ -358,6 +358,22 @@ _NARUTO_SKIP = re.compile(
 _REPEATED_CHAR = re.compile(r"(.)\1{4,}")
 
 
+
+def _is_japanese_dominant(line: str) -> bool:
+    """Return True if >40% of non-whitespace chars are Hiragana, Katakana, or CJK.
+    Used to skip decorative Japanese text printed on English promo cards."""
+    non_space = [c for c in line if not c.isspace()]
+    if not non_space:
+        return False
+    kana_cjk = sum(
+        1 for c in non_space
+        if 0x3040 <= ord(c) <= 0x309F   # Hiragana
+        or 0x30A0 <= ord(c) <= 0x30FF   # Katakana
+        or 0x4E00 <= ord(c) <= 0x9FFF   # CJK Unified Ideographs
+    )
+    return kana_cjk / len(non_space) > 0.4
+
+
 def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
     """
     Extract card number and name from raw OCR text of a Naruto CCG card.
@@ -440,11 +456,13 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         # Skip quoted flavor text (straight and curly open/close quotes)
         if line[0] in ('"', '\u201c', '\u201d', "'", '\u2018', '\u2019'):
             continue
-            continue
         # Skip flavor-text continuation lines — multi-line quotes where OCR drops the
         # opening quote from every line after the first. Naruto card names are always
         # proper nouns and always start with an uppercase letter.
         if line[0].islower():
+            continue
+        # Skip decorative Japanese text on bilingual promo cards (e.g. うずまきナルト)
+        if _is_japanese_dominant(line):
             continue
         if _REPEATED_CHAR.search(line):
             continue
