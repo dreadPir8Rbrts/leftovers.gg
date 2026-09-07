@@ -349,8 +349,8 @@ _NARUTO_SKIP = re.compile(
     # Element/type labels that appear as standalone noise lines
     r"VOID|FIRE|WATER|EARTH|LIGHTNING|WIND|"
     # Common OCR corruptions of NINJA (V/N flip, missing letter, etc.)
-    r"VININ|NININ|NINIA|NININ|VINJA|VINJI"
-    r")",
+    r"VININ|NININ|NINIA|NININ|VINJA|VINJI|ONIM"
+    r")$",
     re.IGNORECASE,
 )
 
@@ -464,6 +464,11 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         # Skip decorative Japanese text on bilingual promo cards (e.g. うずまきナルト)
         if _is_japanese_dominant(line):
             continue
+        # Skip short all-caps codes (2-5 uppercase letters, no spaces): set codes,
+        # element abbreviations, OCR noise — e.g. VEC, JEC, APR, ONIM.
+        # Case-sensitive so mixed-case names like "Pain" or "Guy" are not affected.
+        if re.fullmatch(r"[A-Z]{2,5}", line):
+            continue
         if _REPEATED_CHAR.search(line):
             continue
         # Skip stat/attribute pipe lines: "Akatsuki | Rain | Male | ..."
@@ -472,9 +477,9 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         # Skip score/combat boxes like "0/X" handled by regex but also "X/0", "7 1"
         if re.fullmatch(r"[\dX/\s]+", line):
             continue
-        # Strip trailing OCR noise (stray symbols, logo artifacts, standalone single letters)
+        # Strip trailing OCR noise (stray symbols, logo artifacts, standalone single chars/digits)
         cleaned = re.sub(r"[\s&@#|*•●]+$", "", line).strip()
-        cleaned = re.sub(r"\s+[a-z]$", "", cleaned).strip()
+        cleaned = re.sub(r"\s+[a-z0-9]$", "", cleaned).strip()
         if cleaned:
             name = cleaned
         break
