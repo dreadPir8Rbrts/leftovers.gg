@@ -438,7 +438,12 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         if "©" in line or "2002MK" in line or "2007SP" in line:
             continue
         # Skip quoted flavor text or sound effects (e.g. OCR drops the leading “ from “Grrrrrr”)
-        if line[0] in ('"', '“', '”', "'", '‘', '’'):
+        if line[0] in (‘”’, ‘”’, ‘”’, “’”, ‘’’, ‘’’):
+            continue
+        # Skip flavor-text continuation lines — multi-line quotes where OCR drops the
+        # opening quote from every line after the first. Naruto card names are always
+        # proper nouns and always start with an uppercase letter.
+        if line[0].islower():
             continue
         if _REPEATED_CHAR.search(line):
             continue
@@ -448,8 +453,9 @@ def _parse_naruto_card_text(raw_text: str) -> Dict[str, Any]:
         # Skip score/combat boxes like "0/X" handled by regex but also "X/0", "7 1"
         if re.fullmatch(r"[\dX/\s]+", line):
             continue
-        # Strip trailing OCR noise (stray symbols, logo artifacts)
+        # Strip trailing OCR noise (stray symbols, logo artifacts, standalone single letters)
         cleaned = re.sub(r"[\s&@#|*•●]+$", "", line).strip()
+        cleaned = re.sub(r"\s+[a-z]$", "", cleaned).strip()
         if cleaned:
             name = cleaned
         break
